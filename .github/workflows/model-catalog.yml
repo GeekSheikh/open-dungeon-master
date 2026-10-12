@@ -1,0 +1,126 @@
+name: model-catalog
+
+# The hosted model IDs under src/, checked weekly against models.dev
+# (scripts/check-model-catalogs.mjs, docs/model-catalog.md), split by risk:
+# a deprecated ID with a live one beside it in its list is dropped in a PR
+# from the model-catalog/drop-deprecated branch; a deprecated default, which
+# needs a replacement chosen, and the new tool-calling models go to one
+# rolling issue labelled model-catalog. The schedule runs upstream only, so a
+# fork with Actions turned on does not file issues against itself.
+on:
+  schedule:
+    - cron: "41 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: model-catalog
+
+jobs:
+  check:
+    if: github.event_name == 'workflow_dispatch' || github.repository == 'Lebbitheplow/open-dungeon-master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BRANCH: model-catalog/drop-deprecated
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Check against models.dev
+        run: >
+          node scripts/check-model-catalogs.mjs --write
+          --issue "$RUNNER_TEMP/issue.md" --pr "$RUNNER_TEMP/pr.md" --removed "$RUNNER_TEMP/removed.txt"
+
+      - name: Update the rolling issue
+        run: |
+          gh label create model-catalog --color 5319e7 --description "The weekly model catalog report" --force
+          number=$(gh issue list --label model-catalog --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --body-file "$RUNNER_TEMP/issue.md"
+          else
+            gh issue create --title "Model catalog report" --label model-catalog --body-file "$RUNNER_TEMP/issue.md"
+          fi
+
+      # The files the check edited, listed before npm ci can touch the tree,
+      # and whether the bot's branch carries someone else's commit (a test
+      # updated by hand), which a force push would throw away.
+      - name: Anything dropped?
+        id: diff
+        run: |
+          git diff --name-only > "$RUNNER_TEMP/edited.txt"
+          if [ -s "$RUNNER_TEMP/edited.txt" ]; then echo "dropped=true" >> "$GITHUB_OUTPUT"; else echo "dropped=false" >> "$GITHUB_OUTPUT"; fi
+          if git fetch --quiet origin "$BRANCH" 2>/dev/null; then
+            author=$(git log -1 --format=%ae FETCH_HEAD)
+            if [ "$author" = "41898282+github-actions[bot]@users.noreply.github.com" ]; then echo "branch=bot" >> "$GITHUB_OUTPUT"; else echo "branch=touched" >> "$GITHUB_OUTPUT"; fi
+          else
+            echo "branch=none" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Checks do not run on a PR this workflow opens with its own token, so
+      # the tests that name a dropped ID run here and their result goes in
+      # the PR's description.
+      - name: Run the tests that name a dropped ID
+        if: steps.diff.outputs.dropped == 'true'
+        run: |
+          tests=$(grep -lF -f "$RUNNER_TEMP/removed.txt" scripts/test-*.mjs || true)
+          {
+            echo "### Tests that name a dropped ID"
+            echo
+          } >> "$RUNNER_TEMP/pr.md"
+          if [ -z "$tests" ]; then
+            echo "None." >> "$RUNNER_TEMP/pr.md"
+            exit 0
+          fi
+          npm ci
+          if npx vitest run $tests > "$RUNNER_TEMP/tests.log" 2>&1; then
+            echo "Passed: $(echo $tests | sed 's/ /, /g')." >> "$RUNNER_TEMP/pr.md"
+          else
+            {
+              echo "**Failed**, so a test needs the same change before this merges:"
+              echo
+              echo '```'
+              grep -E "FAIL|Error|Expected|actual|expected" "$RUNNER_TEMP/tests.log" | head -40
+              echo '```'
+            } >> "$RUNNER_TEMP/pr.md"
+          fi
+
+      - name: Open or update the PR
+        if: steps.diff.outputs.dropped == 'true' && steps.diff.outputs.branch != 'touched'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "$BRANCH"
+          xargs -a "$RUNNER_TEMP/edited.txt" git add --
+          git commit -m "Model catalog: drop the model IDs models.dev marks deprecated"
+          git push --force origin "$BRANCH"
+          if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')" ]; then
+            gh pr edit "$BRANCH" --body-file "$RUNNER_TEMP/pr.md"
+          else
+            base=$(gh repo view "$GITHUB_REPOSITORY" --json defaultBranchRef --jq .defaultBranchRef.name)
+            gh pr create --head "$BRANCH" --base "$base" \
+              --title "Model catalog: drop deprecated model IDs" --body-file "$RUNNER_TEMP/pr.md"
+          fi
+
+      - name: Leave a hand-edited PR alone
+        if: steps.diff.outputs.dropped == 'true' && steps.diff.outputs.branch == 'touched'
+        run: echo "::notice::$BRANCH has a commit from someone other than this workflow, so it is not pushed over. The issue still lists what to drop."
+
+      - name: Close a PR with nothing left to drop
+        if: steps.diff.outputs.dropped == 'false' && steps.diff.outputs.branch == 'bot'
+        run: |
+          number=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr close "$number" --delete-branch --comment "Nothing in this PR is left to drop as of this week's check."
+          fi
