@@ -609,9 +609,13 @@ async function prepareRun(context: HarnessRequestContext) {
   // asks for it only where its connection has one (src/lib/speed-tier.ts).
   const role = context.role === "utility" ? "utility" : "story";
   const wantsFast = (role === "utility" ? config.utilitySpeed : config.speed) === "fast";
-  // Codex says per model whether this sign-in offers Fast (its model list,
-  // cached by the probe); a model without it is run at its default.
-  const fastModels = wantsFast && config.id === "codex" ? ((await probeHarness("codex").catch(() => null))?.models ?? []) : [];
+  // Codex and Claude Code say per model whether this sign-in offers Fast
+  // (their model lists, cached by the probe); a model without it is run at
+  // its default.
+  const fastModels =
+    wantsFast && (config.id === "codex" || config.id === "claude")
+      ? ((await probeHarness(config.id).catch(() => null))?.models ?? [])
+      : [];
   const speed =
     wantsFast && agentSpeedEligibility({ harnessId: config.id, model, models: fastModels }).ok ? ({ role } as const) : undefined;
   return { config, binary, cwd, env, model, speed, adapter: adapterFor(config.id) } as const;

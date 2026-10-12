@@ -293,6 +293,9 @@ export function AdminHarnessSection({
                     value: model.id,
                     label: model.cheap ? `${model.label} (light)` : model.label,
                   })),
+                  ...(draft.utilityModel && !models.some((model) => model.id === draft.utilityModel)
+                    ? [{ value: draft.utilityModel, label: draft.utilityModel }]
+                    : []),
                 ]}
               />
               {chosen.id === "claude" || chosen.id === "codex" ? (
