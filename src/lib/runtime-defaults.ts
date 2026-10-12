@@ -18,9 +18,9 @@ function clean(value: string) {
 export function configuredDefaultStorySettings(): StorySettings {
   const cfg = getGlobalConfig();
   const customBaseUrl = cfg.text.customBaseUrl || clean(serverEnv("OPENAI_COMPAT_BASE_URL"));
-  const openRouterDefaultModel = endpointKind(customBaseUrl) === "openrouter"
-    ? clean(serverEnv("OPENROUTER_MODEL", "google/gemini-3.5-flash"))
-    : "";
+  // OPENROUTER_MODEL is honoured for the servers that set it; nothing is
+  // named in code, so a retired model is never chosen by default.
+  const openRouterDefaultModel = endpointKind(customBaseUrl) === "openrouter" ? clean(serverEnv("OPENROUTER_MODEL")) : "";
   const customModel =
     cfg.text.customModel || clean(serverEnv("OPENAI_COMPAT_MODEL")) || openRouterDefaultModel;
   const requestedProvider = cfg.text.provider || clean(serverEnv("DEFAULT_TEXT_PROVIDER"));
@@ -29,7 +29,8 @@ export function configuredDefaultStorySettings(): StorySettings {
     : customBaseUrl
       ? "custom"
       : DEFAULT_STORY_SETTINGS.textProvider;
-  const requestedLocalModel = cfg.text.localTextModel || clean(serverEnv("LOCAL_TEXT_MODEL"));
+  // Any Ollama tag the admin named; blank until one is picked.
+  const requestedLocalModel = clean(cfg.text.localTextModel || serverEnv("LOCAL_TEXT_MODEL"));
   const localTextModel = isLocalTextModelId(requestedLocalModel)
     ? requestedLocalModel
     : DEFAULT_STORY_SETTINGS.localTextModel;

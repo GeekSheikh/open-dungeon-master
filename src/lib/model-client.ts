@@ -26,7 +26,7 @@ import {
 import {
   buildPropsUrl,
   contextCacheKey,
-  openAiContextWindow,
+  OPENAI_CONTEXT_TOKENS,
   readContextWindow,
 } from "@/lib/dm/context-probe-logic";
 import { serverEnv } from "@/lib/server-env";
@@ -34,7 +34,9 @@ import { isPrivateBackendHost } from "@/lib/backend-host";
 import { chatUsage, ollamaUsage, type TokenUsage } from "@/lib/usage/parse";
 import { apiSpeedEligibility } from "@/lib/speed-tier";
 import { noteSpeed } from "@/lib/speed-status";
-import { localModelContextWindow } from "@/lib/text-models";
+import { DEFAULT_LOCAL_CONTEXT_TOKENS, knownLocalContextWindow } from "@/lib/text-models";
+import { catalogContextWindow, hostedContextWindow } from "@/lib/model-registry/catalog";
+import { ollamaModelInfo, soleListedModel } from "@/lib/model-registry/discovery";
 import { harnessConfig, harnessContextTokens } from "@/lib/harness/status";
 import { onWindows } from "@/lib/host-platform";
 
@@ -169,9 +171,11 @@ export function localMaxOutputTokens() {
 // Defaults to the model's full native window: Gemma 4's sliding-window
 // attention keeps the KV cache small even at 256K, so memory is not the
 // limiting factor. LOCAL_TEXT_CONTEXT can cap it to bound worst-case
-// prefill time on very long stories.
+// prefill time on very long stories. The window comes from the documented
+// table, then what Ollama said of the model, then the catalog's row for the
+// same weights, then the 128K most current models share.
 export function localContextTokens(model: string) {
-  const native = localModelContextWindow(model);
+  const native = knownLocalContextWindow(model) ?? catalogContextWindow(model) ?? DEFAULT_LOCAL_CONTEXT_TOKENS;
   const raw = serverEnv("LOCAL_TEXT_CONTEXT");
   const parsed = Number.parseInt(raw, 10);
 
@@ -215,20 +219,33 @@ export function storyContextTokens(settings: {
   if (Number.isFinite(raw) && raw > 0) {
     return Math.max(2_048, raw);
   }
-  // OpenAI has nothing to probe, so its window comes from the model's name
-  // (src/lib/dm/context-probe-logic.ts). A blank campaign model resolves the
-  // way requestCustomMessage resolves it.
+  // OpenAI has nothing to probe, so its window comes from the catalog's
+  // row, capped at the shared floor (src/lib/dm/context-probe-logic.ts): the
+  // retired small-window models keep their real size, a model the catalog
+  // has never heard of packs against the floor. A blank campaign model
+  // resolves the way requestCustomMessage resolves it.
   if (endpointKind(settings.customBaseUrl ?? "") === "openai") {
-    return openAiContextWindow(
-      (settings.customModel ?? "").trim() ||
-        getGlobalConfig().text.customModel ||
-        serverEnv("OPENAI_COMPAT_MODEL"),
+    return openAiWindow(
+      settings.customBaseUrl ?? "",
+      (settings.customModel ?? "").trim() || getGlobalConfig().text.customModel || serverEnv("OPENAI_COMPAT_MODEL"),
     );
   }
   const probed = probedContextWindows.get(
     contextCacheKey(settings.customBaseUrl ?? "", settings.customModel ?? ""),
   );
-  return probed ? Math.max(2_048, probed) : DEFAULT_CUSTOM_CONTEXT_TOKENS;
+  if (probed) {
+    return Math.max(2_048, probed);
+  }
+  // A hosted provider (OpenRouter, DeepSeek, Groq and the rest) answers no
+  // /props, but the catalog knows its models' windows. Capped where OpenAI
+  // is, and for the same reason: the prompt is billed by the token.
+  const hosted = hostedContextWindow(settings.customBaseUrl ?? "", settings.customModel ?? "");
+  return hosted ? Math.min(Math.max(2_048, hosted), OPENAI_CONTEXT_TOKENS) : DEFAULT_CUSTOM_CONTEXT_TOKENS;
+}
+
+function openAiWindow(baseUrl: string, model: string): number {
+  const known = hostedContextWindow(baseUrl, model);
+  return known ? Math.min(Math.max(2_048, known), OPENAI_CONTEXT_TOKENS) : OPENAI_CONTEXT_TOKENS;
 }
 
 // Windows learned from an endpoint's own /props, keyed by base URL. Probed
@@ -319,7 +336,7 @@ export async function utilityContextTokens(settings: {
     return Math.min(localContextTokens(model), story);
   }
   if (endpointKind(settings.utilityBaseUrl) === "openai") {
-    return Math.min(openAiContextWindow(model), story);
+    return Math.min(openAiWindow(settings.utilityBaseUrl, model), story);
   }
   const probed = await probeCustomContextWindow(settings.utilityBaseUrl, settings.utilityApiKey, model);
   return Math.min(probed ? Math.max(2_048, probed) : DEFAULT_CUSTOM_CONTEXT_TOKENS, story);
@@ -544,18 +561,21 @@ export async function requestCustomMessage(
   // releases the server's OPENROUTER_API_KEY, and a campaign controls the
   // URL, so https://evil.test/.openrouter.ai must not read as OpenRouter.
   const isOpenRouter = caps.kind === "openrouter";
+  // Nothing is named in code: a blank setting runs the one chat model the
+  // server lists, when it lists exactly one (src/lib/model-registry).
   const resolvedModel =
     (model || "").trim() ||
     globalText.customModel ||
     serverEnv("OPENAI_COMPAT_MODEL") ||
-    (isOpenRouter ? serverEnv("OPENROUTER_MODEL", "google/gemini-3.5-flash") : "");
+    (isOpenRouter ? serverEnv("OPENROUTER_MODEL") : "") ||
+    (await soleListedModel({ provider: "custom", baseUrl: trimmedBase, apiKey: resolveCustomKey(trimmedBase, apiKey, customChatEndpoint(trimmedBase)).resolvedKey }));
 
   if (!resolvedModel) {
     return {
       error: Response.json(
         {
           error:
-            "No model name set. Enter the model your server serves in Text Model settings.",
+            "No model name set, and the server lists more than one. Pick the model in Text Model settings.",
         },
         { status: 400 },
       ),
@@ -997,13 +1017,25 @@ export async function requestCustomMessage(
 }
 
 export async function requestLocalMessage(
-  model: string,
+  requestedModel: string,
   messages: ChatMessage[],
   options: ChatRequestOptions & { disableThinking?: boolean } = {},
 ): Promise<UpstreamResult> {
   const { tools, temperature, onDelta } = options;
   const disableThinking = options.disableThinking ?? true;
   const baseUrl = serverEnv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").replace(/\/$/, "");
+  // A blank setting runs the one chat model Ollama has, when it has exactly
+  // one; the model's own window is learned before the prompt is packed.
+  const model = requestedModel.trim() || (await soleListedModel({ provider: "local", baseUrl }));
+  if (!model) {
+    return {
+      error: Response.json(
+        { error: "No local model is set, and Ollama lists more than one. Pick the model in Admin > Text model defaults." },
+        { status: 400 },
+      ),
+    };
+  }
+  await ollamaModelInfo(model, baseUrl);
   const requestPayload: Record<string, unknown> = {
     model,
     messages: toOllamaMessages(messages),

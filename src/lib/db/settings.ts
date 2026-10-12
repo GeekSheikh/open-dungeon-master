@@ -72,6 +72,11 @@ export function normalizeSettings(
     merged.textProvider = defaultSettings.textProvider;
   }
 
+  // Any Ollama tag stands, trimmed to what the field holds: a campaign's
+  // chosen model is never swapped for the default because the list of
+  // documented builds changed (the registry flags one Ollama no longer has).
+  merged.localTextModel =
+    typeof merged.localTextModel === "string" ? merged.localTextModel.trim().slice(0, 200) : "";
   if (!isLocalTextModelId(merged.localTextModel)) {
     merged.localTextModel = defaultSettings.localTextModel;
   }

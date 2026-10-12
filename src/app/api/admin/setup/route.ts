@@ -8,6 +8,7 @@ import { lanOrigins, livePublicUrl } from "@/lib/server-address";
 import { isDeviceWorld, serverEnv } from "@/lib/server-env";
 import { keyForListing, keyProvider, normalizeBaseUrl } from "@/lib/setup/discovery-logic";
 import { listModels, scanLocalServices } from "@/lib/setup/discovery";
+import { fitListedModels, recommendListed } from "@/lib/model-registry/catalog";
 import { getSetupState, markSetup, setupNudgeWanted } from "@/lib/setup/state";
 
 export const runtime = "nodejs";
@@ -67,7 +68,16 @@ export async function POST(request: Request) {
     return Response.json({ error: parsed.error.issues[0]?.message || "Unknown action." }, { status: 400 });
   }
   if (parsed.data.action === "scan") {
-    return Response.json(await scanLocalServices());
+    const scan = await scanLocalServices();
+    // Each found server's list, kept to the models that can narrate and
+    // led by the catalog's pick; no model is named in code.
+    return Response.json({
+      ...scan,
+      text: scan.text.map((server) => {
+        const models = fitListedModels(server.baseUrl, server.models);
+        return { ...server, models, recommended: recommendListed(server.baseUrl, models) };
+      }),
+    });
   }
   const { provider, apiKey = "" } = parsed.data;
   const preset = provider ? keyProvider(provider) : null;
@@ -81,7 +91,14 @@ export async function POST(request: Request) {
     savedBaseUrl: config.text.customBaseUrl || serverEnv("OPENAI_COMPAT_BASE_URL"),
     baseUrl,
   });
-  return Response.json(await listModels(baseUrl, key, preset?.preferred.length ? preset.preferred : undefined));
+  const listing = await listModels(baseUrl, key);
+  if (!listing.ok) {
+    return Response.json(listing);
+  }
+  // The models that can narrate, with the catalog's window and deprecations
+  // beside each, led by the catalog's pick.
+  const models = fitListedModels(baseUrl, listing.models);
+  return Response.json({ ...listing, models, recommended: recommendListed(baseUrl, models) });
 }
 
 const markSchema = z.object({ state: z.enum(["finished", "dismissed", "open"]) });

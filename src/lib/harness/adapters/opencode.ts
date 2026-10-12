@@ -92,11 +92,9 @@ export function parseOpencodeModels(output: string): HarnessModel[] {
     .map((line) => line.trim())
     .filter((line) => /^[\w.-]+\/[\w.:@-]+$/.test(line))
     .filter((line) => !line.startsWith("opencode/"))
-    .map((id) => ({
-      id,
-      label: id,
-      cheap: /mini|flash|haiku|small|lite|8b|e4b|e2b/i.test(id),
-    }));
+    // Which is the light one is the catalog's call, by price
+    // (src/lib/model-registry/catalog.ts enrichHarnessModels).
+    .map((id) => ({ id, label: id }));
 }
 
 function freePort(): Promise<number> {
