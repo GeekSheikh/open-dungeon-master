@@ -50,6 +50,8 @@ const pinned = Object.fromEntries(
   args.flatMap((arg, index) => (args[index - 1] === "--files" ? arg.split(",") : [])).map((pair) => pair.split("=")),
 );
 const JOB_TIMEOUT_MS = Number(flag("timeout-min", "30")) * 60_000;
+// Past this first picture, the second portrait is skipped.
+const SLOW_SECONDS = 240;
 fs.mkdirSync(out, { recursive: true });
 
 // ODM's own prompts, built the way src/lib/portrait.ts and the storyteller
@@ -185,6 +187,16 @@ function memoryWatch() {
   };
 }
 
+class ComfyRestarted extends Error {
+  constructor() {
+    super("ComfyUI restarted during the job (out of memory?)");
+  }
+}
+
+// Whether a failure means ComfyUI itself went away, not the model.
+const lostComfy = (failure) =>
+  failure instanceof ComfyRestarted || /fetch failed|ECONNRESET|ECONNREFUSED|socket hang up/i.test(`${failure?.message} ${failure?.cause?.message ?? ""}`);
+
 async function runJob(workflow) {
   const submitted = await getJson("/prompt", {
     method: "POST",
@@ -207,7 +219,14 @@ async function runJob(workflow) {
     try {
       entry = (await getJson(`/history/${id}`)).body?.[id];
     } catch {
+      // ComfyUI went away. Back again without this job in its queue or its
+      // history means it restarted (an out-of-memory kill, usually) and the
+      // job is gone: say so rather than poll for half an hour.
       await waitForComfy();
+      const queue = (await getJson("/queue")).body ?? {};
+      const queued = [...(queue.queue_running ?? []), ...(queue.queue_pending ?? [])].some((item) => item?.[1] === id);
+      const known = (await getJson(`/history/${id}`)).body?.[id];
+      if (!queued && !known) throw new ComfyRestarted();
       continue;
     }
     if (!entry?.status) continue;
@@ -263,6 +282,9 @@ async function bench(catalogModel, lists, device, hardware) {
       { prompt: PROMPTS[2], seed: 4004 },
     ];
     for (const run of runs) {
+      // A model this slow is no table's everyday painter: one portrait is
+      // enough, the creature and the scene still run for the pictures.
+      if (run.seed === 2002 && coldSeconds > SLOW_SECONDS) continue;
       const { width, height } = modelDimensions(model, "fast", run.prompt.aspect);
       const workflow = buildModelWorkflow(model, {
         prompt: run.prompt.text,
@@ -280,6 +302,10 @@ async function bench(catalogModel, lists, device, hardware) {
       else (times[run.prompt.aspect] ??= []).push(result.seconds);
     }
   } catch (failure) {
+    if (lostComfy(failure)) {
+      await watch.stop();
+      throw failure;
+    }
     error = failure instanceof Error ? failure.message : String(failure);
     console.log(`  FAILED: ${error}`);
   }
@@ -368,10 +394,26 @@ if (has("download-only")) {
 
 const rows = [];
 for (const model of chosen) {
-  let row = await bench(model, lists, device, hardware);
-  if (row === null) {
-    lists = await comfyLists();
-    row = await bench(model, lists, device, hardware);
+  // A ComfyUI that dies switching models (the previous one is copied out of
+  // GPU memory as this one loads) is back with clean memory a few seconds
+  // later: measure this model once more on it, and say so in the row.
+  const attempt = async () => {
+    let result = await bench(model, lists, device, hardware);
+    if (result === null) {
+      lists = await comfyLists();
+      result = await bench(model, lists, device, hardware);
+    }
+    return result;
+  };
+  let row;
+  try {
+    row = await attempt();
+  } catch (failure) {
+    if (!lostComfy(failure)) throw failure;
+    console.log(`  ComfyUI went away (${failure.message}); waiting for it, then measuring again`);
+    await waitForComfy();
+    row = await attempt().catch((again) => ({ skipped: `ComfyUI went away twice: ${again.message}` }));
+    if (row && !row.skipped) row.notes = [row.notes, "Measured after ComfyUI restarted: it ran out of memory switching to this model."].filter(Boolean).join(" ");
   }
   if (row?.skipped) {
     console.log(`== ${model.id}: skipped, ${row.skipped}`);

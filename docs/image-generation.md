@@ -118,8 +118,13 @@ rows with the contact sheets in a pull request. `npm test` checks every row
 names a catalog model and a known profile, once each.
 
 The run so far on the reference machine, an AMD Ryzen AI Max+ 395 with 128 GB
-of unified memory, with the default storyteller model (qwen3.6-35b at Q8) loaded
-beside ComfyUI the way a table runs:
+of unified memory, measured as the box runs day to day: llama-server with the
+default storyteller model (qwen3.6-35b at Q8, which it unloads when idle), Kokoro
+and the other services up beside ComfyUI. A model whose first picture takes over
+four minutes gets one portrait instead of two. If ComfyUI is restarted mid-run
+(an out-of-memory kill while switching between two big models is the usual cause
+on this machine), the script waits for it and measures that model again, and the
+row says so.
 
 On strix-halo (AMD Radeon 8060S Graphics, ComfyUI 0.39.2, torch 2.14.0+rocm7.2):
 
