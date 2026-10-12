@@ -47,12 +47,21 @@ const loadsCheckpoint = (id: string) => {
 // every file for (measured ones first), then its picture checkpoints. The
 // saved choice stays listed when the check no longer finds it. `discovery`
 // is null until a check has answered.
+// Whether a catalog model can paint on the machine this ComfyUI runs on:
+// not one its hardware failed to run, and not one that peaked past what
+// this GPU holds. Unmeasured models pass: unknown is not unfit.
+export function paintsHere(report: Pick<ComfyModelReport, "verified" | "fits">): boolean {
+  return report.verified?.verdict !== "fails" && report.fits !== false;
+}
+
 export function comfyModelOptions(saved: { checkpoint: string; preset: string }, discovery: ComfyDiscovery | null) {
   const succeeded = Boolean(discovery && !discovery.error);
   const hardware = discovery?.hardware?.label ?? null;
   const reports = discovery?.models ?? [];
   const checkpoints = discovery?.checkpoints ?? [];
-  const installed = reports.filter((report) => !report.missing.length && !loadsCheckpoint(report.id));
+  // The picker offers what runs here; the saved model stays whatever its
+  // verdict, flagged, never swapped.
+  const installed = reports.filter((report) => !report.missing.length && !loadsCheckpoint(report.id) && (paintsHere(report) || report.id === saved.preset));
   const savedModel = saved.preset !== CHECKPOINT_PRESET ? comfyModel(saved.preset) : undefined;
   const models = [
     ...installed.map((report) => ({ id: report.id, report })),

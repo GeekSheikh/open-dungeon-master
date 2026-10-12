@@ -78,6 +78,24 @@ const found = discovery([
   report("flux2_klein_4b", { unet: "", clip: "qwen_3_4b.safetensors", vae: "" }, { missing: [{ what: "the FLUX.2 klein 4B model" }] }),
 ]);
 const options = comfyModelOptions({ checkpoint: "saved-checkpoint.safetensors", preset: "checkpoint" }, found);
+
+// A model this hardware failed to run, or that peaked past this GPU, is
+// kept off the picker; the saved one stays whatever its verdict.
+const unfit = discovery([
+  report("z_turbo", zFiles, { verified: measured }),
+  { ...report("flux2_dev", zFiles, { verified: { ...measured, verdict: "fails" } }) },
+  { ...report("krea2_turbo", zFiles), needGb: 90, fits: false },
+]);
+assert.deepEqual(
+  comfyModelOptions({ checkpoint: "", preset: "checkpoint" }, unfit).filter((option) => option.group === "Models").map((option) => option.value),
+  ["preset:z_turbo"],
+);
+assert.ok(
+  comfyModelOptions({ checkpoint: "", preset: "flux2_dev" }, unfit).some((option) => option.value === "preset:flux2_dev"),
+  "the saved model is offered even when its verdict is fails",
+);
+passed += 1;
+console.log("ok - the picker leaves off what cannot paint here, keeping the saved model");
 assert.deepEqual(options, [
   DEFAULT,
   { value: "preset:z_turbo", label: "Z-Image Turbo", group: "Models", hint: "Recommended. 19 s a picture, peaks 23.6 GB on AMD Strix Halo." },

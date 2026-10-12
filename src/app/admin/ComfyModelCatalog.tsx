@@ -1,12 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { DEFAULT_STORY_SETTINGS } from "@/lib/defaults";
 import { comfyModel } from "@/lib/image-models/catalog";
 import { HARDWARE_PROFILES, type VerifiedRow } from "@/lib/image-models/curate";
 import { seconds } from "@/lib/image-models/describe";
 import { VERIFIED_ROWS } from "@/lib/image-models/verified";
 import type { ComfyModelReport } from "@/lib/comfyui";
-import type { ComfyDiscovery } from "@/app/admin/AdminImagesSection";
+import { paintsHere, type ComfyDiscovery } from "@/app/admin/AdminImagesSection";
 import type { MaskedConfig } from "@/app/admin/AdminSettingsFields";
 
 // Every image model ODM can run on ComfyUI, curated for the machine this
@@ -106,15 +107,21 @@ export function ComfyModelCatalog({
   onPick: (patch: Partial<Images>) => void;
 }) {
   const hardware = discovery.hardware?.label ?? null;
-  const reports = discovery.models;
+  // The models that cannot paint here (did not run, or want more GPU
+  // memory than this one has) and the ones that painted poorly are kept
+  // off the list; one click shows them, each saying why.
+  const [showUnfit, setShowUnfit] = useState(false);
+  const unfit = discovery.models.filter((report) => !paintsHere(report) || report.verified?.verdict === "poor");
+  const reports = showUnfit ? discovery.models : discovery.models.filter((report) => !unfit.includes(report));
   const groups = [
     {
       key: "measured",
       title: `Measured on ${hardware}`,
-      items: reports.filter((report) => report.verified && report.verified.verdict !== "fails" && report.verified.verdict !== "poor"),
+      items: reports.filter((report) => report.verified && report.verified.verdict !== "fails" && report.verified.verdict !== "poor" && paintsHere(report)),
     },
-    { key: "unmeasured", title: hardware ? `Not measured on ${hardware} yet` : "Models", items: reports.filter((report) => !report.verified) },
-    { key: "poor", title: `Poor pictures on ${hardware}`, items: reports.filter((report) => report.verified?.verdict === "poor") },
+    { key: "unmeasured", title: hardware ? `Not measured on ${hardware} yet` : "Models", items: reports.filter((report) => !report.verified && paintsHere(report)) },
+    { key: "poor", title: `Poor pictures on ${hardware}`, items: reports.filter((report) => report.verified?.verdict === "poor" && paintsHere(report)) },
+    { key: "too-big", title: "More GPU memory than this one has", items: reports.filter((report) => report.verified?.verdict !== "fails" && !paintsHere(report)) },
     { key: "failed", title: `Did not run on ${hardware}`, items: reports.filter((report) => report.verified?.verdict === "fails") },
   ].filter((group) => group.items.length);
   const measuredCount = groups.find((group) => group.key === "measured")?.items.length ?? 0;
@@ -152,6 +159,14 @@ export function ComfyModelCatalog({
         portrait, creature and scene prompts at 1024 px; the first picture after switching models also loads it from disk.
         Add a model&apos;s files to ComfyUI, then Refresh.
       </p>
+      {unfit.length ? (
+        <p className="mt-2 text-[11px] leading-4 text-stone-500">
+          {unfit.length} {unfit.length === 1 ? "model" : "models"} {showUnfit ? "cannot paint well here" : "that cannot paint well here " + (unfit.length === 1 ? "is" : "are") + " left off the list"}.{" "}
+          <button type="button" className="underline hover:text-stone-300" onClick={() => setShowUnfit((on) => !on)}>
+            {showUnfit ? "Hide them" : "Show them"}
+          </button>
+        </p>
+      ) : null}
       <div className="reveal mt-2 space-y-3">
         {groups.map((group) => (
           <section key={group.key}>
