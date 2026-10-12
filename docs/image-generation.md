@@ -106,6 +106,7 @@ Each model's pictures and a contact sheet land in `/tmp/odm-image-bench` (or
 | `--hardware ID` | the profile to record when the device is not one the app recognises |
 | `--steps N`, `--cfg N`, `--files slot=name`, `--drop-patch Node`, `--label L` | try other settings or another precision of a file; leave `--write` off for these |
 | `--timeout-min N` | give up on one picture after N minutes (default 30) |
+| `--restart-cmd CMD` | restart ComfyUI with CMD before each model (for example `"systemctl --user restart comfyui"`) instead of asking it to unload the last one; on a unified-memory machine ComfyUI's unload copies the old model to CPU memory first, which can run the box out of memory between two big models |
 
 `verified.json` holds one row per model and hardware profile: the files that
 ran, steps, seconds for each picture shape, the first picture, peak memory, a

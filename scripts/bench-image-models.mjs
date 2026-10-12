@@ -50,6 +50,12 @@ const pinned = Object.fromEntries(
   args.flatMap((arg, index) => (args[index - 1] === "--files" ? arg.split(",") : [])).map((pair) => pair.split("=")),
 );
 const JOB_TIMEOUT_MS = Number(flag("timeout-min", "30")) * 60_000;
+// --restart-cmd "systemctl --user restart comfyui": restart ComfyUI before
+// each model instead of asking it to unload the last one. ComfyUI unloads a
+// model by copying its weights to CPU memory first, which on a unified-memory
+// machine briefly doubles a big model and can run the box out of memory; a
+// restart starts every model from clean memory and a true cold start.
+const restartCmd = flag("restart-cmd") || process.env.ODM_BENCH_RESTART_CMD || "";
 // Past this first picture, the second portrait is skipped.
 const SLOW_SECONDS = 240;
 fs.mkdirSync(out, { recursive: true });
@@ -267,8 +273,15 @@ async function bench(catalogModel, lists, device, hardware) {
   }
   const name = (key, seed) => `${model.id}${label ? `-${label}` : ""}-${key}-${seed}.png`;
   console.log(`== ${model.id} (${Object.values(files).join(", ")})`);
-  await getJson("/free", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ unload_models: true, free_memory: true }) });
-  await new Promise((resolve) => setTimeout(resolve, 4_000));
+  if (restartCmd) {
+    execFileSync("sh", ["-c", restartCmd], { stdio: "ignore" });
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+    await waitForComfy(5 * 60_000);
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  } else {
+    await getJson("/free", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ unload_models: true, free_memory: true }) });
+    await new Promise((resolve) => setTimeout(resolve, 4_000));
+  }
   const baselineFree = (await getJson("/system_stats")).body?.devices?.[0]?.vram_free ?? 0;
   const watch = memoryWatch();
   const times = {};
