@@ -70,6 +70,72 @@ SDXL-class checkpoints. Notes:
 - Generations queue behind whatever else your ComfyUI instance is doing.
 - Set `COMFYUI_URL` in `.env.local` to change the default server URL.
 
+### Benchmarking image models on your hardware
+
+`src/lib/image-models` catalogues the image models ComfyUI can run for the
+app, taken from ComfyUI's own workflow templates (comfyui-workflow-templates
+0.11.78, ComfyUI 0.39.2): each model's files and where they download from, and
+the graph it runs, with its steps, CFG, sampler, scheduler and shift.
+`scripts/bench-image-models.mjs` sends exactly that graph to a running ComfyUI
+and measures what a table would wait for:
+
+- the app's own prompts, a character portrait and a creature token (square)
+  and a scene (landscape), at the 1024 px fast size;
+- seconds per picture once the model is loaded, timed by ComfyUI from the
+  start to the end of each job;
+- the first picture after a model switch, which also loads the files;
+- peak GPU memory, from ComfyUI's own `/system_stats` while the job runs (on a
+  unified-memory machine this is the share of system memory the GPU mapped).
+
+```bash
+node scripts/bench-image-models.mjs                    # every installed model
+node scripts/bench-image-models.mjs --models z_turbo,flux2_klein_4b
+node scripts/bench-image-models.mjs --models all --download --comfy-dir ~/ComfyUI
+node scripts/bench-image-models.mjs --table            # verified.json as Markdown
+```
+
+Each model's pictures and a contact sheet land in `/tmp/odm-image-bench` (or
+`--out DIR`), so the numbers come with something to judge by eye. Flags:
+
+| Flag | Does |
+|---|---|
+| `--url` | ComfyUI's address, default `http://127.0.0.1:8188` |
+| `--models` | `installed` (default), `all`, or catalog ids, comma-separated |
+| `--download --comfy-dir DIR` | fetch a model's missing files into `DIR/models/<folder>` first; a Hugging Face token from `HF_TOKEN` or `~/.cache/huggingface/token` is sent for gated repositories; what was fetched is listed in `<out>/downloaded.json` so it can be removed again |
+| `--write` | record the rows in `src/lib/image-models/verified.json` |
+| `--hardware ID` | the profile to record when the device is not one the app recognises |
+| `--steps N`, `--cfg N`, `--files slot=name`, `--drop-patch Node`, `--label L` | try other settings or another precision of a file; leave `--write` off for these |
+| `--timeout-min N` | give up on one picture after N minutes (default 30) |
+
+`verified.json` holds one row per model and hardware profile: the files that
+ran, steps, seconds for each picture shape, the first picture, peak memory, a
+verdict (`recommended`, `works`, `fails`) and a note. The timing fields come
+from the script; the verdict and note come from looking at the pictures, and a
+later `--write` keeps them. Hardware profiles live in `HARDWARE_PROFILES`
+(`src/lib/image-models/curate.ts`), each a name pattern matched against the
+device ComfyUI reports; add one for your GPU, run with `--write`, and send the
+rows with the contact sheets in a pull request. `npm test` checks every row
+names a catalog model and a known profile, once each.
+
+The run so far on the reference machine, an AMD Ryzen AI Max+ 395 with 128 GB
+of unified memory, with the default storyteller model (qwen3.6-35b at Q8) loaded
+beside ComfyUI the way a table runs:
+
+On strix-halo (AMD Radeon 8060S Graphics, ComfyUI 0.39.2, torch 2.14.0+rocm7.2):
+
+| Model | Verdict | Portrait (square) | Scene (landscape) | First picture | Peak GPU memory | Steps | Notes |
+|---|---|---|---|---|---|---|---|
+| FLUX.2 [klein] 4B | recommended | 15 s | 14 s | 17 s | 20.5 GB | 4 | Fastest measured and among the best: stocky dwarves without elf ears, a true owlbear, a detailed forge. Apache-2.0. Can leave a faint logo mark in a corner. |
+| Z-Image Turbo | recommended | 19 s | 15 s | 24 s | 23.6 GB | 8 | Clean painterly portraits and a true owl-bear; quickest good model here. Dwarves can come out with elf ears. |
+| Qwen Image 2.1 Turbo | recommended | 45 s | 35 s | 55 s | 21.9 GB | 8 | Nearly the base model's pictures at a third of the time: right dwarf, right owlbear, readable scene. |
+| Krea-2 Turbo | recommended | 59 s | 50 s | 38 s | 28.5 GB | 8 | The most tabletop-looking pictures measured: a stout dwarf cleric, a true owlbear, a forge with anvils, bridge and adventurers. Slower than klein or Z-Image Turbo. Krea-2 Community License; check its terms before commercial use. |
+| FLUX.1 schnell | works | 30 s | 25 s | 39 s | 32.6 GB | 4 | Paints dwarves as elves, the owlbear as a plain owl, and scribbles signature-like text into corners. |
+| Stable Diffusion XL | works | 43 s | 31 s | 41 s | 12.3 GB | 25 | ODM's default CyberRealistic XL: dwarves come out human and the owlbear as an owl. |
+| Pony Diffusion XL | works | 44 s | 32 s | 43 s | 12.2 GB | 25 | Drifts to anime faces and light backgrounds, misses the scene and paints the owlbear as an owl. |
+| Qwen Image 2.1 | works | 2 min 8 s | 1 min 34 s | 1 min 50 s | 22 GB | 25 | The most faithful pictures measured, but over two minutes each; the Turbo build looks almost the same. |
+| FLUX.2 [klein] 4B Base | works | 2 min 10 s | 1 min 39 s | 2 min 15 s | 20.5 GB | 20 | Pictures much like the distilled klein 4B at eight times the time; worth it only for its real negative prompt. |
+| Z-Image | works | 3 min 26 s | 2 min 31 s | 3 min 37 s | 18.3 GB | 25 | Good owlbear and scene, but three and a half minutes a picture with the int8 weights; one portrait came out as a framed print on a mat. |
+
 ## OpenAI
 
 The one backend that needs no GPU at all. Pick **OpenAI** in the Images panel

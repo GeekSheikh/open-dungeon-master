@@ -1,0 +1,229 @@
+[
+  {
+    "model": "flux1_schnell",
+    "hardware": "strix-halo",
+    "device": "AMD Radeon 8060S Graphics",
+    "memoryGb": 120,
+    "comfyui": "0.39.2",
+    "torch": "2.14.0+rocm7.2",
+    "date": "2026-10-12",
+    "files": {
+      "unet": "flux1-schnell.safetensors",
+      "clip_l": "clip_l.safetensors",
+      "t5": "t5xxl_fp16.safetensors",
+      "vae": "ae.safetensors"
+    },
+    "steps": 4,
+    "seconds": {
+      "square": 29.8,
+      "landscape": 24.6
+    },
+    "coldSeconds": 38.7,
+    "peakGb": 32.6,
+    "verdict": "works",
+    "notes": "Paints dwarves as elves, the owlbear as a plain owl, and scribbles signature-like text into corners."
+  },
+  {
+    "model": "flux2_klein_4b",
+    "hardware": "strix-halo",
+    "device": "AMD Radeon 8060S Graphics",
+    "memoryGb": 120,
+    "comfyui": "0.39.2",
+    "torch": "2.14.0+rocm7.2",
+    "date": "2026-10-12",
+    "files": {
+      "unet": "flux-2-klein-4b.safetensors",
+      "clip": "qwen_3_4b.safetensors",
+      "vae": "flux2-vae.safetensors"
+    },
+    "steps": 4,
+    "seconds": {
+      "square": 15.3,
+      "landscape": 14.4
+    },
+    "coldSeconds": 17.1,
+    "peakGb": 20.5,
+    "verdict": "recommended",
+    "notes": "Fastest measured and among the best: stocky dwarves without elf ears, a true owlbear, a detailed forge. Apache-2.0. Can leave a faint logo mark in a corner."
+  },
+  {
+    "model": "flux2_klein_4b_base",
+    "hardware": "strix-halo",
+    "device": "AMD Radeon 8060S Graphics",
+    "memoryGb": 120,
+    "comfyui": "0.39.2",
+    "torch": "2.14.0+rocm7.2",
+    "date": "2026-10-12",
+    "files": {
+      "unet": "flux-2-klein-base-4b.safetensors",
+      "clip": "qwen_3_4b.safetensors",
+      "vae": "flux2-vae.safetensors"
+    },
+    "steps": 20,
+    "seconds": {
+      "square": 129.9,
+      "landscape": 99
+    },
+    "coldSeconds": 134.7,
+    "peakGb": 20.5,
+    "verdict": "works",
+    "notes": "Pictures much like the distilled klein 4B at eight times the time; worth it only for its real negative prompt."
+  },
+  {
+    "model": "krea2_turbo",
+    "hardware": "strix-halo",
+    "device": "AMD Radeon 8060S Graphics",
+    "memoryGb": 120,
+    "comfyui": "0.39.2",
+    "torch": "2.14.0+rocm7.2",
+    "date": "2026-10-12",
+    "files": {
+      "unet": "krea2_turbo_int8_convrot.safetensors",
+      "clip": "qwen3vl_4b_fp8_scaled.safetensors",
+      "vae": "qwen_image_vae.safetensors"
+    },
+    "steps": 8,
+    "seconds": {
+      "square": 58.6,
+      "landscape": 49.7
+    },
+    "coldSeconds": 38.1,
+    "peakGb": 28.5,
+    "verdict": "recommended",
+    "notes": "The most tabletop-looking pictures measured: a stout dwarf cleric, a true owlbear, a forge with anvils, bridge and adventurers. Slower than klein or Z-Image Turbo. Krea-2 Community License; check its terms before commercial use."
+  },
+  {
+    "model": "pony_xl",
+    "hardware": "strix-halo",
+    "device": "AMD Radeon 8060S Graphics",
+    "memoryGb": 120,
+    "comfyui": "0.39.2",
+    "torch": "2.14.0+rocm7.2",
+    "date": "2026-10-12",
+    "files": {
+      "ckpt": "ponyDiffusionV6XL_v6StartWithThisOne.safetensors"
+    },
+    "steps": 25,
+    "seconds": {
+      "square": 43.5,
+      "landscape": 32.3
+    },
+    "coldSeconds": 43.3,
+    "peakGb": 12.2,
+    "verdict": "works",
+    "notes": "Drifts to anime faces and light backgrounds, misses the scene and paints the owlbear as an owl."
+  },
+  {
+    "model": "qwen_image_21",
+    "hardware": "strix-halo",
+    "device": "AMD Radeon 8060S Graphics",
+    "memoryGb": 120,
+    "comfyui": "0.39.2",
+    "torch": "2.14.0+rocm7.2",
+    "date": "2026-10-12",
+    "files": {
+      "unet": "qwen_image_2.1_int8_convrot.safetensors",
+      "clip": "qwen3vl_8b_int8_convrot.safetensors",
+      "vae": "qwen_image_2.1_vae_bf16.safetensors"
+    },
+    "steps": 25,
+    "seconds": {
+      "square": 127.8,
+      "landscape": 93.9
+    },
+    "coldSeconds": 109.6,
+    "peakGb": 22,
+    "verdict": "works",
+    "notes": "The most faithful pictures measured, but over two minutes each; the Turbo build looks almost the same."
+  },
+  {
+    "model": "qwen_image_21_turbo",
+    "hardware": "strix-halo",
+    "device": "AMD Radeon 8060S Graphics",
+    "memoryGb": 120,
+    "comfyui": "0.39.2",
+    "torch": "2.14.0+rocm7.2",
+    "date": "2026-10-12",
+    "files": {
+      "unet": "qwen_image_2.1_turbo_int8_convrot.safetensors",
+      "clip": "qwen3vl_8b_int8_convrot.safetensors",
+      "vae": "qwen_image_2.1_vae_bf16.safetensors"
+    },
+    "steps": 8,
+    "seconds": {
+      "square": 44.7,
+      "landscape": 34.5
+    },
+    "coldSeconds": 55.2,
+    "peakGb": 21.9,
+    "verdict": "recommended",
+    "notes": "Nearly the base model's pictures at a third of the time: right dwarf, right owlbear, readable scene."
+  },
+  {
+    "model": "sdxl",
+    "hardware": "strix-halo",
+    "device": "AMD Radeon 8060S Graphics",
+    "memoryGb": 120,
+    "comfyui": "0.39.2",
+    "torch": "2.14.0+rocm7.2",
+    "date": "2026-10-12",
+    "files": {
+      "ckpt": "CyberRealisticXLPlay_V6.0.safetensors"
+    },
+    "steps": 25,
+    "seconds": {
+      "square": 42.8,
+      "landscape": 30.7
+    },
+    "coldSeconds": 41.3,
+    "peakGb": 12.3,
+    "verdict": "works",
+    "notes": "ODM's default CyberRealistic XL: dwarves come out human and the owlbear as an owl."
+  },
+  {
+    "model": "z_image",
+    "hardware": "strix-halo",
+    "device": "AMD Radeon 8060S Graphics",
+    "memoryGb": 120,
+    "comfyui": "0.39.2",
+    "torch": "2.14.0+rocm7.2",
+    "date": "2026-10-12",
+    "files": {
+      "unet": "z_image_int8_convrot.safetensors",
+      "clip": "qwen_3_4b.safetensors",
+      "vae": "ae.safetensors"
+    },
+    "steps": 25,
+    "seconds": {
+      "square": 205.5,
+      "landscape": 151.1
+    },
+    "coldSeconds": 216.6,
+    "peakGb": 18.3,
+    "verdict": "works",
+    "notes": "Good owlbear and scene, but three and a half minutes a picture with the int8 weights; one portrait came out as a framed print on a mat."
+  },
+  {
+    "model": "z_turbo",
+    "hardware": "strix-halo",
+    "device": "AMD Radeon 8060S Graphics",
+    "memoryGb": 120,
+    "comfyui": "0.39.2",
+    "torch": "2.14.0+rocm7.2",
+    "date": "2026-10-12",
+    "files": {
+      "unet": "z_image_turbo_bf16.safetensors",
+      "clip": "qwen_3_4b.safetensors",
+      "vae": "ae.safetensors"
+    },
+    "steps": 8,
+    "seconds": {
+      "square": 19,
+      "landscape": 14.7
+    },
+    "coldSeconds": 24.1,
+    "peakGb": 23.6,
+    "verdict": "recommended",
+    "notes": "Clean painterly portraits and a true owl-bear; quickest good model here. Dwarves can come out with elf ears."
+  }
+]
