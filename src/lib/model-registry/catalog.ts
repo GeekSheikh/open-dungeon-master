@@ -83,7 +83,8 @@ export function catalogPath(): string {
   const explicit = serverEnv("ODM_MODEL_CATALOG_PATH").trim();
   if (explicit) return explicit;
   const db = process.env.SQLITE_DB_PATH;
-  return path.join(db ? path.dirname(db) : path.join(process.cwd(), "data"), "model-catalog.json");
+  // Run-time state, kept out of a standalone build's trace (PR #184).
+  return path.join(db ? path.dirname(db) : path.join(/*turbopackIgnore: true*/ process.cwd(), "data"), "model-catalog.json");
 }
 
 export function catalogRefreshEnabled(): boolean {
