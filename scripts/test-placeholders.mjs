@@ -27,31 +27,19 @@ const PUBLIC = path.join(ROOT, "public");
 const SET_DIR = path.join(PUBLIC, "assets", "placeholders");
 
 // The whole set rides inside the desktop app and the Android APK. These are
-// ceilings, not targets. The 177 majority-selected plates preserve their
-// reviewed WebP bytes: 13.76 MiB plus the existing race/class portraits.
-// Allow 18 MiB total, with separate scene and painted-square ceilings;
-// race/class portraits retain their 48 KiB ceiling.
-// The 24 painted creature-family plates (monster/<srd-slug>.webp, 512 px,
-// 47 to 97 KiB each, 1.70 MiB together) sit under the existing 128 KiB
-// painted-square ceiling and bring the set to 17.51 MiB, so neither ceiling
-// moved for them; the next batch of family plates will need the total raised
-// or the plates downsized.
-// The second batch adds 96 more family plates and 13 enemy NPC role plates
-// (109 files, 512 px, 36 to 106 KiB each, 7.68 MiB together) at the same
-// quality, every one under the 128 KiB painted-square ceiling. That brings
-// the set to 25.19 MiB, so the total moves from 18 MiB to 26 MiB: the new
-// total plus a little headroom, not room for another batch.
-// The 22 genre enemy tokens (monster/<genre>-<enemy>.webp, 512 px, 37 to
-// 115 KiB each, 1.41 MiB together) bring the set to 26.60 MiB, so the total
-// moves again, from 26 MiB to 27 MiB: just past the new total.
-// Then 28 MiB, to leave room for #246's board-token repaints of ten type
-// plates (+0.57 MiB, about 27.22 MiB with this set), whichever lands first.
-// The token close-up repaints of eleven family plates from #242 and #244
-// (merged forward) bring this set to 26.65 MiB; 28 MiB still covers both.
-const BUDGET_TOTAL_BYTES = 28 * 1024 * 1024;
+// ceilings, not targets. Every plate ships at the size the UI draws
+// (scripts/generate-placeholders.mjs: 256 px squares, scenes no wider than
+// 704 px, quality 70): the 512 px creature plates and 1000 px scenes that
+// arrived with the majority-vote batches were downsized on 2026-10-12, which
+// took the set from 27.8 MiB to 9.8 MiB and the apps down with it. The
+// painted creature plates now sit under the same 48 KiB ceiling as the
+// race/class portraits (the largest is 26 KiB); scenes top out at 102 KiB.
+// The total leaves room for another batch at these sizes, not for a return
+// to the painted ones.
+const BUDGET_TOTAL_BYTES = 12 * 1024 * 1024;
 const BUDGET_FILE_BYTES = 48 * 1024;
-const BUDGET_SCENE_FILE_BYTES = 192 * 1024;
-const BUDGET_PAINTED_SQUARE_BYTES = 128 * 1024;
+const BUDGET_SCENE_FILE_BYTES = 128 * 1024;
+const BUDGET_PAINTED_SQUARE_BYTES = 48 * 1024;
 
 const failures = [];
 const reached = new Set();
