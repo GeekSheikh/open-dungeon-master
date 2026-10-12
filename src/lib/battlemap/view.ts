@@ -1,3 +1,4 @@
+import { readiedReleaseFor } from "@/lib/dm/readied-release";
 import { getCampaignById, getFloor } from "@/lib/db/campaigns";
 import { actingSheetFor } from "@/lib/character-seat";
 import { getClock } from "@/lib/db/clock";
@@ -285,8 +286,13 @@ export function buildPlayerMapView(
   let reachableCost: number[] = [];
   let moves: PlayerMapView["moves"];
   let budgetLeft = 0;
-  if (!fullVision && sheet && myToken && sheet.currentHp > 0 && canMoveNow(campaignId, sheet.id)) {
-    const budget = pcMoveBudget(campaignId, encounter, map, sheet, myToken);
+  // A move the character readied lights the board off their turn, for
+  // their full speed (readied-release.ts; the move route charges it the same).
+  const readiedMove = sheet ? readiedReleaseFor(sheet, encounter, "move") : null;
+  const readiedWalk = Boolean(readiedMove && !("error" in readiedMove));
+  if (!fullVision && sheet && myToken && sheet.currentHp > 0 && (canMoveNow(campaignId, sheet.id) || readiedWalk)) {
+    const turnBudget = pcMoveBudget(campaignId, encounter, map, sheet, myToken);
+    const budget = readiedWalk ? { ...turnBudget, tiles: speedToTiles(turnBudget.speed), fullTiles: speedToTiles(turnBudget.speed) } : turnBudget;
     budgetLeft = budget.tiles;
     if (budgetLeft > 0) {
       const occupied = occupiedTiles(map, tokens, myToken, footprintLookup(enemiesById));

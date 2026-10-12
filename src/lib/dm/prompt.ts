@@ -1,3 +1,4 @@
+import { READIED, READIED_WORDS, RELEASE_TOOLS, readiedHeld } from "@/lib/dm/readied-kinds";
 import type { Campaign } from "@/lib/db/campaigns";
 import { sceneIds } from "@/lib/ambience/catalog";
 import type { CampaignMessage } from "@/lib/db/messages";
@@ -543,6 +544,12 @@ export function describeSheet(
   if (sheet.conditions.length) {
     const described = sheet.conditions.map((condition) => {
       const meta = sheet.conditionMeta?.[condition];
+      if (condition.trim().toLowerCase() === READIED) {
+        const held = readiedHeld(sheet);
+        if (held) {
+          return `readied: ${READIED_WORDS[held.holds]}${held.spell ? ` (${held.spell})` : ""}, for when ${held.trigger}; you judge the trigger and release it off their turn with ${RELEASE_TOOLS[held.holds]}`;
+        }
+      }
       if (meta?.rounds) {
         return `${condition} (${describeConditionDuration(meta.rounds)} left)`;
       }

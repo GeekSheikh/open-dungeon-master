@@ -1,3 +1,4 @@
+import { readiedHeld } from "@/lib/dm/readied-kinds";
 import { carriedLight, lightPlacement } from "@/lib/dm/light-timers";
 import { getClock } from "@/lib/db/clock";
 import type { Campaign } from "@/lib/db/campaigns";
@@ -486,6 +487,11 @@ export function handleMoveToken(
     const current = encounter.orderReady ? encounter.order[encounter.turnIndex] : undefined;
     const declared = fresh && turn.actor === "ai" && declaredThisTurn(campaign.id, fresh.id);
     if (fresh && (fresh.isCompanion || declared) && current?.kind === "pc" && current.characterId === fresh.id) {
+      return walkCharacter(campaign, encounter, map, fresh, resolved.token, { x: args.x, y: args.y }, { drag: args.drag });
+    }
+    // The move a character readied releases off their turn, by whoever runs
+    // the table (readied-release.ts: their reaction, up to their speed).
+    if (fresh && readiedHeld(fresh)?.holds === "move" && !(current?.kind === "pc" && current.characterId === fresh.id)) {
       return walkCharacter(campaign, encounter, map, fresh, resolved.token, { x: args.x, y: args.y }, { drag: args.drag });
     }
     return {

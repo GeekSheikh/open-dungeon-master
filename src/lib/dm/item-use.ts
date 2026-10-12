@@ -8,6 +8,7 @@
 // "you can use an action"), an item that asks for attunement works only for
 // someone attuned to it, and a creature at 0 hit points uses nothing.
 
+import { readiedReleaseFor } from "@/lib/dm/readied-release";
 import type { Campaign } from "@/lib/db/campaigns";
 import { allocateSeq } from "@/lib/db/campaigns";
 import { getActiveEncounter } from "@/lib/db/encounters";
@@ -90,7 +91,13 @@ export function chargedItemUse(
   // In a fight, activating the item is the character's action.
   const encounter = getActiveEncounter(campaign.id);
   let budget: ReturnType<typeof budgetFor> = null;
-  if (encounter) {
+  // Off their turn, the use of an item they readied: their reaction, and
+  // nothing of the acting combatant's turn (readied-release.ts).
+  const readied = readiedReleaseFor(sheet, encounter, "item");
+  if (readied && "error" in readied) {
+    return { error: readied.error };
+  }
+  if (encounter && !readied) {
     const able = canAct({ sheet, encounter, kind: "action" });
     if (!able.ok) {
       return { error: able.error };
@@ -111,6 +118,7 @@ export function chargedItemUse(
   if (encounter && budget) {
     storeBudget(encounter, budget);
   }
+  readied?.release();
   if (math.initial) {
     publishRoll(campaign, sheet, `${carried.name}: charges it holds`, math.initial);
   }

@@ -2,6 +2,7 @@
 // engine reads, the structured intent beside it, and the turn bookkeeping
 // (docs/visual-overhaul-plan.md 5.2 and 5.3). Pure, tested by
 // scripts/test-hand.mjs.
+import { READIED_WORDS, type Readiable } from "@/lib/dm/readied-kinds";
 import { spendAction, spendAttack } from "@/lib/dm/action-budget";
 import { BONUS_SPELL, LEVELLED_SPELL } from "@/lib/dm/cast-rules";
 import { attackContext, mergeAdvantage } from "@/lib/dm/condition-logic";
@@ -264,7 +265,9 @@ export function composeSentence(
       return card.name.startsWith("Escape: ") ? `I try to break free of ${card.name.slice("Escape: ".length)}.` : "I try to escape the grapple.";
     case "ready": {
       const trigger = choices.trigger?.trim().replace(/\.$/, "");
-      const held = chosenValue(card, choices) || "an attack";
+      const picked = chosenValue(card, choices) ?? "";
+      // An "@" pick is one of take_action's readied actions; a name is a spell.
+      const held = picked.startsWith("@") ? (READIED_WORDS[picked.slice(1) as Readiable] ?? picked.slice(1)) : picked || "an attack";
       return trigger ? `I ready ${held} for when ${trigger}.` : "I ready an action: ";
     }
     case "grapple":
@@ -316,7 +319,9 @@ export function intentBody(
     !value || !card.choice
       ? {}
       : card.choice.arg === "readySpell"
-        ? { readySpell: value, ...(card.choice.levels?.[value] ? { readyLevel: card.choice.levels[value] } : {}) }
+        ? value.startsWith("@")
+          ? { readyAction: value.slice(1) }
+          : { readySpell: value, ...(card.choice.levels?.[value] ? { readyLevel: card.choice.levels[value] } : {}) }
         : { [card.choice.arg]: value };
   const area = card.area && choices.area ? areaArgs(card.area, choices.area) : {};
   return {

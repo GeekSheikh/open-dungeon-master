@@ -17,6 +17,8 @@ import { attacksAllowedFor, budgetFor, storeBudget } from "@/lib/dm/turn-budget"
 import { canAct } from "@/lib/dm/can-act";
 import { characterEscape, enemyEscape } from "@/lib/dm/grapple";
 import { readyAction, searchAction, objectAction } from "@/lib/dm/object-actions";
+import { READIABLE } from "@/lib/dm/readied-kinds";
+import { readiedReleaseFor } from "@/lib/dm/readied-release";
 import { resolveSheetRef } from "@/lib/dm/rolls";
 import { readySpell } from "@/lib/dm/readied-spell";
 import { applyDmMutation } from "@/lib/dm/mutations";
@@ -74,7 +76,7 @@ export const actionTools: ToolDef[] = [
     function: {
       name: "take_action",
       description:
-        "Resolve a character taking one of the standard 5e actions that is not an attack or a spell: Dodge, Dash, Disengage, Hide, Help, Grapple, Shove, Ready, Search, Use an Object, or Escape (a grapple). The server spends the action from their turn, rolls any check or contest the action calls for through the same resolver as request_roll, and applies the real effect (Dodge makes attacks against them roll at disadvantage, a won Grapple applies grappled, a won Shove knocks prone or pushes, a won Escape ends the grapple). Grapple and Shove each take the place of ONE attack of the Attack action, so a character with Extra Attack can grapple and still swing. Ready holds one readied attack for the character's reaction until their next turn. Hide is for a fight; out of one, use request_roll for Stealth. Call it BEFORE narrating the action; narrate exactly what it reports.",
+        "Resolve a character taking one of the standard 5e actions that is not an attack or a spell: Dodge, Dash, Disengage, Hide, Help, Grapple, Shove, Ready, Search, Use an Object, or Escape (a grapple). The server spends the action from their turn, rolls any check or contest the action calls for through the same resolver as request_roll, and applies the real effect (Dodge makes attacks against them roll at disadvantage, a won Grapple applies grappled, a won Shove knocks prone or pushes, a won Escape ends the grapple). Grapple and Shove each take the place of ONE attack of the Attack action, so a character with Extra Attack can grapple and still swing. Ready commits to ONE action for the character's reaction until their next turn: an attack unless `readied` names another (a move up to their speed, Help, Use an Object, the use of an item, stabilizing, a class feature, or any action here), or a spell with `spell`. When you judge the trigger has come, release it off their turn with that action's own tool (pc_attack, move_token, take_action, use_item, stabilize, use_resource): the server spends the reaction and refuses any other action. While a character holds a readied action, enemy_attack does not walk an enemy that is out of reach: move it with move_token first. Hide is for a fight; out of one, use request_roll for Stealth. Call it BEFORE narrating the action; narrate exactly what it reports.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -102,7 +104,13 @@ export const actionTools: ToolDef[] = [
           },
           trigger: {
             type: "string",
-            description: "Ready only, and needed for it: what the readied attack waits for (when the ogre comes through the door).",
+            description: "Ready only, and needed for it: what the readied action waits for (when the ogre comes through the door).",
+          },
+          readied: {
+            type: "string",
+            enum: [...READIABLE],
+            description:
+              "Ready only: the action the trigger releases. attack (the default), move (up to their speed, released with move_token to the square), dodge, dash, disengage, hide, help, grapple, shove, search, use_object, escape (each released with take_action), item (use_item), stabilize (stabilize), feature (a class feature that takes an action). For a spell pass `spell` instead.",
           },
           skill: {
             type: "string",
@@ -183,6 +191,7 @@ export const actionTools: ToolDef[] = [
 const takeActionSchema = z.object({
   characterId: z.string().optional(),
   action: z.enum(ACTIONS),
+  readied: z.enum(READIABLE).optional(),
   bonus: z.coerce.boolean().optional(),
   targetEnemyId: z.string().optional(),
   targetCharacterId: z.string().optional(),
@@ -369,9 +378,17 @@ export function handleTakeAction(
     return { error: "Unknown characterId; use one from GAME STATE." };
   }
   const encounter = getActiveEncounter(campaign.id);
-  const allowed = canAct({ sheet, encounter, kind: args.bonus ? "bonus" : "action" });
-  if (!allowed.ok) {
-    return { error: allowed.error };
+  // Off their turn, the action they readied: released with their reaction,
+  // priced by nothing else (readied-release.ts). Readying is never a release.
+  const readied = args.action === "ready" ? null : readiedReleaseFor(sheet, encounter, args.action);
+  if (readied && "error" in readied) {
+    return { error: readied.error };
+  }
+  if (!readied) {
+    const allowed = canAct({ sheet, encounter, kind: args.bonus ? "bonus" : "action" });
+    if (!allowed.ok) {
+      return { error: allowed.error };
+    }
   }
 
   // The action is priced here and paid for below, by `spend`, once the
@@ -385,12 +402,18 @@ export function handleTakeAction(
   );
   // Under Fire's route opens while an ally lies at 0 hit points.
   const allyDown = sheets.some((entry) => entry.id !== sheet.id && (getSheetById(entry.id) ?? entry).currentHp <= 0 && !(getSheetById(entry.id) ?? entry).deathSaves?.dead);
-  const price = priceAction(sheet, budget && encounter ? budget : null, args.action, args.bonus === true, { allyDown });
+  const price: Price | { error: string } = readied
+    ? { budget: null }
+    : priceAction(sheet, budget && encounter ? budget : null, args.action, args.bonus === true, { allyDown });
   if ("error" in price) {
     return { error: price.error };
   }
   const costs: Record<string, unknown> = {};
   const spend = (flags: Partial<Pick<TurnBudget, "dashed" | "disengaged">> = {}) => {
+    if (readied) {
+      Object.assign(costs, readied.release());
+      return;
+    }
     if (encounter && price.budget) {
       storeBudget(encounter, { ...price.budget, ...flags });
     }
@@ -420,6 +443,9 @@ export function handleTakeAction(
   };
   const inFight = encounter !== null && (encounter.kind ?? "fight") === "fight";
 
+  // What `spend` recorded (a release's reaction, ki, a counted use) rides
+  // every action's reply, whichever handler wrote it.
+  const resolveAction = (): Record<string, unknown> => {
   switch (args.action) {
     case "dodge": {
       spend();
@@ -475,7 +501,7 @@ export function handleTakeAction(
           applyDmMutation(campaign, turn.id, "use_spell_slot", JSON.stringify(castArgs), sheets, sheetsById).result,
         );
       }
-      return readyAction(campaign, sheet, args.trigger, inFight, { spend: () => spend() });
+      return readyAction(campaign, sheet, args.trigger, inFight, { spend: () => spend() }, args.readied ?? "attack");
     case "search":
       return searchAction(campaign, turn, sheet, args.skill ?? "perception", { spend: () => spend() });
     case "use_object":
@@ -489,4 +515,7 @@ export function handleTakeAction(
     case "escape":
       return characterEscape(campaign, turn, sheet, () => spend());
   }
+  };
+  const outcome = resolveAction();
+  return "error" in outcome ? outcome : { ...costs, ...outcome };
 }

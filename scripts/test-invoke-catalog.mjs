@@ -411,7 +411,7 @@ const COMBAT_NAMES = new Set(COMBAT_ADJUDICATIONS.map((entry) => entry.name));
 
 test("the property scan reads the tools it is pointed at", () => {
   assert.deepEqual(toolProperties("take_action").keys.sort(), [
-    "action", "bonus", "characterId", "enemyId", "item", "level", "reason", "shove", "skill",
+    "action", "bonus", "characterId", "enemyId", "item", "level", "readied", "reason", "shove", "skill",
     "spell", "targetCharacterId", "targetEnemyId", "trigger",
   ]);
   assert.ok(toolProperties("apply_damage").keys.includes("amount"));
