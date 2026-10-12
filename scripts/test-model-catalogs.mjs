@@ -10,7 +10,6 @@ import {
   findModelIds,
   newModels,
   planChanges,
-  plain,
   code,
   renderIssue,
   renderPullRequest,
@@ -32,8 +31,13 @@ const data = {
   },
   openrouter: {
     models: {
-      "google/gemini-live": model({ release_date: "2026-09-20", name: "Gemini `Live` @everyone [x](https://evil.test)" }),
+      "google/gemini-live": model({
+        release_date: "2026-09-20",
+        name: "Gemini `Live` @everyone [x](https://evil.test) www.evil.test",
+        limit: { context: "lots" },
+      }),
       "vendor/no-tools": model({ tool_call: false, release_date: "2026-10-05" }),
+      "vendor/bad-date": model({ release_date: "2026-10-01 | [click](https://evil.test) @someone #1" }),
     },
   },
   anthropic: { models: { "claude-live": model({ release_date: "2026-01-01" }) } },
@@ -53,14 +57,15 @@ function test(name, fn) {
 }
 
 const source = [
-  'const PREFERRED = ["gpt-old", "gpt-live"];',
-  'const ALL_DEAD = ["gpt-older", "gpt-old", "gpt-unknown"];',
+  '    preferred: ["gpt-old", "gpt-live"],',
+  '    preferred: ["gpt-older", "gpt-old", "gpt-unknown"],',
   'const IMAGE_MODEL = "gpt-image-old";',
   'const fallback = serverEnv("OPENROUTER_MODEL", "google/gemini-live");',
   '// "gpt-old" in a comment is not code',
   'const mime = "image/png"; const route = "api/models"; const unknownVendor = "nobody/thing";',
   'const notListed = "tts-1";',
-  'const both = ["gpt-older", "gpt-old", "claude-live"];',
+  '  preferred: ["gpt-older", "gpt-old", "claude-live"], other: ["gpt-old", "gpt-live"],',
+  'const NO_TEMPERATURE = new Set(["gpt-old", "gpt-live"]);',
 ].join("\n");
 const files = [{ path: "src/a.ts", text: source }];
 
@@ -85,28 +90,39 @@ test("finds model ID literals and nothing else", () => {
     "8:gpt-older",
     "8:gpt-old",
     "8:claude-live",
+    "8:gpt-old",
+    "8:gpt-live",
+    "9:gpt-old",
+    "9:gpt-live",
   ]);
   assert.equal(found.find((hit) => hit.id === "google/gemini-live").provider, "openrouter");
   assert.deepEqual(found[0].list.items, ["gpt-old", "gpt-live"]);
+  assert.equal(found[0].list.editable, true);
   assert.equal(found.find((hit) => hit.id === "gpt-image-old").list, null);
+  assert.equal(found.filter((hit) => hit.line === 8)[3].list.editable, false, "the second list on a preferred line");
+  assert.equal(found.find((hit) => hit.line === 9).list.editable, false, "a Set of models");
 });
 
 const plan = planChanges(findModelIds(files, data), data);
 
-test("drops a deprecated ID only from a list with a live model beside it", () => {
+test("drops a deprecated ID only from a preferred list with a live model beside it", () => {
   assert.deepEqual(
     plan.removable.map((hit) => `${hit.line}:${hit.id}`),
     ["1:gpt-old", "8:gpt-older", "8:gpt-old"],
   );
+  assert.ok(plan.removable.every((hit) => hit.list.start === 15 || hit.list.start === 13));
 });
 
-test("a deprecated default or a list with nothing live left goes to a person", () => {
+test("a deprecated default, a dead list, or any other list goes to a person", () => {
   assert.deepEqual(
     plan.review.map((hit) => `${hit.line}:${hit.id}`),
-    ["2:gpt-older", "2:gpt-old", "3:gpt-image-old"],
+    ["2:gpt-older", "2:gpt-old", "3:gpt-image-old", "8:gpt-old", "9:gpt-old"],
   );
-  assert.match(plan.review.find((hit) => hit.id === "gpt-image-old").reason, /default/);
-  assert.match(plan.review[0].reason, /nothing else in its list is live/);
+  const reason = (line, id) => plan.review.find((hit) => hit.line === line && hit.id === id).reason;
+  assert.match(reason(3, "gpt-image-old"), /default/);
+  assert.match(reason(2, "gpt-older"), /nothing else in its list is live/);
+  assert.match(reason(9, "gpt-old"), /a list the check does not edit/);
+  assert.match(reason(8, "gpt-old"), /a list the check does not edit/);
 });
 
 test("an ID models.dev does not list is never removed", () => {
@@ -114,38 +130,53 @@ test("an ID models.dev does not list is never removed", () => {
   assert.ok(!plan.removable.some((hit) => hit.id === "gpt-unknown"));
 });
 
-test("removal rewrites only the list, keeping its order and the rest of the line", () => {
-  const removals = plan.removable.map((hit) => ({ ...hit, list: { ...hit.list } }));
-  const lines = applyRemovals(source, removals).split("\n");
-  assert.equal(lines[0], 'const PREFERRED = ["gpt-live"];');
-  assert.equal(lines[7], 'const both = ["claude-live"];');
-  assert.deepEqual(lines.slice(1, 7), source.split("\n").slice(1, 7));
+test("removal rewrites only the preferred list, keeping its order and the rest of the line", () => {
+  const edited = applyRemovals(source, plan.removable).split("\n");
+  assert.equal(edited[0], '    preferred: ["gpt-live"],');
+  assert.equal(edited[7], '  preferred: ["claude-live"], other: ["gpt-old", "gpt-live"],');
+  assert.deepEqual(edited.slice(1, 7), source.split("\n").slice(1, 7));
+  assert.equal(edited[8], source.split("\n")[8]);
+  // Applying the same plan twice is refused, not half-done.
+  assert.throws(() => applyRemovals(edited.join("\n"), plan.removable), /changed since it was read/);
 });
 
-test("new models: tool calls, text out, not deprecated, in the window, newest first", () => {
+test("two lists on one line are each rebuilt from their own text", () => {
+  // The same ID in both lists, dropped from the first only.
+  const line = 'x: ["gpt-a", "gpt-b"], y: ["gpt-c", "gpt-a"],';
+  const hits = findModelIds([{ path: "b.ts", text: line }], data);
+  const removals = [hits[0], hits[2]];
+  assert.deepEqual(removals.map((hit) => hit.id), ["gpt-a", "gpt-c"]);
+  assert.equal(applyRemovals(line, removals), 'x: ["gpt-b"], y: ["gpt-a"],');
+});
+
+test("new models: tool calls, text out, not deprecated, a real date in the window, newest first", () => {
   const fresh = newModels(data, "2026-09-01");
   assert.deepEqual(
     fresh.map((entry) => entry.id),
     ["gpt-new", "grok-live", "google/gemini-live"],
   );
   assert.equal(fresh[0].context, 400_000);
+  assert.equal(fresh[2].context, undefined, "a context that is not a number");
 });
 
-test("models.dev text cannot add links, mentions or table columns", () => {
+test("models.dev text stays inside code spans", () => {
   assert.equal(code("a`b|c\nd"), "`abcd`");
-  assert.equal(plain("Gemini `Live` @everyone [x](https://evil.test)"), "Gemini Live everyone x(https://evil.test)");
   const issue = renderIssue({ plan, fresh: newModels(data, "2026-09-01"), today: "2026-10-12", since: "2026-09-01" });
-  assert.ok(!issue.includes("@everyone"));
-  assert.ok(!issue.includes("](https://evil.test)"));
+  assert.ok(issue.includes("| `Gemini Live @everyone [x](https://evil.test) www.evil.test` |"));
+  assert.ok(!issue.includes("@someone"), "a bad release date is not printed");
+  for (const line of issue.split("\n").filter((text) => text.includes("evil.test"))) {
+    assert.equal(line.replace(/`[^`]*`/g, "").includes("evil.test"), false, `outside a code span: ${line}`);
+  }
 });
 
 test("the issue names what needs a person and what the PR drops", () => {
   const issue = renderIssue({ plan, fresh: newModels(data, "2026-09-01"), today: "2026-10-12", since: "2026-09-01" });
   assert.match(issue, /^<!-- model-catalog-report -->/);
-  assert.match(issue, /## Needs a decision \(3\)/);
+  assert.match(issue, /## Needs a decision \(4\)/);
   assert.match(issue, /`gpt-image-old` \(openai\): deprecated default/);
+  assert.match(issue, /`gpt-old` \(openai\): deprecated, in a list the check does not edit\. `src\/a.ts:8`, `src\/a.ts:9`/);
   assert.match(issue, /## Dropped by the weekly PR \(2\)/);
-  assert.match(issue, /\| 2026-10-01 \| `gpt-new` \| GPT New \| 400K \|/);
+  assert.match(issue, /\| 2026-10-01 \| `gpt-new` \| `GPT New` \| 400K \|/);
   assert.match(issue, /Not on models.dev, so not checked \(2\)/);
   const pr = renderPullRequest({ plan, today: "2026-10-12" });
   assert.match(pr, /`gpt-old` \(openai\): `src\/a.ts:1`, `src\/a.ts:8`/);
@@ -167,7 +198,7 @@ test("the repo's own defaults are found", () => {
   );
   const preferred = found.filter((hit) => hit.path.endsWith("discovery-logic.ts") && hit.provider === "openai");
   assert.ok(preferred.length >= 2, "KEY_PROVIDERS' OpenAI preferred list");
-  assert.ok(preferred.every((hit) => hit.list && hit.list.items.length === preferred.length));
+  assert.ok(preferred.every((hit) => hit.list?.editable && hit.list.items.length === preferred.length));
   assert.ok(found.some((hit) => hit.path.endsWith("runtime-defaults.ts") && hit.provider === "openrouter" && !hit.list));
   assert.ok(found.some((hit) => hit.path.endsWith("openai-images.ts") && hit.provider === "openai"));
 });

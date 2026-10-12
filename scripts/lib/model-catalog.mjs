@@ -4,11 +4,12 @@
 // file writes live in scripts/check-model-catalogs.mjs.
 //
 // Two outcomes, split by risk:
-// - removable: an ID models.dev marks deprecated that sits in a one-line list
-//   of IDs with a live model beside it (KEY_PROVIDERS' `preferred`). Dropping
-//   it changes which model is preselected, never whether one is.
-// - review: everything else that needs a person, chiefly a deprecated ID that
-//   is a lone default. Replacing a default is a benchmark question.
+// - removable: an ID models.dev marks deprecated that sits in a one-line
+//   `preferred: [...]` list (KEY_PROVIDERS) with a live model beside it.
+//   Dropping it changes which model is preselected, never whether one is.
+// - review: everything else that needs a person: a deprecated ID that is a
+//   lone default (replacing one is a benchmark question) or sits in any other
+//   kind of list.
 // An ID models.dev does not list is never removed: absence there can mean a
 // gap in its data as easily as a retired model.
 
@@ -64,11 +65,24 @@ export function statusOf(data, provider, id) {
 const LITERAL = /"([^"\\\s]{2,100})"/g;
 const STRING_LIST = /\[\s*"[^"]*"(?:\s*,\s*"[^"]*")*\s*\]/g;
 
+// The only lists the check edits: a `preferred:` list of picks, which falls
+// through to the next pick. Other lists of model IDs can be allowlists or
+// capability sets (a Set of models that reject temperature, a z.enum of
+// saved values), where dropping a deprecated model that tables still use
+// changes behavior. Those go to a person.
+const EDITABLE_LIST = /^\s*preferred:\s*\[/;
+
 // The one-line list of string literals around a position, if there is one.
+// editable is true only for the list a `preferred:` line opens with.
 function listAround(line, start, end) {
   for (const match of line.matchAll(STRING_LIST)) {
     if (match.index <= start && end <= match.index + match[0].length) {
-      return { text: match[0], items: [...match[0].matchAll(/"([^"]*)"/g)].map((item) => item[1]) };
+      return {
+        start: match.index,
+        text: match[0],
+        items: [...match[0].matchAll(/"([^"]*)"/g)].map((item) => item[1]),
+        editable: EDITABLE_LIST.test(line) && match.index === line.indexOf("["),
+      };
     }
   }
   return null;
@@ -113,36 +127,40 @@ export function planChanges(found, data) {
       plan.listed.push(hit);
     } else if (status === "unlisted") {
       plan.unlisted.push(hit);
-    } else if (hit.list && hit.list.items.some((other) => other !== hit.id && live(other))) {
+    } else if (hit.list?.editable && hit.list.items.some((other) => other !== hit.id && live(other))) {
       plan.removable.push(hit);
     } else {
-      plan.review.push({
-        ...hit,
-        reason: hit.list ? "deprecated, and nothing else in its list is live" : "deprecated default; a replacement needs choosing",
-      });
+      const reason = !hit.list
+        ? "deprecated default; a replacement needs choosing"
+        : hit.list.editable
+          ? "deprecated, and nothing else in its list is live"
+          : "deprecated, in a list the check does not edit";
+      plan.review.push({ ...hit, reason });
     }
   }
   return plan;
 }
 
-// A file's text with the removable IDs taken out of their lists. Only the
-// list is rewritten; models.dev text never enters the source.
+// A file's text with the removable IDs taken out of their lists. Each list is
+// rebuilt once from the text it was read from, rightmost first so the
+// positions of the others hold. Only existing IDs are deleted; models.dev
+// text never enters the source.
 export function applyRemovals(text, removals) {
   const lines = text.split("\n");
-  for (const hit of removals) {
-    const index = hit.line - 1;
-    const line = lines[index];
-    const start = line.indexOf(hit.list.text);
-    if (start === -1) continue;
-    const kept = hit.list.items.filter((item) => item !== hit.id);
-    const rebuilt = `[${kept.map((item) => JSON.stringify(item)).join(", ")}]`;
-    lines[index] = line.slice(0, start) + rebuilt + line.slice(start + hit.list.text.length);
-    // A second removal on the same line works from the rebuilt list.
-    for (const other of removals) {
-      if (other !== hit && other.path === hit.path && other.line === hit.line) {
-        other.list = { text: rebuilt, items: kept };
+  const byLine = new Map();
+  for (const hit of removals) byLine.set(hit.line, [...(byLine.get(hit.line) ?? []), hit]);
+  for (const [number, hits] of byLine) {
+    let line = lines[number - 1];
+    const lists = new Map(hits.map((hit) => [hit.list.start, hit.list]));
+    for (const list of [...lists.values()].sort((a, b) => b.start - a.start)) {
+      if (line.slice(list.start, list.start + list.text.length) !== list.text) {
+        throw new Error(`line ${number} changed since it was read`);
       }
+      const drop = new Set(hits.filter((hit) => hit.list.start === list.start).map((hit) => hit.id));
+      const kept = list.items.filter((item) => !drop.has(item));
+      line = line.slice(0, list.start) + `[${kept.map((item) => `"${item}"`).join(", ")}]` + line.slice(list.start + list.text.length);
     }
+    lines[number - 1] = line;
   }
   return lines.join("\n");
 }
@@ -155,32 +173,35 @@ export function newModels(data, since, providers = NEW_MODEL_PROVIDERS) {
     for (const [id, entry] of Object.entries(data[provider]?.models ?? {})) {
       if (entry.tool_call !== true || entry.status === "deprecated") continue;
       if (!entry.modalities?.output?.includes("text")) continue;
-      if (!entry.release_date || entry.release_date < since) continue;
-      out.push({ provider, id, name: entry.name ?? id, released: entry.release_date, context: entry.limit?.context });
+      // A date that is not a date is skipped rather than printed.
+      if (typeof entry.release_date !== "string" || !DATE.test(entry.release_date) || entry.release_date < since) continue;
+      const context = Number(entry.limit?.context);
+      out.push({ provider, id, name: entry.name ?? id, released: entry.release_date, context: Number.isFinite(context) && context > 0 ? context : undefined });
     }
   }
   return out.sort((a, b) => (a.released === b.released ? (a.id < b.id ? -1 : 1) : a.released < b.released ? 1 : -1));
 }
 
-// models.dev is outside text: an ID or name goes into the markdown only as a
-// code span or with everything but plain characters removed, so it cannot
-// add a link, a mention or a table column.
-export function code(value) {
-  return `\`${String(value).replace(/[`\r\n|]/g, "")}\``;
-}
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-export function plain(value) {
-  return String(value).replace(/[^\w .:()+/-]/g, "").slice(0, 80);
+// models.dev is outside text: an ID or a name goes into the markdown only as
+// a code span, where GitHub renders no link, mention or issue reference, and
+// with backticks, pipes and line breaks removed so it cannot leave the span
+// or add a table column. Dates are checked to be dates; context is a number.
+export function code(value) {
+  return `\`${String(value).replace(/[`\r\n|]/g, "").slice(0, 100)}\``;
 }
 
 function where(hits) {
   return hits.map((hit) => code(`${hit.path}:${hit.line}`)).join(", ");
 }
 
+// Hits grouped per model ID (and per reason, where there is one, so one ID in
+// a default and in an allowlist reads as two items).
 function byId(hits) {
   const groups = new Map();
   for (const hit of hits) {
-    const key = `${hit.provider}\u0000${hit.id}`;
+    const key = `${hit.provider}\u0000${hit.id}\u0000${hit.reason ?? ""}`;
     groups.set(key, [...(groups.get(key) ?? []), hit]);
   }
   return [...groups.values()];
@@ -198,7 +219,7 @@ export function renderIssue({ plan, fresh, today, since, perProvider = 25 }) {
   const review = byId(plan.review);
   out.push(`## Needs a decision (${review.length})`, "");
   if (review.length) {
-    out.push("models.dev marks these deprecated, and the weekly PR cannot drop them safely: each is a default with nothing to fall back to. Picking a replacement is a benchmark question.", "");
+    out.push("models.dev marks these deprecated, and the weekly PR does not drop them: a default has nothing to fall back to (picking a replacement is a benchmark question), and other lists can be allowlists where the model is still in use.", "");
     for (const hits of review) out.push(`- ${code(hits[0].id)} (${hits[0].provider}): ${hits[0].reason}. ${where(hits)}`);
   } else {
     out.push("Nothing.");
@@ -221,7 +242,7 @@ export function renderIssue({ plan, fresh, today, since, perProvider = 25 }) {
       out.push(`### ${provider} (${rows.length})`, "", "| Released | Model | Name | Context |", "| --- | --- | --- | --- |");
       for (const model of rows.slice(0, perProvider)) {
         const context = model.context ? `${Math.round(model.context / 1000)}K` : "";
-        out.push(`| ${model.released} | ${code(model.id)} | ${plain(model.name)} | ${context} |`);
+        out.push(`| ${model.released} | ${code(model.id)} | ${code(model.name)} | ${context} |`);
       }
       if (rows.length > perProvider) out.push("", `And ${rows.length - perProvider} more on models.dev.`);
       out.push("");
@@ -230,7 +251,7 @@ export function renderIssue({ plan, fresh, today, since, perProvider = 25 }) {
     out.push("Nothing.", "");
   }
 
-  const all = byId([...plan.review, ...plan.removable, ...plan.listed]);
+  const all = byId([...plan.review, ...plan.removable, ...plan.listed].map(({ reason: _reason, ...hit }) => hit));
   out.push(
     `<details><summary>Every hardcoded model ID models.dev lists (${all.length})</summary>`,
     "",
@@ -238,7 +259,7 @@ export function renderIssue({ plan, fresh, today, since, perProvider = 25 }) {
     "| --- | --- | --- | --- |",
   );
   for (const hits of all) {
-    const status = plan.listed.includes(hits[0]) ? "listed" : "deprecated";
+    const status = plan.listed.some((hit) => hit.id === hits[0].id && hit.provider === hits[0].provider) ? "listed" : "deprecated";
     out.push(`| ${code(hits[0].id)} | ${hits[0].provider} | ${status} | ${where(hits)} |`);
   }
   out.push("", "</details>", "");
