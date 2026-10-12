@@ -251,7 +251,7 @@ export function renderIssue({ plan, fresh, today, since, perProvider = 25 }) {
     out.push("Nothing.", "");
   }
 
-  const all = byId([...plan.review, ...plan.removable, ...plan.listed].map(({ reason: _reason, ...hit }) => hit));
+  const all = byId([...plan.review, ...plan.removable, ...plan.listed].map((hit) => ({ ...hit, reason: undefined })));
   out.push(
     `<details><summary>Every hardcoded model ID models.dev lists (${all.length})</summary>`,
     "",
