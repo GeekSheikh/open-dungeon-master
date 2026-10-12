@@ -364,7 +364,7 @@ if (has("table")) {
   const seconds = (value) => (value >= 90 ? `${Math.floor(value / 60)} min ${Math.round(value % 60)} s` : `${Math.round(value)} s`);
   for (const hardware of [...new Set(rows.map((row) => row.hardware))]) {
     const mine = rows.filter((row) => row.hardware === hardware);
-    const rank = { recommended: 0, works: 1, fails: 2 };
+    const rank = { recommended: 0, works: 1, poor: 2, fails: 3 };
     mine.sort((a, b) => rank[a.verdict] - rank[b.verdict] || (a.seconds.square || 1e9) - (b.seconds.square || 1e9));
     console.log(`On ${hardware} (${mine[0].device}, ComfyUI ${mine[0].comfyui}, torch ${mine[0].torch}):\n`);
     console.log("| Model | Verdict | Portrait (square) | Scene (landscape) | First picture | Peak GPU memory | Steps | Notes |");

@@ -55,6 +55,13 @@ export type WorkflowRequest = {
   cfg?: number;
 };
 
+// "4:3" for 1024x768.
+function aspectRatio(width: number, height: number): string {
+  const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+  const divisor = gcd(width, height);
+  return `${width / divisor}:${height / divisor}`;
+}
+
 type Ref = [string, number];
 type Node = { class_type: string; inputs: Record<string, unknown> };
 
@@ -105,7 +112,10 @@ export function buildModelWorkflow(model: ComfyModel, request: WorkflowRequest):
     diffusion = [add(patch.node, { ...patchInputs(patch), model: diffusion }), 0];
   }
 
-  const text = `${recipe.prefix ?? ""}${request.prompt}`;
+  const text =
+    recipe.promptFormat === "ideogram4-json"
+      ? JSON.stringify({ aspect_ratio: aspectRatio(width, height), high_level_description: request.prompt })
+      : `${recipe.prefix ?? ""}${request.prompt}`;
   const negativeText =
     recipe.negative === "text" ? [DEFAULT_NEGATIVE, request.negative?.trim()].filter(Boolean).join(", ") : "";
   let positive: Ref;

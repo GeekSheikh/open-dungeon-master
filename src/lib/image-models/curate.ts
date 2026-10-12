@@ -126,8 +126,9 @@ export type VerifiedRow = {
   // Peak GPU memory while painting, in GB.
   peakGb: number;
   // "recommended": fit for a table's portraits and scenes. "works": runs,
-  // with a weakness the note names. "fails": does not run on this hardware.
-  verdict: "recommended" | "works" | "fails";
+  // with a weakness the note names. "poor": runs, but its pictures are not
+  // fit for a table. "fails": does not run on this hardware.
+  verdict: "recommended" | "works" | "poor" | "fails";
   notes?: string;
 };
 
@@ -147,7 +148,7 @@ export type CuratedModel = {
   fits: boolean | null;
 };
 
-const VERDICT_RANK: Record<VerifiedRow["verdict"] | "unverified", number> = { recommended: 0, works: 1, unverified: 2, fails: 3 };
+const VERDICT_RANK: Record<VerifiedRow["verdict"] | "unverified", number> = { recommended: 0, works: 1, unverified: 2, poor: 3, fails: 4 };
 
 // The hardware profiles a model ran on: the catalog's "supported hardware".
 export function supportedHardware(modelId: string, rows: readonly VerifiedRow[]): string[] {

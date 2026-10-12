@@ -168,13 +168,14 @@ await test("curation puts installed models first, then what this hardware recomm
     model, hardware, device: "AMD Radeon 8060S Graphics", memoryGb: 120, comfyui: "0.39.2", torch: "", date: "2026-10-12",
     files: {}, steps: 8, seconds: { square, landscape: square }, coldSeconds: square, peakGb, verdict,
   });
-  const fixture = [row("z_turbo", "works", 19), row("flux2_klein_4b", "recommended", 9), row("flux2_dev", "fails", 0), row("krea2_turbo", "recommended", 30, 90)];
+  const fixture = [row("z_turbo", "works", 19), row("flux2_klein_4b", "recommended", 9), row("flux2_dev", "fails", 0), row("krea2_turbo", "recommended", 30, 90), row("omnigen2", "poor", 200)];
   const lists = { diffusion_models: ["z_image_turbo_bf16.safetensors"], text_encoders: ["qwen_3_4b.safetensors"], vae: ["ae.safetensors"] };
   const strix = curate.curateModels({ lists, device: curate.readComfyDevice(STRIX_STATS), rows: fixture });
   assert.equal(strix[0].model.id, "z_turbo");
   assert.deepEqual(strix[0].missing, []);
   assert.deepEqual(strix.slice(1, 3).map((entry) => entry.model.id), ["flux2_klein_4b", "krea2_turbo"]);
   assert.equal(strix.at(-1).model.id, "flux2_dev", "what failed here goes last");
+  assert.equal(strix.at(-2).model.id, "omnigen2", "then what ran poorly");
   // flux2_klein_4b needs its model and VAE, not the encoder Z-Image shares.
   assert.equal(strix[1].downloadGb, 8.1);
   // Elsewhere: no rows of its own, so measured peaks only warn.
@@ -195,7 +196,7 @@ await test("verified.json rows name a catalog model and a known hardware profile
     const key = `${row.model}/${row.hardware}`;
     assert.ok(!keys.has(key), `${key} twice`);
     keys.add(key);
-    assert.ok(["recommended", "works", "fails"].includes(row.verdict), `${key} verdict`);
+    assert.ok(["recommended", "works", "poor", "fails"].includes(row.verdict), `${key} verdict`);
     assert.deepEqual(Object.keys(row.files).sort(), Object.keys(model.files).sort(), `${key} files`);
     assert.match(row.date, /^\d{4}-\d{2}-\d{2}$/);
     if (row.verdict !== "fails") {

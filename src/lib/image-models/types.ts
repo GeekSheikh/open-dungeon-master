@@ -91,6 +91,9 @@ export type GraphRecipe = {
   // Words some models need ahead of every prompt (Lumina's system prompt,
   // Pony's score tags).
   prefix?: string;
+  // A model trained on structured captions gets the prompt wrapped in one:
+  // Ideogram 4's safety filter blocks most plain-text prompts.
+  promptFormat?: "ideogram4-json";
   // "text" encodes ODM's negative prompt; "zero" zeroes the positive, for
   // models distilled to run without one.
   negative: "text" | "zero";

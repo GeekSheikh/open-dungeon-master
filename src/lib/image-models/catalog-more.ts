@@ -75,7 +75,7 @@ function lens(turbo: boolean): ComfyModel {
     label: turbo ? "Lens Turbo" : "Lens",
     family: "Lens",
     maker: "Microsoft",
-    license: "Microsoft Lens License",
+    license: "MIT",
     released: "2026-05",
     blurb: turbo ? "Microsoft's model at 4 steps, on a GPT-OSS 20B encoder." : "Microsoft's model at 20 steps with a real negative prompt.",
     files: {
@@ -445,6 +445,7 @@ export const MORE_MODELS: readonly ComfyModel[] = [
     graph: {
       load: { unet: "unet", clip: { node: "CLIPLoader", type: "ideogram4", slots: ["clip"] }, vae: "vae" },
       modelPatches: [{ node: "CFGOverride", inputs: { cfg: 3, start_percent: 0.7, end_percent: 1 } }],
+      promptFormat: "ideogram4-json",
       negative: "zero",
       latent: "EmptyFlux2LatentImage",
       sampler: {
