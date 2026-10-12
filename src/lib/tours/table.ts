@@ -102,6 +102,12 @@ export const PLAYER_TOUR: TourStep[] = [
     anchors: ["header-stage"],
   },
   {
+    id: "layout",
+    title: "Arrange the table",
+    body: "On a wide screen this menu lets you move and resize the panels: drag the lines between them, give a tab such as Party, Story or Notes a pane of its own so several show at once, float one over the table or maximize it. Lock keeps it as it is, Reset brings back this arrangement. Only this browser keeps it; nothing changes for anyone else.",
+    anchors: ["header-layout"],
+  },
+  {
     id: "chat",
     title: "Whispers and side chat",
     body: "Private words with the Dungeon Master, and side chat between players that never reaches the transcript.",
@@ -215,6 +221,12 @@ export const DM_TOUR: TourStep[] = [
     title: "Board or story",
     body: "While a fight with a map is on, this switch picks what fills the middle of the table: the board with the chronicle beside it, or the story as usual with the board in its tab. This browser remembers your choice.",
     anchors: ["header-stage"],
+  },
+  {
+    id: "layout",
+    title: "Arrange the table",
+    body: "On a wide screen this menu lets you move and resize the panels: drag the lines between them, give a tab such as Party, Story or Notes a pane of its own so several show at once, float one over the table or maximize it. Lock keeps it as it is, Reset brings back this arrangement. Only this browser keeps it; nothing changes for anyone else.",
+    anchors: ["header-layout"],
   },
   {
     id: "chat",

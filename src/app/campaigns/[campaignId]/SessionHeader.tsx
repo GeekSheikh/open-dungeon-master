@@ -17,6 +17,8 @@ import { RulebookDialog } from "@/components/rulebook/RulebookDialog";
 import type { NarrationAudio } from "@/app/campaigns/[campaignId]/useNarrationAudio";
 import type { AmbienceAudio } from "@/app/campaigns/[campaignId]/useAmbienceAudio";
 import { SoundControl, type SoundSteering } from "@/app/campaigns/[campaignId]/SoundPanel";
+import { LayoutMenu } from "@/app/campaigns/[campaignId]/TableLayoutParts";
+import type { LayoutSeat } from "@/app/campaigns/[campaignId]/table-layout-store";
 
 // One audio group in the header: narration or ambience. On sm+ it is the
 // familiar icon button with an inline slider. Below sm the header has no
@@ -141,6 +143,7 @@ export const SessionHeader = memo(function SessionHeader({
   onHelp,
   ribbon,
   stage,
+  layoutSeat,
 }: {
   title: string;
   scene: string;
@@ -173,6 +176,9 @@ export const SessionHeader = memo(function SessionHeader({
   // The fight stage switch, shown while a board is on the table: the board
   // in the main column or the story there, with the board in its tab.
   stage?: { on: boolean; onToggle: () => void };
+  // Whose arrangement the layout menu edits (TableLayoutParts.tsx): the
+  // DM seat keeps one, every player seat another.
+  layoutSeat?: LayoutSeat;
 }) {
   const diceItem = "session-menu-row";
   return (
@@ -281,6 +287,7 @@ export const SessionHeader = memo(function SessionHeader({
             </button>
           </Tooltip>
         ) : null}
+        {layoutSeat ? <LayoutMenu seat={layoutSeat} /> : null}
         <RulebookButton />
         <Tooltip content="How everything works, and the guided tours" side="bottom">
           <button

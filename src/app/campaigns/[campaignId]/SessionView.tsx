@@ -73,7 +73,13 @@ import {
 } from "@/app/campaigns/[campaignId]/NarrationFailureBanner";
 import { turnFromEncounter, turnHudBudget } from "@/lib/battlemap/hand-table";
 
-import { useDocked } from "@/app/campaigns/[campaignId]/SidePanel";
+import { TabPane, useDocked } from "@/app/campaigns/[campaignId]/SidePanel";
+import type { SidePanelRouterProps } from "@/app/campaigns/[campaignId]/SidePanelRouter";
+import { TableRow } from "@/app/campaigns/[campaignId]/TableLayout";
+import { ChronicleSplitter } from "@/app/campaigns/[campaignId]/TableLayoutParts";
+import { useWideTable } from "@/app/campaigns/[campaignId]/table-layout-context";
+import { revealPane, useTableLayout, type LayoutSeat } from "@/app/campaigns/[campaignId]/table-layout-store";
+import { poppedTabs, tabPane } from "@/lib/table-layout";
 import { PanelLoading, panels, preloadSidePanels } from "@/app/campaigns/[campaignId]/side-panel-loaders";
 import { preloadable } from "@/lib/preloadable";
 
@@ -477,6 +483,47 @@ export function SessionView({
       }),
     [state.battleMap, campaign, caps.secretStory, caps.adjudicates, isLead],
   );
+  // The table's arrangement for this seat (client issue 46,
+  // src/lib/table-layout.ts): which side-panel tabs have a pane of their
+  // own, on a window wide enough for an arrangement at all. A tab with a
+  // pane leaves the rail, so no panel is ever drawn twice; a phone keeps
+  // every tab behind its bottom bar.
+  const layoutSeat: LayoutSeat = isDm ? "dm" : "player";
+  const tableLayout = useTableLayout(layoutSeat);
+  const arranged = useWideTable();
+  const popped = useMemo(() => (arranged ? poppedTabs(tableLayout) : []), [arranged, tableLayout]);
+  const railTabs = useMemo(
+    () => (popped.length ? panelTabs.filter(([id]) => !popped.includes(id)) : panelTabs),
+    [panelTabs, popped],
+  );
+  const railTab = railTabs.some(([id]) => id === panelTab) ? panelTab : (railTabs[0]?.[0] ?? panelTab);
+  // A Battle pane holds the board, so the fight stage leaves the table
+  // column to the story and the header's switch has nothing to switch.
+  const battlePane = popped.includes("battle");
+  // Opens a tab wherever it lives: in the rail's panel, or in its own pane,
+  // shown again and lit if it was set aside.
+  const openTab = useCallback(
+    (tab: PanelTab) => {
+      if (popped.includes(tab)) {
+        revealPane(layoutSeat, tabPane(tab));
+      } else {
+        setPanelTab(tab);
+      }
+    },
+    [popped, layoutSeat, setPanelTab],
+  );
+  // A fight starting or a party card's Message picks a tab by itself
+  // (useSessionTabs); when that tab has a pane, the pane is what is shown.
+  const lastPanelTab = useRef(panelTab);
+  useEffect(() => {
+    if (lastPanelTab.current === panelTab) {
+      return;
+    }
+    lastPanelTab.current = panelTab;
+    if (popped.includes(panelTab)) {
+      revealPane(layoutSeat, tabPane(panelTab));
+    }
+  }, [panelTab, popped, layoutSeat]);
   // Gates the Bonds sub-tab inside the Party panel.
   const relationshipsEnabled = campaign?.gameSettings?.relationships !== "off";
 
@@ -648,10 +695,10 @@ export function SessionView({
   const selectChatView = useCallback(() => setMobileView("chat"), [setMobileView]);
   const selectPanelView = useCallback(
     (tab: PanelTab) => {
-      setPanelTab(tab);
+      openTab(tab);
       setMobileView("panel");
     },
-    [setPanelTab, setMobileView],
+    [openTab, setMobileView],
   );
   const bumpPins = useCallback(() => setPinsVersion((count) => count + 1), []);
   const openLoreCheck = useCallback(
@@ -684,7 +731,8 @@ export function SessionView({
   // stage holds the board, the Battle tab shows the party, so the maps
   // step opens the Map tab instead.
   const hasBattleMap = Boolean(state.battleMap);
-  const boardInTab = hasBattleMap && !(docked && stageView === "board");
+  const boardStaged = docked && stageView === "board" && hasBattleMap && !battlePane;
+  const boardInTab = hasBattleMap && !boardStaged;
   const prepareTourStep = useCallback(
     (name: string) => {
       switch (name) {
@@ -745,7 +793,7 @@ export function SessionView({
   }
 
   const storyDue = storyCadence.level !== "quiet";
-  const fightStaged = docked && stageView === "board" && Boolean(state.battleMap);
+  const fightStaged = boardStaged;
   // Two copies of the scroll: the fight stage's has no composer (the desk
   // is right under the board); the enlarged board's keeps it (the dialog
   // covers the desk).
@@ -775,6 +823,75 @@ export function SessionView({
   const chronicle = chronicleFor(false);
   const chronicleDesk = chronicleFor(true);
 
+  // Everything a side-panel tab's content needs, shared by the side panel
+  // and by any tab with a pane of its own (TabPane).
+  const routerProps = {
+    levelUpLevel: myLevelUp && !levelUpShown ? myLevelUp.level : null,
+    onLevelUp: () => setLevelUpByHand(true),
+    pinsVersion,
+    campaignId: campaign.id,
+    sheets,
+    members: state.members,
+    meUserId: me.id,
+    steersStory,
+    adjudicates: caps.adjudicates,
+    dmCover: campaign.dmCover,
+    messages: state.messages,
+    dmIntents: state.dmIntents,
+    floor,
+    directorArm: state.directorArm,
+    coordinating: Boolean(state.coordination),
+    isLead,
+    leadUserId: campaign.leadUserId,
+    canTransferLead: isLead || campaign.ownerUserId === me.id,
+    spotlightUserIds: floor.mode === "spotlight" ? floor.userIds : EMPTY_IDS,
+    onlineUserIds: state.online,
+    auditLog,
+    locations,
+    chapters: state.chapters,
+    notes: state.notes,
+    facts: state.facts,
+    characterEvents: state.characterEvents,
+    refreshNotes,
+    refreshFacts,
+    sideThreads: state.sideThreads,
+    refreshSideChat,
+    whispers: state.whispers,
+    whisperUnread: state.whisperUnread,
+    dmInbox: state.dmInbox,
+    refreshWhispers,
+    chatTarget,
+    onChatTargetHandled: clearChatTarget,
+    onMessageUser: setChatTarget,
+    mediaStatus: state.mediaStatus,
+    inviteCode: campaign.inviteCode,
+    midGameJoinOpen: campaign.gameSettings?.midGameJoinOpen ?? false,
+    campaign,
+    encounter: state.encounter,
+    battleMap: state.battleMap,
+    mapPing: state.mapPing,
+    fx: state.fx,
+    onFxPlayed: markFxPlayed,
+    camera: state.camera,
+    onCameraDone: markCameraDone,
+    onCompose: composeFromBoard,
+    scene: state.scene,
+    canDraw: caps.adjudicates || campaign.gameSettings?.boardDrawing !== false,
+    onOpenLabel: openLabel,
+    refreshBattleMap,
+    relationshipsVersion: state.relationshipsVersion,
+    factionsVersion: state.factionsVersion,
+    shopsVersion: state.shopsVersion,
+    coins: state.coins,
+    activeSheetId: state.activeSheetId,
+    questsVersion: state.questsVersion,
+    cast: state.cast,
+    relationshipsEnabled,
+    beats: state.beats,
+    tabletopChronicle: chronicleDesk ?? undefined,
+    stageBoard: fightStaged,
+  } satisfies Omit<SidePanelRouterProps, "tab" | "visible" | "onOpenTab">;
+
   return (
     <main className="cine-stage flex h-dvh flex-col">
       {/* The cinematic frame ("ODM World Concepts" 3b): the scene's painting
@@ -803,226 +920,188 @@ export function SessionView({
         ambience={ambience}
         sound={sound}
         onHelp={openHelp}
-        stage={state.battleMap && docked ? { on: stageView === "board", onToggle: toggleStage } : undefined}
+        stage={state.battleMap && docked && !battlePane ? { on: stageView === "board", onToggle: toggleStage } : undefined}
+        layoutSeat={layoutSeat}
         ribbon={
           state.encounter?.status === "active" ? (
             <InitiativeRibbon
               encounter={state.encounter}
               sheets={sheets}
               genre={campaign.genre}
-              onOpen={() => setPanelTab("party")}
+              onOpen={() => openTab("party")}
             />
           ) : null
         }
       />
 
-      <div className="cine-row flex min-h-0 flex-1">
-        {fightStaged ? null : (
-          <PartyRail
-            sheets={sheets}
-            meUserId={me.id}
-            encounter={state.encounter}
-            genre={campaign.genre}
-            onOpen={() => setPanelTab("party")}
-          />
-        )}
-        <SessionChatColumn
-          stage={
-            fightStaged && state.battleMap ? (
-              <div className="cine-fight">
-                {chronicle}
-                <div className="cine-fight-board cine-board-frame">
+      <TableRow
+        seat={layoutSeat}
+        active={arranged}
+        tabs={panelTabs}
+        panes={[
+          {
+            id: "rail",
+            node: fightStaged ? null : (
+              <PartyRail
+                sheets={sheets}
+                meUserId={me.id}
+                encounter={state.encounter}
+                genre={campaign.genre}
+                onOpen={() => openTab("party")}
+              />
+            ),
+          },
+          {
+            id: "table",
+            node: (
+              <SessionChatColumn
+                stage={
+                  fightStaged && state.battleMap ? (
+                    <div className="cine-fight">
+                      {chronicle}
+                      {chronicle ? <ChronicleSplitter /> : null}
+                      <div className="cine-fight-board cine-board-frame">
+                        <Suspense fallback={<PanelLoading />}>
+                        <BattleMapPanel
+                          campaignId={campaign.id}
+                          meUserId={me.id}
+                          activeSheetId={state.activeSheetId}
+                          multiCharacter={campaign.gameSettings?.multiCharacter ?? "off"}
+                          view={state.battleMap}
+
+                          intents={state.battleMap.intents}
+                          genre={campaign.gameSettings?.genre ?? null}
+                          turnBudget={
+                            // The engine's count, the one the Hand reads
+                            // (src/lib/battlemap/hand-table.ts): a spent reaction
+                            // lives in reactionsUsed, not the turn budget.
+                            actingSheet && !actingSheet.isCompanion && state.encounter
+                              ? turnHudBudget(
+                                  turnFromEncounter(state.encounter, actingSheet, {
+                                    myTurn: state.encounter.turn?.ownerId === actingSheet.id,
+                                  }),
+                                )
+                              : null
+                          }
+                          canDirect={caps.adjudicates}
+                          canFocusPing={steersStory}
+                          ping={state.mapPing ?? null}
+                          fx={state.fx}
+                          onFxPlayed={markFxPlayed}
+                          camera={state.camera ?? null}
+                          onCameraDone={markCameraDone}
+                          onCompose={composeFromBoard}
+                          sky={state.scene ?? null}
+                          canDraw={caps.adjudicates || campaign.gameSettings?.boardDrawing !== false}
+                          onOpenLabel={openLabel}
+                          encounter={state.encounter ?? null}
+                          sheets={sheets}
+                          refreshBattleMap={refreshBattleMap}
+                          chronicle={chronicleDesk}
+                          visible
+                        />
+                        </Suspense>
+                      </div>
+                    </div>
+                  ) : undefined
+                }
+                state={state}
+                campaignId={campaign.id}
+                meUserId={me.id}
+                steersStory={steersStory}
+                narrationStatus={narrationStatus}
+                onReplayAudio={replayNarration}
+                visible={mobileView === "chat"}
+                askOpen={askOpen}
+                onAskOpenChange={setAskOpen}
+                refreshAsks={refreshAsks}
+                refreshFacts={refreshFacts}
+                onError={setError}
+                onLoreCheck={openLoreCheck}
+                onRenarrate={setRenarrate}
+                onPinned={bumpPins}
+              >
+                {needsCharacter ? (
                   <Suspense fallback={<PanelLoading />}>
-                  <BattleMapPanel
+                    <CharacterGate campaignId={campaign.id} />
+                  </Suspense>
+                ) : (
+                  <>
+                  {/* The plan the party is coordinating (issue 254), above the
+                      box its players would otherwise type their moves into. */}
+                  {state.coordination ? (
+                    <CoordinationPanel campaignId={campaign.id} phase={state.coordination} meUserId={me.id} steersStory={steersStory} />
+                  ) : null}
+                  <Composer
                     campaignId={campaign.id}
+                    trackAmmo={campaign.gameSettings?.variantRules?.ammunition ?? false}
+                    edges={state.battleMap?.edges}
+                    sheets={sheets}
                     meUserId={me.id}
                     activeSheetId={state.activeSheetId}
-                    multiCharacter={campaign.gameSettings?.multiCharacter ?? "off"}
-                    view={state.battleMap}
-
-                    intents={state.battleMap.intents}
-                    genre={campaign.gameSettings?.genre ?? null}
-                    turnBudget={
-                      // The engine's count, the one the Hand reads
-                      // (src/lib/battlemap/hand-table.ts): a spent reaction
-                      // lives in reactionsUsed, not the turn budget.
-                      actingSheet && !actingSheet.isCompanion && state.encounter
-                        ? turnHudBudget(
-                            turnFromEncounter(state.encounter, actingSheet, {
-                              myTurn: state.encounter.turn?.ownerId === actingSheet.id,
-                            }),
-                          )
-                        : null
-                    }
-                    canDirect={caps.adjudicates}
-                    canFocusPing={steersStory}
-                    ping={state.mapPing ?? null}
-                    fx={state.fx}
-                    onFxPlayed={markFxPlayed}
-                    camera={state.camera ?? null}
-                    onCameraDone={markCameraDone}
-                    onCompose={composeFromBoard}
-                    sky={state.scene ?? null}
-                    canDraw={caps.adjudicates || campaign.gameSettings?.boardDrawing !== false}
-                    onOpenLabel={openLabel}
-                    encounter={state.encounter ?? null}
-                    sheets={sheets}
-                    refreshBattleMap={refreshBattleMap}
-                    chronicle={chronicleDesk}
-                    visible
+                    steersStory={steersStory}
+                    isDm={isDm}
+                    kind={kind}
+                    onKindChange={setKind}
+                    input={input}
+                    setInput={setInput}
+                    sending={sending}
+                    error={error}
+                    inputBlocked={gate.inputBlocked || muted}
+                    placeholder={muted ? "The party lead has muted you at this table." : gate.placeholder}
+                    dmStatus={dmStatus}
+                    pendingRolls={pendingRolls}
+                    members={state.members}
+                    floor={floor}
+                    spotlighted={gate.spotlighted}
+                    heldSpotlightNames={gate.heldSpotlightNames}
+                    encounter={state.encounter}
+                    onReleaseFloor={releaseFloor}
+                    joinBanner={joinBanner}
+                    notice={narrationNotice}
+                    composerRef={composerRef}
+                    highlight={composerPulse}
+                    directorArm={state.directorArm}
+                    leadPrivate={leadPrivate}
+                    onLeadPrivateChange={setLeadPrivate}
+                    speaker={speaker}
+                    onSpeakerChange={setSpeaker}
+                    cast={state.cast}
+                    onXCard={campaign.gameSettings?.safety?.xCard ? raiseXCard : undefined}
+                    storyCadence={storyCadence}
+                    onCaptureStory={openStoryCapture}
+                    onSnoozeStory={snoozeStory}
+                    onSubmit={submit}
                   />
-                  </Suspense>
-                </div>
-              </div>
-            ) : undefined
-          }
-          state={state}
-          campaignId={campaign.id}
-          meUserId={me.id}
-          steersStory={steersStory}
-          narrationStatus={narrationStatus}
-          onReplayAudio={replayNarration}
-          visible={mobileView === "chat"}
-          askOpen={askOpen}
-          onAskOpenChange={setAskOpen}
-          refreshAsks={refreshAsks}
-          refreshFacts={refreshFacts}
-          onError={setError}
-          onLoreCheck={openLoreCheck}
-          onRenarrate={setRenarrate}
-          onPinned={bumpPins}
-        >
-          {needsCharacter ? (
-            <Suspense fallback={<PanelLoading />}>
-              <CharacterGate campaignId={campaign.id} />
-            </Suspense>
-          ) : (
-            <>
-            {/* The plan the party is coordinating (issue 254), above the
-                box its players would otherwise type their moves into. */}
-            {state.coordination ? (
-              <CoordinationPanel campaignId={campaign.id} phase={state.coordination} meUserId={me.id} steersStory={steersStory} />
-            ) : null}
-            <Composer
-              campaignId={campaign.id}
-              trackAmmo={campaign.gameSettings?.variantRules?.ammunition ?? false}
-              edges={state.battleMap?.edges}
-              sheets={sheets}
-              meUserId={me.id}
-              activeSheetId={state.activeSheetId}
-              steersStory={steersStory}
-              isDm={isDm}
-              kind={kind}
-              onKindChange={setKind}
-              input={input}
-              setInput={setInput}
-              sending={sending}
-              error={error}
-              inputBlocked={gate.inputBlocked || muted}
-              placeholder={muted ? "The party lead has muted you at this table." : gate.placeholder}
-              dmStatus={dmStatus}
-              pendingRolls={pendingRolls}
-              members={state.members}
-              floor={floor}
-              spotlighted={gate.spotlighted}
-              heldSpotlightNames={gate.heldSpotlightNames}
-              encounter={state.encounter}
-              onReleaseFloor={releaseFloor}
-              joinBanner={joinBanner}
-              notice={narrationNotice}
-              composerRef={composerRef}
-              highlight={composerPulse}
-              directorArm={state.directorArm}
-              leadPrivate={leadPrivate}
-              onLeadPrivateChange={setLeadPrivate}
-              speaker={speaker}
-              onSpeakerChange={setSpeaker}
-              cast={state.cast}
-              onXCard={campaign.gameSettings?.safety?.xCard ? raiseXCard : undefined}
-              storyCadence={storyCadence}
-              onCaptureStory={openStoryCapture}
-              onSnoozeStory={snoozeStory}
-              onSubmit={submit}
-            />
-            </>
-          )}
-        </SessionChatColumn>
-
-        <SidePanel
-          levelUpLevel={myLevelUp && !levelUpShown ? myLevelUp.level : null}
-          onLevelUp={() => setLevelUpByHand(true)}
-          pinsVersion={pinsVersion}
-          campaignId={campaign.id}
-          sheets={sheets}
-          members={state.members}
-          meUserId={me.id}
-          steersStory={steersStory}
-          adjudicates={caps.adjudicates}
-          dmCover={campaign.dmCover}
-          messages={state.messages}
-          dmIntents={state.dmIntents}
-          floor={floor}
-          directorArm={state.directorArm}
-          coordinating={Boolean(state.coordination)}
-          isLead={isLead}
-          leadUserId={campaign.leadUserId}
-          canTransferLead={isLead || campaign.ownerUserId === me.id}
-          spotlightUserIds={floor.mode === "spotlight" ? floor.userIds : EMPTY_IDS}
-          onlineUserIds={state.online}
-          auditLog={auditLog}
-          locations={locations}
-          chapters={state.chapters}
-          notes={state.notes}
-          facts={state.facts}
-          characterEvents={state.characterEvents}
-          refreshNotes={refreshNotes}
-          refreshFacts={refreshFacts}
-          sideThreads={state.sideThreads}
-          refreshSideChat={refreshSideChat}
-          whispers={state.whispers}
-          whisperUnread={state.whisperUnread}
-          dmInbox={state.dmInbox}
-          refreshWhispers={refreshWhispers}
-          chatTarget={chatTarget}
-          onChatTargetHandled={clearChatTarget}
-          onMessageUser={setChatTarget}
-          mediaStatus={state.mediaStatus}
-          inviteCode={campaign.inviteCode}
-          midGameJoinOpen={campaign.gameSettings?.midGameJoinOpen ?? false}
-          campaign={campaign}
-          encounter={state.encounter}
-          battleMap={state.battleMap}
-          mapPing={state.mapPing}
-          fx={state.fx}
-          onFxPlayed={markFxPlayed}
-          camera={state.camera}
-          onCameraDone={markCameraDone}
-          onCompose={composeFromBoard}
-          scene={state.scene}
-          canDraw={caps.adjudicates || campaign.gameSettings?.boardDrawing !== false}
-          onOpenLabel={openLabel}
-          refreshBattleMap={refreshBattleMap}
-          tabs={panelTabs}
-          tab={panelTab}
-          onTabChange={setPanelTab}
-          pendingCount={pendingNoteCount}
-          chatUnread={chatUnreadTotal}
-          mobileVisible={mobileView === "panel"}
-          relationshipsVersion={state.relationshipsVersion}
-          factionsVersion={state.factionsVersion}
-          shopsVersion={state.shopsVersion}
-          coins={state.coins}
-          activeSheetId={state.activeSheetId}
-          questsVersion={state.questsVersion}
-          cast={state.cast}
-          relationshipsEnabled={relationshipsEnabled}
-          beats={state.beats}
-          storyDue={storyDue}
-          glance={<QuestGlance quests={campaign.questLog ?? []} onOpen={() => setPanelTab("story")} />}
-          tabletopChronicle={chronicleDesk ?? undefined}
-          stageBoard={fightStaged}
-        />
-      </div>
+                  </>
+                )}
+              </SessionChatColumn>
+            ),
+          },
+          {
+            id: "panel",
+            node: (
+              <SidePanel
+                {...routerProps}
+                tabs={railTabs}
+                tab={railTab}
+                onTabChange={openTab}
+                pendingCount={pendingNoteCount}
+                chatUnread={chatUnreadTotal}
+                mobileVisible={mobileView === "panel"}
+                storyDue={storyDue}
+                glance={<QuestGlance quests={campaign.questLog ?? []} onOpen={() => openTab("story")} />}
+              />
+            ),
+          },
+          ...popped.flatMap((tab) => {
+            const def = panelTabs.find(([id]) => id === tab);
+            return def
+              ? [{ id: tabPane(tab), node: <TabPane {...routerProps} paneTab={tab} paneLabel={def[1]} onOpenTab={openTab} /> }]
+              : [];
+          }),
+        ]}
+      />
 
       <RollToast latestRoll={state.latestRoll} sheets={sheets} />
 

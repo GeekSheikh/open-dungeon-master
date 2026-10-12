@@ -1,0 +1,255 @@
+/* ========================================================================
+   The table's own arrangement (client issue 46; src/lib/table-layout.ts,
+   src/app/campaigns/[campaignId]/TableLayout.tsx). Every panel of the row
+   sits in a .tlay-slot of its own. The table's own arrangement is the flex
+   row it always was: each slot steps aside, and only the widths come from
+   the reader (--tlay-rail-w on the portraits, --tlay-panel-w on the side
+   panel, --tlay-chronicle-w on the fight stage's scroll). Any other
+   arrangement, and the row while it is arranged, places each slot where
+   the layout says (data-tlay="custom"). Night colours throughout, written
+   as the HUD's literal values, so the bars read the same in either theme.
+   ======================================================================== */
+
+.tlay-slot { display: contents; }
+.tlay-slot[hidden] { display: none !important; }
+
+/* ---- an arrangement of the reader's own: each slot placed ---- */
+
+.cine-row[data-tlay="custom"] { position: relative; }
+.cine-row[data-tlay="custom"] > .tlay-slot {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  outline: 1px solid rgba(107, 99, 148, 0.28);
+  outline-offset: -1px;
+}
+/* The panel fills its slot under the bar, whatever width its own classes
+   give it in the flex row. */
+.cine-row[data-tlay="custom"] > .tlay-slot > :not(.tlay-bar, .tlay-split, .tlay-corner) {
+  flex: 1 1 0%;
+  width: auto;
+  min-width: 0;
+  min-height: 0;
+}
+/* The portraits show by the table's own rule only where the row is wide;
+   placed, they show wherever they were put. The table and the side panel
+   keep their own display (the fight stage is a grid). */
+.cine-row[data-tlay="custom"] > .tlay-slot > .cine-party { display: flex; padding: 12px; }
+.cine-row[data-tlay="custom"] > .tlay-slot > .cine-panel { border-left: 0; }
+/* A tab's own pane wears the side panel's night plate. */
+.tlay-pane {
+  background: linear-gradient(180deg, rgba(16, 13, 32, 0.92), rgba(10, 8, 23, 0.95));
+}
+html[data-theme="light"] .tlay-pane { background: rgba(241, 235, 222, 0.96); }
+
+/* Afloat: raised over the row, with its own edge and shadow. */
+.cine-row[data-tlay="custom"] > .tlay-slot[data-floating] {
+  border-radius: 10px;
+  outline: 1px solid rgba(212, 171, 58, 0.4);
+  box-shadow: 0 22px 54px rgba(4, 2, 12, 0.72), 0 0 0 1px rgba(4, 2, 12, 0.6);
+}
+
+/* Being arranged: every panel shows its edge, and the one in hand dims. */
+.cine-row[data-tlay-edit] > .tlay-slot { outline: 1px dashed rgba(212, 171, 58, 0.55); outline-offset: -2px; }
+.cine-row > .tlay-slot[data-dragging] { opacity: 0.55; }
+
+/* Asked for from somewhere else (a party card, a tour step, a fight
+   starting): the pane lights for a moment so the eye finds it. */
+.cine-row > .tlay-slot[data-flash] { animation: tlay-flash 1.4s var(--ease-settle) both; }
+@keyframes tlay-flash {
+  0%, 30% { outline: 2px solid rgba(244, 224, 166, 0.95); outline-offset: -2px; box-shadow: 0 0 0 4px rgba(212, 171, 58, 0.25), 0 0 32px rgba(212, 171, 58, 0.35); }
+  100% { outline: 1px solid rgba(107, 99, 148, 0.28); outline-offset: -1px; box-shadow: none; }
+}
+
+/* ---- a pane's bar ---- */
+
+.tlay-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 34px;
+  padding: 0 6px 0 4px;
+  border-bottom: 1px solid rgba(212, 171, 58, 0.25);
+  background: linear-gradient(180deg, rgba(48, 40, 83, 0.94), rgba(16, 13, 32, 0.96));
+  color: #e9e6f4;
+}
+.tlay-grip {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: #f4e0a6;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.tlay-grip:active { cursor: grabbing; }
+.tlay-grip[data-still] { cursor: default; }
+.tlay-grip:focus-visible { outline: 2px solid rgba(244, 224, 166, 0.8); outline-offset: -2px; }
+.tlay-act {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid rgba(212, 171, 58, 0.28);
+  background: rgba(16, 13, 32, 0.7);
+  color: #c9c6db;
+  transition: border-color var(--dur-quick) var(--ease-snap), color var(--dur-quick) var(--ease-snap), box-shadow var(--dur-move) var(--ease-snap);
+}
+.tlay-act:hover { border-color: rgba(212, 171, 58, 0.75); color: #f4e0a6; box-shadow: 0 0 12px rgba(212, 171, 58, 0.25); }
+.tlay-act:focus-visible { outline: 2px solid rgba(244, 224, 166, 0.8); outline-offset: 1px; }
+
+/* A floating pane's corner, to resize it by. */
+.tlay-corner {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  padding: 0;
+  background: linear-gradient(135deg, transparent 52%, rgba(212, 171, 58, 0.55) 52%, rgba(212, 171, 58, 0.55) 62%, transparent 62%, transparent 72%, rgba(212, 171, 58, 0.55) 72%);
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.tlay-corner:focus-visible { outline: 2px solid rgba(244, 224, 166, 0.8); outline-offset: -2px; }
+
+/* ---- the lines between panels ---- */
+
+/* A 10px box, so a pointer, a finger and a controller's highlight all
+   find it, laid over the seam with negative margins: in the flex row it
+   takes no room, so the table's own arrangement lays out exactly as it
+   always did. The line drawn is the 2px in its middle. */
+.tlay-split {
+  position: relative;
+  z-index: 6;
+  flex: none;
+  width: 10px;
+  margin: 0 -5px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.tlay-split::after {
+  content: "";
+  position: absolute;
+  inset: 0 4px;
+  background: linear-gradient(180deg, transparent, rgba(244, 224, 166, 0.85) 20%, rgba(244, 224, 166, 0.85) 80%, transparent);
+  box-shadow: 0 0 10px rgba(212, 171, 58, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-quick) var(--ease-snap);
+}
+.tlay-split[aria-orientation="horizontal"] { width: auto; height: 10px; margin: -5px 0; cursor: row-resize; }
+.tlay-split[aria-orientation="horizontal"]::after {
+  inset: 4px 0;
+  background: linear-gradient(90deg, transparent, rgba(244, 224, 166, 0.85) 20%, rgba(244, 224, 166, 0.85) 80%, transparent);
+}
+.tlay-split:hover::after,
+.tlay-split:focus-visible::after,
+.tlay-split[data-held]::after { opacity: 1; }
+.tlay-split:focus-visible { outline: none; }
+.cine-row[data-tlay-edit] .tlay-split::after { opacity: 0.45; }
+.tlay-split.tlay-split-abs { position: absolute; margin: 0; }
+/* Held: nothing eases behind the pointer, the panel follows it. */
+.cine-row[data-resizing] .cine-panel { transition: none; }
+
+/* The fight stage's scroll: the line runs down the gap beside it. */
+@media (min-width: 64rem) {
+  .cine-chat-staged > .cine-fight > .tlay-split-stage {
+    grid-column: 1;
+    grid-row: 1 / -1;
+    justify-self: end;
+    margin: 12px 0;
+    /* Its middle on the middle of the 12px gap. */
+    transform: translateX(11px);
+  }
+}
+
+/* ---- where a pane being dragged would land ---- */
+
+.tlay-drop {
+  position: absolute;
+  z-index: 20;
+  pointer-events: none;
+  border: 2px solid rgba(244, 224, 166, 0.85);
+  border-radius: 8px;
+  background: rgba(212, 171, 58, 0.14);
+  box-shadow: 0 0 28px rgba(212, 171, 58, 0.35) inset, 0 0 24px rgba(212, 171, 58, 0.3);
+  transition: left var(--dur-quick) var(--ease-snap), top var(--dur-quick) var(--ease-snap), width var(--dur-quick) var(--ease-snap), height var(--dur-quick) var(--ease-snap);
+}
+
+/* ---- the bar over the row while it is arranged ---- */
+
+.tlay-arrange {
+  position: relative;
+  z-index: 9;
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(212, 171, 58, 0.3);
+  background: linear-gradient(180deg, rgba(33, 27, 58, 0.96), rgba(13, 11, 28, 0.96));
+  color: #c9c6db;
+  font-size: 12.5px;
+  animation: tlay-arrive var(--dur-beat) var(--ease-settle) both;
+}
+@keyframes tlay-arrive {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+.tlay-arrange-hint { flex: 1 1 22rem; margin: 0; font-family: var(--font-serif, Georgia, serif); font-style: italic; line-height: 1.35; }
+.tlay-arrange-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tlay-arrange-label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #e3c15c;
+}
+.tlay-arrange-end { display: flex; gap: 6px; margin-left: auto; }
+.tlay-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px 0 8px;
+  border-radius: 9999px;
+  border: 1px solid rgba(212, 171, 58, 0.35);
+  background: rgba(16, 13, 32, 0.75);
+  color: #e9e6f4;
+  font-size: 12px;
+  white-space: nowrap;
+  transition: border-color var(--dur-quick) var(--ease-snap), box-shadow var(--dur-move) var(--ease-snap);
+}
+.tlay-chip:hover { border-color: rgba(212, 171, 58, 0.75); box-shadow: 0 0 14px rgba(212, 171, 58, 0.22); }
+.tlay-chip:focus-visible { outline: 2px solid rgba(244, 224, 166, 0.8); outline-offset: 2px; }
+.tlay-chip .rail-glyph { width: 1.25rem; height: 1.25rem; }
+.tlay-chip-gold { background: linear-gradient(180deg, #f9ecc8, #b8922a); border-color: transparent; color: #1a1306; font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cine-row > .tlay-slot[data-flash], .tlay-arrange { animation: none; }
+  .tlay-drop, .tlay-split::after, .tlay-act, .tlay-chip { transition: none; }
+}

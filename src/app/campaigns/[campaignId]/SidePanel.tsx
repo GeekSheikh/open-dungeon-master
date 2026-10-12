@@ -2,6 +2,8 @@
 
 import { ChevronsLeft, ChevronsRight } from "lucide-react";
 import { memo, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { tabPane } from "@/lib/table-layout";
+import { usePaneShown, useTableLayoutApi } from "@/app/campaigns/[campaignId]/table-layout-context";
 import { cn } from "@/lib/cn";
 import { ui } from "@/lib/ui";
 import { IconRail, type IconRailItem } from "@/components/ui/IconRail";
@@ -11,26 +13,6 @@ import {
   type SidePanelRouterProps,
 } from "@/app/campaigns/[campaignId]/SidePanelRouter";
 import type { PanelTab, PanelTabDef } from "@/app/campaigns/[campaignId]/SessionTabs";
-
-// Two widths only: the default rail and a roomier one. Per-browser
-// localStorage via useSyncExternalStore, same pattern as useChatChime:
-// server render is narrow and the client snapshot takes over at hydration.
-const WIDE_KEY = "odm_side_panel_wide";
-const WIDE_EVENT = "odm-side-panel-width";
-
-function subscribeWide(callback: () => void) {
-  window.addEventListener(WIDE_EVENT, callback);
-  return () => window.removeEventListener(WIDE_EVENT, callback);
-}
-
-function readWide() {
-  return window.localStorage.getItem(WIDE_KEY) === "1";
-}
-
-function setWide(wide: boolean) {
-  window.localStorage.setItem(WIDE_KEY, wide ? "1" : "0");
-  window.dispatchEvent(new Event(WIDE_EVENT));
-}
 
 // Whether the aside is docked (Tailwind's lg, where `hidden` no longer
 // applies) or is the phone's full-screen panel. The panels' animation loops
@@ -83,11 +65,19 @@ function SidePanelInner({
   // The quest line above the panel (CinematicParts.tsx QuestGlance).
   glance?: ReactNode;
 }) {
-  const wide = useSyncExternalStore(subscribeWide, readWide, () => false);
+  // The widen button's two widths are the panel's column in the table's
+  // arrangement (src/lib/table-layout.ts); a reader may drag it anywhere
+  // between, and an arrangement with the panel beside the table or afloat
+  // has no column of its own to widen.
+  const layout = useTableLayoutApi();
+  const wide = layout?.panelWide ?? false;
   // The server snapshot says docked so the first client render matches the
   // lg layout most desktops hydrate into; a phone corrects it at once.
   const docked = useSyncExternalStore(subscribeDocked, readDocked, () => true);
-  const visible = docked || mobileVisible;
+  // Hidden in the arrangement, or under a maximized pane: still mounted,
+  // but its animation loops rest as on a phone.
+  const shown = usePaneShown("panel");
+  const visible = shown && (docked || mobileVisible);
   const { tab, steersStory } = content;
 
   const items = useMemo<IconRailItem<PanelTab>[]>(
@@ -120,8 +110,9 @@ function SidePanelInner({
       className={cn(
         "cine-panel shrink-0 bg-gradient-to-b from-stone-950/70 to-stone-950/30 lg:flex lg:flex-row lg:border-l lg:border-stone-700/50 lg:transition-[width] lg:duration-200",
         mobileVisible ? "flex w-full min-w-0 flex-col" : "hidden",
-        // The content keeps its old 20rem and 26rem; the rail adds 4rem.
-        wide ? "lg:w-[30rem]" : "lg:w-[24rem]",
+        // 24rem unless the arrangement says otherwise (TableLayout.tsx sets
+        // the width it draws the column at); the rail takes 4rem of it.
+        "lg:w-[var(--tlay-panel-w,24rem)]",
       )}
     >
       {/* side-panel-body: holding the board it stops scrolling as one
@@ -129,24 +120,32 @@ function SidePanelInner({
       <div className="side-panel-body min-h-0 min-w-0 flex-1 overflow-y-auto p-3">
         {glance}
         {/* Keyed by tab so the incoming panel rises in instead of cutting. */}
-        <div key={tab} className="motion-tab mx-auto w-full max-w-2xl lg:max-w-none">
-          <SidePanelRouter {...content} visible={visible} onOpenTab={onTabChange} />
-        </div>
+        {tabs.length ? (
+          <div key={tab} className="motion-tab mx-auto w-full max-w-2xl lg:max-w-none">
+            <SidePanelRouter {...content} visible={visible} onOpenTab={onTabChange} />
+          </div>
+        ) : (
+          <p className="motion-tab px-2 py-6 text-center font-serif text-sm italic text-stone-400">
+            Every tab has a pane of its own. Put one back from its bar to see it here again.
+          </p>
+        )}
       </div>
       {/* The rail sits on the outer edge, away from the chat, so the eye
           reads chat, context, then the switch between contexts. It scrolls
           on a short window rather than clipping the last tabs. */}
       <div className="cine-rail hidden w-16 shrink-0 flex-col items-stretch gap-1 overflow-y-auto border-l border-amber-500/15 bg-gradient-to-b from-stone-950/60 to-transparent px-1.5 py-2 [scrollbar-width:none] lg:flex">
-        <Tooltip content={wide ? "Narrow the panel" : "Widen the panel"} side="left">
-          <button
-            type="button"
-            onClick={() => setWide(!wide)}
-            aria-label={wide ? "Narrow the panel" : "Widen the panel"}
-            className={cn(ui.railCell, "h-8 shrink-0 justify-center py-0")}
-          >
-            {wide ? <ChevronsRight className="size-4" /> : <ChevronsLeft className="size-4" />}
-          </button>
-        </Tooltip>
+        {layout?.canWiden ? (
+          <Tooltip content={wide ? "Narrow the panel" : "Widen the panel"} side="left">
+            <button
+              type="button"
+              onClick={() => layout.setPanelWide(!wide)}
+              aria-label={wide ? "Narrow the panel" : "Widen the panel"}
+              className={cn(ui.railCell, "h-8 shrink-0 justify-center py-0")}
+            >
+              {wide ? <ChevronsRight className="size-4" /> : <ChevronsLeft className="size-4" />}
+            </button>
+          </Tooltip>
+        ) : null}
         <IconRail items={items} value={tab} onChange={onTabChange} tipSide="left" />
       </div>
     </aside>
@@ -156,3 +155,31 @@ function SidePanelInner({
 // Memoized: the session view re-renders on every streamed DM token, and
 // this panel's props are unchanged during narration.
 export const SidePanel = memo(SidePanelInner);
+
+// One side-panel tab in a pane of its own (client issue 46): the same panel
+// the rail would open, so Party, Story and Notes can be read side by side.
+// Its tab leaves the rail while it has a pane (SessionView), so no panel is
+// ever drawn twice and a battle board never has a twin.
+function TabPaneInner({
+  paneTab,
+  paneLabel,
+  onOpenTab,
+  ...content
+}: Omit<SidePanelRouterProps, "tab" | "visible" | "onOpenTab"> & {
+  paneTab: PanelTab;
+  paneLabel: string;
+  onOpenTab: (tab: PanelTab) => void;
+}) {
+  const visible = usePaneShown(tabPane(paneTab));
+  return (
+    <section className="tlay-pane flex min-h-0 min-w-0 flex-col" aria-label={paneLabel}>
+      <div className="side-panel-body min-h-0 min-w-0 flex-1 overflow-y-auto p-3">
+        <div className="motion-tab w-full">
+          <SidePanelRouter {...content} tab={paneTab} visible={visible} onOpenTab={onOpenTab} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export const TabPane = memo(TabPaneInner);
