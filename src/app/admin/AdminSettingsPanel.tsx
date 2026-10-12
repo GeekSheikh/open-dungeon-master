@@ -14,6 +14,7 @@ import { apiSpeedEligibility } from "@/lib/speed-tier";
 import { describeEndpoint } from "@/lib/dm/sampling-logic";
 import type { SpeedChannel, SpeedNote } from "@/lib/speed-status";
 import { AdminNetworkSections } from "@/app/admin/AdminNetworkSections";
+import { AdminPlayerAgentsSection } from "@/app/admin/AdminPlayerAgentsSection";
 import { AdminBackupSection } from "@/app/admin/AdminBackupSection";
 import { AdminStorageSection } from "@/app/admin/AdminStorageSection";
 import { BackendProbe } from "@/app/admin/BackendProbe";
@@ -44,6 +45,7 @@ const STOPS: Array<{ id: string; label: string; glyph: string; server?: boolean 
   { id: "admin-ambience", label: "Sound library", glyph: "tab-ambience" },
   { id: "admin-voice", label: "Voice chat", glyph: "ui-voice", server: true },
   { id: "admin-discord", label: "Discord", glyph: "system-share", server: true },
+  { id: "admin-player-agents", label: "Player agents", glyph: "ui-agent", server: true },
   { id: "admin-backup", label: "Backup", glyph: "ui-backup", server: true },
   { id: "admin-storage", label: "Storage", glyph: "ui-storage" },
 ];
@@ -532,6 +534,12 @@ export function AdminSettingsPanel() {
           discordSecret={discordSecret}
           setDiscordSecret={setDiscordSecret}
         />
+      )}
+
+      {deviceWorld ? null : (
+        <PageSection id="admin-player-agents" heading="Player agents" glyph="ui-agent">
+          <AdminPlayerAgentsSection />
+        </PageSection>
       )}
 
       {deviceWorld ? null : (

@@ -18,7 +18,9 @@ export async function register() {
       startProcessMetrics();
 
       // Player decision webhooks, when the operator allowed receiver origins
-      // (src/lib/agents/webhooks.ts). A failure must not stop the server.
+      // in the environment or Admin > Player agents (src/lib/agents/webhooks.ts;
+      // an admin's first address also starts it later, without a restart).
+      // A failure must not stop the server.
       try {
         const { startPlayerWebhookRunner } = await import("@/lib/agents/webhooks");
         startPlayerWebhookRunner();
