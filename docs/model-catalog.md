@@ -35,15 +35,17 @@ The weekly `model-catalog` workflow (`.github/workflows/model-catalog.yml`,
 Mondays and on demand) splits by risk:
 
 - **A PR, for what is safe to drop.** An ID models.dev marks deprecated that
-  sits in a one-line list beside a model that is still live, such as an entry in
-  a `preferred` list. Dropping it changes which model is preselected, not
-  whether one is. The PR comes from the `model-catalog/drop-deprecated` branch.
-  Checks do not run on a PR a workflow opens, so the workflow runs the tests
-  that name a dropped ID itself and puts the result in the description.
+  sits in a one-line `preferred: [...]` list beside a model that is still live.
+  Dropping it changes which model is preselected, not whether one is. No other
+  kind of list is edited: a `Set` or `z.enum` of model IDs can be an allowlist
+  that tables still configured with that model rely on. The PR comes from the
+  `model-catalog/drop-deprecated` branch. Checks do not run on a PR a workflow
+  opens, so the workflow runs the tests that name a dropped ID itself and puts
+  the result in the description.
 - **One rolling issue, for the rest.** Labelled `model-catalog` and rewritten
-  each run. It lists deprecated IDs that are lone defaults (replacing a default
-  means choosing a model, which is a benchmark question), the new tool-calling
-  models per provider, and every hardcoded ID with where it is.
+  each run. It lists deprecated IDs the PR leaves alone (a lone default, whose
+  replacement is a benchmark question, or an entry in any other list), the new
+  tool-calling models per provider, and every hardcoded ID with where it is.
 
 An ID models.dev does not list is never dropped. Absence there can mean a gap in
 its data (it lists few speech models) as easily as a retired model, so those are
@@ -51,8 +53,9 @@ listed in the issue and left alone. A models.dev answer missing a whole provider
 stops the run.
 
 The check only ever deletes an existing ID from a list. Nothing from models.dev
-is written into the code, and model names reach the issue only as code spans or
-stripped to plain characters.
+is written into the code. Model IDs and names reach the issue only as code
+spans, where GitHub renders no link or mention, and a release date is printed
+only if it is a date.
 
 ## For the repository's admin
 
@@ -60,9 +63,19 @@ stripped to plain characters.
   create and approve pull requests**. Without it the issue still updates and the
   PR step fails with a clear message.
 - The schedule runs on `Lebbitheplow/open-dungeon-master` only. A fork can still
-  run it from the Actions tab.
-- If someone pushes to the bot's branch (to fix a test, say), the workflow stops
-  pushing over it and leaves the PR to them.
+  run it from the Actions tab; where Issues are off, the report goes to the
+  run's log instead.
+- Only the issue the workflow opened is rewritten, never another issue that
+  carries the label.
+
+How the PR treats what people do with it:
+
+| You... | Next run |
+| --- | --- |
+| push or amend a commit on the branch (to fix a test, say) | leaves the branch and PR to you |
+| merge the PR | starts fresh if something new is deprecated |
+| close it unmerged and keep the branch | opens no PR while the branch is there; the issue still lists what to drop |
+| close it unmerged and delete the branch | proposes the drops again |
 
 ## What it does not do
 
