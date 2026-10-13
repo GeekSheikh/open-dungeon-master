@@ -4,6 +4,7 @@ import { AlignLeft, Bot, Image as ImageIcon, Wrench } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
 import { ImagesNote } from "@/app/campaigns/[campaignId]/NarrationNote";
+import { ModelNote } from "@/components/ModelNote";
 import { Select } from "@/components/ui/Select";
 import type { MaskedStorySettings } from "@/lib/db/settings";
 import type { HarnessOffer } from "@/lib/harness/policy";
@@ -309,6 +310,7 @@ export function StoryAiPanel({
                     className={inputClass}
                   />
                 </div>
+                <ModelNote role="story" baseUrl="" model={settings.customModel} />
                 <p className="text-stone-500">
                   Runs on this server&apos;s backend. Only an admin can change where it points.
                 </p>
@@ -340,6 +342,7 @@ export function StoryAiPanel({
                     className={inputClass}
                   />
                 </div>
+                <ModelNote role="story" baseUrl={settings.customBaseUrl} model={settings.customModel} />
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={labelClass}>API key</span>
                   <input
@@ -387,6 +390,9 @@ export function StoryAiPanel({
                 className={inputClass}
               />
             </div>
+            {settings.utilityModel ? (
+              <ModelNote role="utility" baseUrl={settings.utilityProvider === "custom" ? settings.utilityBaseUrl : ""} model={settings.utilityModel} />
+            ) : null}
             {settings.utilityProvider === "custom" && settings.utilityModel && !serverManaged ? (
               <div className="reveal flex flex-wrap items-center gap-2">
                 <span className={labelClass}>Utility URL</span>

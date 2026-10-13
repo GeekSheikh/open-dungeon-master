@@ -3,7 +3,7 @@ import { isErrorResponse, requireStoryAuthority } from "@/lib/campaign-api";
 import { updateStorySettings } from "@/lib/db/campaigns";
 import { maskStorySettings, scrubStorySettings, withoutAdminOnlyFields } from "@/lib/db/settings";
 import { publishPersisted } from "@/lib/events";
-import { LOCAL_TEXT_MODEL_IDS } from "@/lib/text-models";
+import { MAX_MODEL_ID_LENGTH } from "@/lib/text-models";
 import { IMAGE_BACKENDS, PROSE_SIZE_VALUES } from "@/lib/types";
 import { harnessOfferFor } from "@/lib/harness/policy";
 
@@ -39,7 +39,9 @@ const patchSchema = z.object({
   world: z.string().trim().max(4000).optional(),
   style: z.string().trim().max(4000).optional(),
   textProvider: z.enum(["local", "custom", "none", "harness"]).optional(),
-  localTextModel: z.enum(LOCAL_TEXT_MODEL_IDS).optional(),
+  // Any tag Ollama serves, not only the documented builds: a model pulled
+  // after the app shipped is picked the same way.
+  localTextModel: z.string().trim().min(1).max(MAX_MODEL_ID_LENGTH).regex(/^\S+$/, "A model tag has no spaces.").optional(),
   customBaseUrl: z.string().trim().max(500).optional(),
   customModel: z.string().trim().max(200).optional(),
   customApiKey: z.string().trim().max(400).optional(),

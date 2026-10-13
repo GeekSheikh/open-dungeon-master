@@ -15,32 +15,50 @@ export type TextProvider = "local" | "custom" | "none" | "harness";
 
 export const TEXT_PROVIDERS: TextProvider[] = ["local", "custom", "none", "harness"];
 
-// Gemma 4 QAT (quantization-aware trained, Q4_0) builds served by Ollama.
-// context = native context window in tokens. ram = resident memory measured
-// via `ollama ps` at the app's context settings (M2 Max; the E-models stream
-// per-layer embeddings, so they sit below their download size).
-export const LOCAL_TEXT_MODELS = [
-  { id: "gemma4:e2b-it-qat", label: "Gemma 4 E2B", size: "4.3 GB", ram: "4.5 GB", context: 131_072 },
-  { id: "gemma4:e4b-it-qat", label: "Gemma 4 E4B", size: "6.1 GB", ram: "3.2 GB", context: 131_072 },
-  { id: "gemma4:12b-it-qat", label: "Gemma 4 12B", size: "7.2 GB", ram: "7.7 GB", context: 262_144 },
-  { id: "gemma4:26b-a4b-it-qat", label: "Gemma 4 26B MoE", size: "16 GB", ram: "15 GB", context: 262_144 },
-  { id: "gemma4:31b-it-qat", label: "Gemma 4 31B", size: "19 GB", ram: "~20 GB", context: 262_144 },
-] as const;
+// No model is named here. The "local" provider runs whatever tag the
+// admin picked from what Ollama lists (src/lib/model-registry), and a
+// server with exactly one chat model runs that one unasked.
 
-export function localModelContextWindow(modelId: string): number {
-  return LOCAL_TEXT_MODELS.find((model) => model.id === modelId)?.context ?? 131_072;
+// The window Ollama reported for a model (/api/show, asked by the model
+// registry when the model is listed or chosen). Kept for the process, like
+// the windows probed from llama.cpp in model-client.
+const learnedWindows = new Map<string, number>();
+
+export function rememberLocalContextWindow(modelId: string, tokens: number) {
+  if (Number.isFinite(tokens) && tokens >= 2_048) {
+    learnedWindows.set(modelId, Math.floor(tokens));
+  }
 }
 
-export type LocalTextModelId = (typeof LOCAL_TEXT_MODELS)[number]["id"];
+// The native window of a local model where Ollama has said it. Null for a
+// model nobody has asked about yet. Ollama resolves tags without regard to
+// case, so this does too.
+export function knownLocalContextWindow(modelId: string): number | null {
+  const wanted = modelId.toLowerCase();
+  for (const [id, tokens] of learnedWindows) {
+    if (id.toLowerCase() === wanted) return tokens;
+  }
+  return null;
+}
 
-export const LOCAL_TEXT_MODEL_IDS = LOCAL_TEXT_MODELS.map(
-  (model) => model.id,
-) as [LocalTextModelId, ...LocalTextModelId[]];
+export const DEFAULT_LOCAL_CONTEXT_TOKENS = 131_072;
 
-export const DEFAULT_LOCAL_TEXT_MODEL: LocalTextModelId = "gemma4:31b-it-qat";
+export function localModelContextWindow(modelId: string): number {
+  return knownLocalContextWindow(modelId) ?? DEFAULT_LOCAL_CONTEXT_TOKENS;
+}
 
+// Any tag Ollama can serve. The type was once the union of five documented
+// builds; a campaign saved with one of those reads the same today.
+export type LocalTextModelId = string;
+
+export const MAX_MODEL_ID_LENGTH = 200;
+
+// A usable Ollama tag: non-empty, one line, no longer than the settings
+// fields hold. Whether Ollama has it is the registry's question, not this
+// one's, so a model pulled after the app shipped is as welcome as the
+// documented ones.
 export function isLocalTextModelId(value: unknown): value is LocalTextModelId {
-  return LOCAL_TEXT_MODEL_IDS.includes(value as LocalTextModelId);
+  return typeof value === "string" && value.trim() !== "" && value.trim() === value && value.length <= MAX_MODEL_ID_LENGTH && !/[\s]/.test(value);
 }
 
 export function isTextProvider(value: unknown): value is TextProvider {

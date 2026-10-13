@@ -17,6 +17,7 @@ import { AdminNetworkSections } from "@/app/admin/AdminNetworkSections";
 import { AdminBackupSection } from "@/app/admin/AdminBackupSection";
 import { AdminStorageSection } from "@/app/admin/AdminStorageSection";
 import { BackendProbe } from "@/app/admin/BackendProbe";
+import { ModelChoiceField } from "@/app/admin/ModelChoice";
 import { AdminImagesSection } from "@/app/admin/AdminImagesSection";
 import { AdminSpeechSection } from "@/app/admin/AdminSpeechSection";
 import { AmbienceLibraryCard } from "@/app/admin/AmbienceLibraryCard";
@@ -341,19 +342,15 @@ export function AdminSettingsPanel() {
             ]}
           />
           {phoneWorld ? null : (
-            <Field label="Local model (Ollama native)">
-              <input
-                className={ui.input}
-                value={config.text.localTextModel}
-                onChange={(event) =>
-                  setConfig({
-                    ...config,
-                    text: { ...config.text, localTextModel: event.target.value },
-                  })
-                }
-                placeholder="gemma4:31b-it-qat"
-              />
-            </Field>
+            <ModelChoiceField
+              label="Local model (Ollama native)"
+              hint="What this machine's Ollama has pulled; any tag it serves can be typed."
+              role="story"
+              provider="local"
+              value={config.text.localTextModel}
+              onChange={(localTextModel) => setConfig({ ...config, text: { ...config.text, localTextModel } })}
+              placeholder="gemma4:31b-it-qat"
+            />
           )}
           <Field label="Backend base URL" hint={env.customBaseUrl ? `Env: ${env.customBaseUrl}` : undefined}>
             <input
@@ -365,16 +362,17 @@ export function AdminSettingsPanel() {
               placeholder={env.customBaseUrl || "http://127.0.0.1:11434/v1"}
             />
           </Field>
-          <Field label="Model name" hint={env.customModel ? `Env: ${env.customModel}` : undefined}>
-            <input
-              className={ui.input}
-              value={config.text.customModel}
-              onChange={(event) =>
-                setConfig({ ...config, text: { ...config.text, customModel: event.target.value } })
-              }
-              placeholder={env.customModel || "qwen3.6-dm"}
-            />
-          </Field>
+          <ModelChoiceField
+            label="Model name"
+            hint={env.customModel ? `Env: ${env.customModel}` : undefined}
+            role="story"
+            provider="custom"
+            baseUrl={config.text.customBaseUrl || env.customBaseUrl}
+            apiKey={apiKey === SECRET_KEPT ? "" : apiKey}
+            value={config.text.customModel}
+            onChange={(customModel) => setConfig({ ...config, text: { ...config.text, customModel } })}
+            placeholder={env.customModel || "qwen3.6-dm"}
+          />
         </div>
         <div className="mt-3">
           <SecretField
@@ -446,19 +444,18 @@ export function AdminSettingsPanel() {
               { value: "custom" as const, label: "OpenAI-compatible server" },
             ]}
           />
-          <Field
+          <ModelChoiceField
             label="Model name"
             hint="Blank = off. Anything in the 4B-8B class is plenty; e.g. gemma4:e4b-it-qat."
-          >
-            <input
-              className={ui.input}
-              value={config.text.utilityModel}
-              onChange={(event) =>
-                setConfig({ ...config, text: { ...config.text, utilityModel: event.target.value } })
-              }
-              placeholder="Off"
-            />
-          </Field>
+            role="utility"
+            provider={config.text.utilityProvider === "custom" ? "custom" : "local"}
+            baseUrl={config.text.utilityProvider === "custom" ? config.text.utilityBaseUrl : ""}
+            apiKey={utilityApiKey === SECRET_KEPT ? "" : utilityApiKey}
+            value={config.text.utilityModel}
+            onChange={(utilityModel) => setConfig({ ...config, text: { ...config.text, utilityModel } })}
+            placeholder="Off"
+            blankLabel="Off (everything runs on the story model)"
+          />
           <Field
             label="Backend base URL"
             hint="Only for an OpenAI-compatible utility server. Blank uses the Ollama endpoint."

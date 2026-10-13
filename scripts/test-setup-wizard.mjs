@@ -100,13 +100,14 @@ try {
     assert.deepEqual(routed, [{ id: "google/gemini-3.5-flash", label: "Gemini 3.5 Flash", context: 1000000 }]);
   });
 
-  await test("the documented default is preselected, then the provider's choice, then the first listed", () => {
+  await test("the first chat model listed is preselected until the catalog ranks the list; no model is named", () => {
     const listed = (ids) => ids.map((id) => ({ id, label: id }));
-    assert.equal(logic.recommendedModel(listed(["gemma4-26b", "qwen3.6-35b"])), "qwen3.6-35b");
-    assert.equal(logic.recommendedModel(listed(["gemma4-26b", "qwen3.6-35b-code"])), "qwen3.6-35b-code");
-    assert.equal(logic.recommendedModel(listed(["gemma4-26b"])), "gemma4-26b");
-    assert.equal(logic.recommendedModel(listed(["gpt-4o", "gpt-5.1", "gpt-5.4-mini"]), logic.keyProvider("openai").preferred), "gpt-5.1");
-    assert.equal(logic.recommendedModel([], ["x"]), "");
+    // No model is named in code: the server's own first chat model, until
+    // the setup route ranks the list with the catalog.
+    assert.equal(logic.recommendedModel(listed(["gemma4-26b", "qwen3.6-35b"])), "gemma4-26b");
+    assert.equal(logic.recommendedModel(listed(["gpt-4o", "gpt-5.1", "gpt-5.4-mini"])), "gpt-4o");
+    assert.equal(logic.recommendedModel([]), "");
+    assert.equal("preferred" in logic.keyProvider("openai"), false, "no preferred ids to go stale");
   });
 
   await test("a pasted key names its provider when it can", () => {

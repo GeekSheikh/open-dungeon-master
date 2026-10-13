@@ -4,7 +4,7 @@ import { imagesConfigured, storyConfigured } from "@/lib/capabilities";
 import { getDatabase } from "@/lib/db/core";
 import { configuredDefaultStorySettings } from "@/lib/runtime-defaults";
 import { serverEnv } from "@/lib/server-env";
-import { LOCAL_TEXT_MODEL_IDS } from "@/lib/text-models";
+import { isOllamaChatModel, readOllamaTags } from "@/lib/model-registry/discovery-logic";
 
 export const runtime = "nodejs";
 
@@ -54,17 +54,13 @@ async function localTextStatus(ollamaUrl: string): Promise<LocalText> {
     if (!response.ok) {
       return { ok: false, installedModels: [] };
     }
-    const data = (await response.json()) as { models?: Array<{ name?: string }> };
-    // Ollama resolves model names case-insensitively, so match the same way
-    // (a pre-existing "Gemma4" repo can store tags with different casing).
-    const installed = new Set(
-      (data.models || [])
-        .map((model) => (model.name || "").toLowerCase())
-        .filter(Boolean),
-    );
+    // Every chat model this Ollama has pulled, as it names them; there is
+    // no fixed list a tag has to be on.
     return {
       ok: true,
-      installedModels: LOCAL_TEXT_MODEL_IDS.filter((id) => installed.has(id.toLowerCase())),
+      installedModels: readOllamaTags(await response.json().catch(() => null))
+        .filter((model) => isOllamaChatModel(model))
+        .map((model) => model.id),
     };
   } catch {
     return { ok: false, installedModels: [] };
@@ -115,7 +111,7 @@ export async function GET() {
 
   return Response.json({
     openRouterConfigured: Boolean(serverEnv("OPENROUTER_API_KEY")),
-    model: serverEnv("OPENROUTER_MODEL", "google/gemini-3.5-flash"),
+    model: serverEnv("OPENROUTER_MODEL"),
     maxTokens: Number.parseInt(serverEnv("OPENROUTER_MAX_TOKENS", "16384"), 10),
     localText,
     flux,

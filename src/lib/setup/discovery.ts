@@ -144,7 +144,7 @@ export type ModelListing =
 
 // One server's model list, for an address or key typed into the wizard.
 // The key is used for this one request and never stored here.
-export async function listModels(baseUrlInput: string, apiKey: string, preferred?: readonly string[]): Promise<ModelListing> {
+export async function listModels(baseUrlInput: string, apiKey: string): Promise<ModelListing> {
   const baseUrl = normalizeBaseUrl(baseUrlInput);
   if (!baseUrl) {
     return { ok: false, baseUrl, error: "Enter the server's address." };
@@ -178,5 +178,5 @@ export async function listModels(baseUrlInput: string, apiKey: string, preferred
   if (!models.length) {
     return { ok: false, baseUrl, error: `${host} lists no chat models. Load one, then look again.` };
   }
-  return { ok: true, baseUrl, models, recommended: recommendedModel(models, preferred) };
+  return { ok: true, baseUrl, models, recommended: recommendedModel(models) };
 }

@@ -28,6 +28,8 @@ export type HarnessModel = {
   cheap?: boolean;
   // Offers a paid Fast tier on this connection (issue 255).
   fast?: boolean;
+  // Its vendor has deprecated it (the model catalog, src/lib/model-registry).
+  deprecated?: boolean;
 };
 
 export type HarnessAuth = {

@@ -4,7 +4,6 @@
 // from what is running on it). Saving turns each step's slice into an admin
 // settings patch (src/lib/setup/patches.ts).
 import {
-  DEFAULT_LOCAL_MODEL,
   KEY_PROVIDERS,
   normalizeBaseUrl,
   storySourceForUrl,
@@ -77,7 +76,7 @@ export function draftFromConfig(config: MaskedConfig, firstRun: boolean): Draft 
           : story === "local" && base
             ? normalizeBaseUrl(base)
             : "",
-      model: text.provider === "local" ? text.localTextModel : story === "local" ? text.customModel || (base ? "" : DEFAULT_LOCAL_MODEL) : "",
+      model: text.provider === "local" ? text.localTextModel : story === "local" ? text.customModel : "",
       apiKey: "",
       list: NO_LIST,
       typed: false,
