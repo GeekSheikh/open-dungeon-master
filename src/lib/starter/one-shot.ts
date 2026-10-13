@@ -1,4 +1,6 @@
-import { createCampaign, setDmOutline, type Campaign } from "@/lib/db/campaigns";
+import { createCampaign, getCampaignById, setDmOutline, type Campaign } from "@/lib/db/campaigns";
+import { setClock } from "@/lib/db/clock";
+import { defaultClock, toInstant } from "@/lib/dm/calendar";
 
 // The starter one-shot: a table that opens in ten minutes for people who
 // have never played. One evening, level 1, a village, a crypt, a twist.
@@ -45,5 +47,14 @@ export function createStarterCampaign(userId: string, options: { solo: boolean }
     },
   });
   setDmOutline(campaign.id, STARTER_ONE_SHOT.outline);
-  return campaign;
+  // "You arrive at dusk": the clock says so too. A new campaign's clock opens
+  // at eight in the morning, and the DM narrates the hour the clock shows, so
+  // the premise and the opening scene disagreed until a model thought to
+  // pass the day itself.
+  const clock = defaultClock();
+  setClock(campaign.id, { ...clock, instant: toInstant(clock.calendar, { month: 4, day: 1, hour: STARTER_HOUR }) });
+  return getCampaignById(campaign.id) ?? campaign;
 }
+
+// Six in the evening, the hour the premise opens on.
+export const STARTER_HOUR = 18;
