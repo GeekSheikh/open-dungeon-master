@@ -273,5 +273,19 @@ await test("The narrator's rules name the tools and arguments these rows now run
   }
 });
 
+await test("The location rule puts move_party in the reply that narrates the arrival, after a roll, beside travel or before a question, and on the way back too.", async () => {
+  const { dmSystemText } = await import("../src/lib/dm/prompt.ts");
+  const text = dmSystemText(false);
+  for (const phrase of [
+    "The call belongs in the reply whose narration has them arrive, whatever else that reply does",
+    "narrating a roll that got them there",
+    "travel covers the distance, never the place",
+    "a question to the players",
+    "Going back to an area they left is a move too",
+  ]) {
+    assert.ok(text.includes(phrase), `the location rule never says "${phrase}"`);
+  }
+});
+
 world.close();
 finish();
