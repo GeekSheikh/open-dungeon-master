@@ -55,6 +55,10 @@ export async function startServer({ tree, dbPath, key, port, log }) {
     // "not configured" the UI already handles.
     DEFAULT_TEXT_PROVIDER: "",
     OPENAI_API_KEY: "",
+    // No speech-to-text either, whatever this machine runs on :8870: a
+    // scenario that dictates stands in the device's own recognizer, the same
+    // here as on CI.
+    STT_URL: "off",
   };
   const out = fs.openSync(log, "a");
   const child = spawn(process.execPath, [nextBin, "start", "-H", "127.0.0.1", "-p", String(port)], {
