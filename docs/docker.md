@@ -101,7 +101,13 @@ in-process event bus, so it cannot be replicated or pointed at a shared volume f
 hosts. See [Storage and the single-writer rule](storage.md).
 
 To move to a newer release: `docker compose pull && docker compose up -d`. The volumes
-carry over. If you build locally instead, `docker compose up -d --build` refreshes the
+carry over. Take a backup first (the admin panel's Backups, or
+[backup-restore.md](backup-restore.md)), and for a server people rely on, pin
+`ODM_IMAGE_TAG` and move it on purpose rather than following `latest`. Going back to
+an older image after a release that changed the database's shape is refused by that
+image; it needs the backup taken before the upgrade
+([Upgrading and going back](backup-restore.md#upgrading-and-going-back)). Removing the
+container never touches the volumes; `docker compose down -v` does, so leave `-v` off. If you build locally instead, `docker compose up -d --build` refreshes the
 content pack from api.open5e.com, so the build needs network; the running container
 never does.
 
