@@ -3,6 +3,7 @@
 import { ImageOff, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { stripToolText } from "@/lib/dm/tool-text";
+import { characterPlaceholder } from "@/lib/placeholders";
 import { segmentsOf, type Speaker, type SpokenLine } from "@/lib/dm/speech";
 import type { CastMember } from "@/lib/dm/cast";
 import { SpeechLine } from "@/app/campaigns/[campaignId]/SpeechLine";
@@ -104,7 +105,12 @@ export function DmContent({ content, rollsById, sheetsById, cast = [], lines, sp
   // A creature's line is voiced but stays in the narration here: the
   // transcript gives a face only to the cast and the characters.
   const faced = lines.filter((entry) => entry.speaker.kind !== "monster");
-  const faceOf = (who: Speaker) => (who.kind === "pc" ? sheetsById.get(who.id)?.portrait?.url : undefined);
+  // A character speaks with the face their own lines carry (PlayerMessage):
+  // the portrait, else the painted plate for their class and race.
+  const faceOf = (who: Speaker) => {
+    const sheet = who.kind === "pc" ? sheetsById.get(who.id) : undefined;
+    return sheet ? (sheet.portrait?.url ?? characterPlaceholder({ race: sheet.race, class: sheet.class, gender: sheet.gender })) : undefined;
+  };
   if (speaker) {
     return (
       <div className="narration space-y-2">
