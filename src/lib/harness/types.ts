@@ -33,6 +33,9 @@ export type HarnessModel = {
   // The model an alias stands for, where the program says so (Claude Code's
   // "opus" is claude-opus-5-5): what the catalog is asked about it.
   catalogId?: string;
+  // The efforts this model offers, where the program lists them (opencode's
+  // variants); one it lacks runs at the model's own default.
+  efforts?: string[];
 };
 
 export type HarnessAuth = {

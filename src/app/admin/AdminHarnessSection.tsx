@@ -316,9 +316,19 @@ export function AdminHarnessSection({
                   />
                 </>
               ) : null}
-              {chosen.id === "claude" || chosen.id === "codex" ? (
+              {chosen.id === "claude" || chosen.id === "codex" || chosen.id === "opencode" ? (
                 <SelectField
                   label="Effort"
+                  hint={
+                    [...new Set([draft.model, draft.utilityModel || draft.model])]
+                      .flatMap((id) => {
+                        const model = models.find((entry) => entry.id === id);
+                        return draft.effort && model?.efforts && !model.efforts.includes(draft.effort)
+                          ? [`${model.label} has no ${draft.effort} setting and runs at its own default.`]
+                          : [];
+                      })
+                      .join(" ") || undefined
+                  }
                   value={draft.effort}
                   onChange={(effort) => setDraft({ ...draft, effort })}
                   options={EFFORTS.map((effort) => ({ value: effort, label: effort ? effort[0].toUpperCase() + effort.slice(1) : "The program's own default" }))}

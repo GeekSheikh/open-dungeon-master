@@ -1,100 +1,310 @@
-// opencode, driven through its own HTTP server (`opencode serve`).
+// opencode 2.x, driven through its own HTTP server (`opencode serve`).
 //
-// Lockdown, proven on 1.18.30: a dedicated agent whose permission ruleset
-// denies "*" and allows only "odm_*", with every built-in tool switched off
-// in its tool map. Asked to list files, the model answered that the only tool
-// it had was odm_request_roll. The admin's own MCP servers (from their global
-// config) are disconnected at start, and the same deny ruleset is set on the
-// session itself.
+// Proven on 2.0.27 against a recording fake model endpoint: a dedicated agent
+// whose rules deny every action and then allow "odm_*" (opencode takes the
+// last matching rule), with ODM's MCP server outside Code Mode, sends the
+// model ODM's tools and nothing else. The rules opencode actually resolved
+// are read back and checked before any prompt is sent.
+//
+// Each run gets an empty config folder of its own (OPENCODE_CONFIG_DIR), so
+// the admin's plugins, MCP servers and global AGENTS.md never join it; only
+// the providers from their global config are carried over, so a model they
+// set up there still runs. opencode keeps every session, transcript included,
+// in its own store: the run deletes its session when it closes, and the next
+// run deletes any a killed server left behind.
 //
 // The server speaks HTTP with basic auth and streams events over SSE. Each
 // run gets its own server on a free loopback port and a random password, and
-// the server dies with the run.
+// the server dies with the run. opencode 1.x had another API and is refused.
 
 import { randomBytes } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import net from "node:net";
+import os from "node:os";
+import path from "node:path";
+import { onWindows } from "../../host-platform.ts";
 import { runProgram, spawnProgram } from "../process.ts";
-import type { HarnessAdapter, HarnessModel, HarnessStartOptions } from "../types.ts";
+import type { HarnessAdapter, HarnessConfig, HarnessEvent, HarnessModel, HarnessStartOptions } from "../types.ts";
 
 const AGENT = "odm-dm";
+const TITLE = "Open Dungeon Master";
+// Set on every session ODM creates and never by opencode, so the sweep can
+// tell ODM's sessions from the admin's own.
+const SESSION_TAG = { openDungeonMaster: "run" };
+// The run folder bridge.ts makes for each run, directly in the temp dir.
+const RUN_DIR_PREFIX = "odm-harness-";
+const LOAD_TIMEOUT_MS = 30_000;
+const TOOLS_SETTLE_MS = 1_000;
 
-const BUILT_IN_TOOLS = [
-  "bash",
-  "edit",
-  "write",
-  "read",
-  "grep",
-  "glob",
-  "list",
-  "lsp",
-  "patch",
-  "apply_patch",
-  "webfetch",
-  "websearch",
-  "codesearch",
-  "todowrite",
-  "todoread",
-  "task",
-  "skill",
-  "question",
-  "invalid",
+type Effect = "allow" | "ask" | "deny";
+export type OpencodeRule = { action: string; resource: string; effect: Effect };
+
+const LOCKDOWN_RULES = (mcp: boolean): OpencodeRule[] => [
+  { action: "*", resource: "*", effect: "deny" },
+  ...(mcp ? [{ action: "odm_*", resource: "*", effect: "allow" as const }] : []),
 ];
 
-// Pure, so scripts/test-harness-args.mjs can pin the lockdown.
-export function opencodeConfig(options: { system: string; mcp: { url: string; token: string } | null }) {
-  const tools: Record<string, boolean> = {};
-  for (const name of BUILT_IN_TOOLS) {
-    tools[name] = false;
-  }
-  tools["odm_*"] = Boolean(options.mcp);
-  const permission = { "*": "deny", "odm_*": options.mcp ? "allow" : "deny" };
+// What opencode 2.0.27 offers a model with every rule allowing, plus the
+// browser it adds where it can, and a name it does not have yet: each must
+// resolve to deny.
+export const OPENCODE_BUILT_IN_ACTIONS = [
+  "edit",
+  "glob",
+  "grep",
+  "question",
+  "read",
+  "shell",
+  "skill",
+  "subagent",
+  "webfetch",
+  "websearch",
+  "write",
+  "execute",
+  "browser",
+  "a-tool-opencode-adds-later",
+];
+
+// Pure, so scripts/test-harness-logic.mjs can pin the lockdown.
+export function opencodeConfig(options: {
+  system: string;
+  mcp: { url: string; token: string } | null;
+  providers: Record<string, unknown>;
+}) {
+  const permissions = LOCKDOWN_RULES(Boolean(options.mcp));
   return {
-    autoupdate: false,
     share: "disabled",
-    snapshot: false,
-    permission,
+    snapshots: false,
+    permissions,
+    ...(Object.keys(options.providers).length ? { providers: options.providers } : {}),
     ...(options.mcp
       ? {
           mcp: {
-            odm: {
-              type: "remote",
-              url: options.mcp.url,
-              headers: { Authorization: `Bearer ${options.mcp.token}` },
-              oauth: false,
-              enabled: true,
-              timeout: 600_000,
+            servers: {
+              odm: {
+                type: "remote",
+                url: options.mcp.url,
+                headers: { Authorization: `Bearer ${options.mcp.token}` },
+                oauth: false,
+                // Code Mode puts MCP tools behind opencode's own `execute`
+                // tool, which the rules deny.
+                codemode: false,
+                timeout: { execution: 600_000 },
+              },
             },
           },
         }
       : {}),
-    agent: {
-      [AGENT]: {
-        mode: "primary",
-        description: "Open Dungeon Master",
-        prompt: options.system,
-        permission,
-        tools,
-      },
+    agents: {
+      [AGENT]: { mode: "primary", description: TITLE, system: options.system, permissions },
     },
   };
 }
 
-export const OPENCODE_SESSION_RULES = (mcp: boolean) => [
-  { permission: "*", pattern: "*", action: "deny" },
-  ...(mcp ? [{ permission: "odm_*", pattern: "*", action: "allow" }] : []),
-];
+function globMatches(pattern: string, value: string): boolean {
+  const source = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+  return new RegExp(`^${source}$`).test(value);
+}
+
+// What an action may do under opencode's rules: the last rule matching it on
+// every resource decides, and a later rule for some resources that is not a
+// deny still opens that much. No rule at all counts as allow.
+export function opencodeEffect(rules: readonly OpencodeRule[], action: string): Effect {
+  let effect: Effect = "allow";
+  for (const rule of rules) {
+    if (!globMatches(rule.action, action)) {
+      continue;
+    }
+    if (rule.resource === "*") {
+      effect = rule.effect;
+    } else if (effect === "deny" && rule.effect !== "deny") {
+      effect = rule.effect;
+    }
+  }
+  return effect;
+}
+
+export function opencodeLockdownHolds(rules: readonly OpencodeRule[], mcp: boolean): boolean {
+  return (
+    OPENCODE_BUILT_IN_ACTIONS.every((action) => opencodeEffect(rules, action) === "deny") &&
+    opencodeEffect(rules, "odm_request_roll") === (mcp ? "allow" : "deny")
+  );
+}
+
+type OpencodeModelInfo = {
+  id: string;
+  providerID: string;
+  variants: Array<{ id: string }>;
+  limit: { context: number };
+};
+
+const EFFORTS: ReadonlySet<string> = new Set(["low", "medium", "high", "xhigh", "max"]);
 
 // Free models opencode's own service offers refuse to answer anything that
 // is not opencode's own app, so they are not offered.
-export function parseOpencodeModels(output: string): HarnessModel[] {
-  return output
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => /^[\w.-]+\/[\w.:@-]+$/.test(line))
-    .filter((line) => !line.startsWith("opencode/"))
+export function opencodeModels(models: readonly OpencodeModelInfo[]): HarnessModel[] {
+  return models
+    .filter((model) => model.providerID !== "opencode")
     // Which is the light one is the catalog's call, by price
     // (src/lib/model-registry/catalog.ts enrichHarnessModels).
-    .map((id) => ({ id, label: id }));
+    .map((model) => {
+      const id = `${model.providerID}/${model.id}`;
+      const efforts = model.variants.map((variant) => variant.id).filter((variant) => EFFORTS.has(variant));
+      return {
+        id,
+        label: id,
+        ...(model.limit.context > 0 ? { contextTokens: model.limit.context } : {}),
+        ...(efforts.length ? { efforts } : {}),
+      };
+    });
+}
+
+// opencode takes effort as the model's variant; a model that does not list
+// the admin's effort runs at its own default.
+export function opencodeVariant(
+  models: readonly OpencodeModelInfo[],
+  model: string,
+  effort: HarnessConfig["effort"],
+): string | undefined {
+  const found = models.find((entry) => `${entry.providerID}/${entry.id}` === model);
+  return effort && found?.variants.some((variant) => variant.id === effort) ? effort : undefined;
+}
+
+export function opencodeVersion(output: string): { version: string; supported: boolean } | null {
+  const match = /(\d+)\.(\d+)\.(\d+)/.exec(output);
+  return match ? { version: match[0], supported: Number(match[1]) >= 2 } : null;
+}
+
+// opencode.jsonc allows comments and trailing commas; JSON.parse does not.
+function stripJsonc(text: string): string {
+  let out = "";
+  for (let at = 0; at < text.length; at += 1) {
+    const char = text[at];
+    if (char === '"') {
+      const end = /"(?:[^"\\]|\\.)*"/y;
+      end.lastIndex = at;
+      const string = end.exec(text);
+      if (!string) {
+        return out + text.slice(at);
+      }
+      out += string[0];
+      at += string[0].length - 1;
+    } else if (char === "/" && text[at + 1] === "/") {
+      const next = text.indexOf("\n", at);
+      at = next < 0 ? text.length : next - 1;
+    } else if (char === "/" && text[at + 1] === "*") {
+      const next = text.indexOf("*/", at + 2);
+      at = next < 0 ? text.length : next + 1;
+    } else {
+      out += char;
+    }
+  }
+  return out.replace(/,(\s*[}\]])/g, "$1");
+}
+
+// The providers (and 1.x's `provider`, which opencode 2 converts) from one
+// global config file; nothing else in it reaches ODM's run.
+export function adminOpencodeProviders(text: string): Record<string, unknown> {
+  const parsed = JSON.parse(stripJsonc(text)) as { providers?: Record<string, unknown>; provider?: Record<string, unknown> };
+  return { ...parsed.provider, ...parsed.providers };
+}
+
+function readAdminProviders(env: Record<string, string>): Record<string, unknown> {
+  const dir =
+    env.OPENCODE_CONFIG_DIR ||
+    path.join(env.XDG_CONFIG_HOME || path.join(env.HOME || os.homedir(), ".config"), "opencode");
+  let providers: Record<string, unknown> = {};
+  for (const name of ["opencode.json", "opencode.jsonc"]) {
+    const file = path.join(dir, name);
+    if (existsSync(file)) {
+      try {
+        providers = { ...providers, ...adminOpencodeProviders(readFileSync(file, "utf8")) };
+      } catch (error) {
+        throw new Error(`${file} could not be read: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+  return providers;
+}
+
+type OpencodeSession = {
+  id: string;
+  metadata?: Record<string, unknown>;
+  location?: { directory?: string };
+};
+
+// Sessions a run left behind when ODM never closed it: ODM's tag, in a run
+// folder of this server's temp dir, and that folder gone. A live run's folder
+// exists until it closes, so no running table is touched. `tmpdir` is the
+// temp dir's real path, the form opencode reports (macOS's is a symlink,
+// Windows' may be a short name), compared without case on Windows.
+export function staleOdmSessions(
+  sessions: readonly OpencodeSession[],
+  options: { tmpdir: string; ignoreCase: boolean; exists: (dir: string) => boolean },
+): string[] {
+  const same = (a: string, b: string) => (options.ignoreCase ? a.toLowerCase() === b.toLowerCase() : a === b);
+  return sessions
+    .filter((session) => {
+      const directory = session.location?.directory ?? "";
+      return (
+        session.metadata?.openDungeonMaster === SESSION_TAG.openDungeonMaster &&
+        same(path.dirname(directory), options.tmpdir) &&
+        path.basename(directory).startsWith(RUN_DIR_PREFIX) &&
+        !options.exists(directory)
+      );
+    })
+    .map((session) => session.id);
+}
+
+export type OpencodeTurn = { text: string; inputTokens: number; outputTokens: number };
+
+type OpencodeEvent = { type: string; data: Record<string, unknown> };
+type OpencodeError = { type?: string; message?: string };
+
+function errorEvent(error: OpencodeError | undefined): HarnessEvent {
+  return {
+    type: "error",
+    kind: error?.type === "provider.auth" ? "signed-out" : error?.type === "provider.rate-limit" ? "limit" : "crash",
+    message: error?.message || "opencode could not finish the turn.",
+  };
+}
+
+// One event from opencode's stream, already known to be this run's session,
+// as what ODM hears. Updates `turn`; reasoning is never passed on, the
+// players must not see it.
+export function readOpencodeEvent(turn: OpencodeTurn, event: OpencodeEvent): HarnessEvent[] {
+  if (event.type === "session.text.delta") {
+    const delta = String(event.data.delta);
+    turn.text += delta;
+    return [{ type: "delta", text: delta }];
+  }
+  if (event.type === "session.step.ended") {
+    // opencode splits a step's prompt into uncached, cache-read and
+    // cache-written tokens, and its reply into text and reasoning; the
+    // ledger counts the whole prompt and everything generated, as an
+    // OpenAI-compatible backend reports them.
+    const tokens = event.data.tokens as { input: number; output: number; reasoning: number; cache: { read: number; write: number } };
+    turn.inputTokens += tokens.input + tokens.cache.read + tokens.cache.write;
+    turn.outputTokens += tokens.output + tokens.reasoning;
+    return [];
+  }
+  if (event.type === "session.execution.succeeded") {
+    const ended: HarnessEvent = {
+      type: "turn_end",
+      text: turn.text.trim(),
+      usage: { inputTokens: turn.inputTokens, outputTokens: turn.outputTokens },
+    };
+    Object.assign(turn, { text: "", inputTokens: 0, outputTokens: 0 });
+    return [ended];
+  }
+  if (event.type === "session.execution.failed") {
+    return [errorEvent(event.data.error as OpencodeError | undefined)];
+  }
+  // opencode retries a rate limit on its own backoff for as long as it
+  // lasts; the turn stops instead, as it does for the other programs.
+  if (event.type === "session.retry.scheduled" && (event.data.error as OpencodeError | undefined)?.type === "provider.rate-limit") {
+    return [errorEvent(event.data.error as OpencodeError)];
+  }
+  return [];
 }
 
 function freePort(): Promise<number> {
@@ -109,190 +319,273 @@ function freePort(): Promise<number> {
   });
 }
 
-async function start(options: HarnessStartOptions) {
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Polls until `check` gives a value or the directory's config had time to
+// load.
+async function waitFor<T>(check: () => Promise<T | null>): Promise<T | null> {
+  for (const until = Date.now() + LOAD_TIMEOUT_MS; Date.now() < until; await sleep(150)) {
+    const value = await check();
+    if (value !== null) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function unsupportedMessage(version: string | undefined) {
+  return `${version ? `opencode ${version} is installed` : "This opencode is older than 2.x"}; Open Dungeon Master drives opencode 2.x. Update it with \`opencode upgrade\`.`;
+}
+
+// A server on the run's own config folder. Resolves once it listens.
+async function startServer(options: {
+  binary: string;
+  env: Record<string, string>;
+  cwd: string;
+  config: unknown;
+  onExit: (code: number | null, stderr: string) => void;
+}) {
   const port = await freePort();
   const password = randomBytes(24).toString("base64url");
   const authHeader = `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}`;
   const base = `http://127.0.0.1:${port}`;
-  let closed = false;
-  let listening: () => void = () => undefined;
-  const ready = new Promise<void>((resolve) => {
-    listening = resolve;
+  const configDir = path.join(options.cwd, "opencode-config");
+  mkdirSync(configDir, { recursive: true });
+  let settle: (listening: boolean) => void = () => undefined;
+  const ready = new Promise<boolean>((resolve) => {
+    settle = resolve;
   });
-  const program = spawnProgram(options.binary, ["serve", "--hostname", "127.0.0.1", "--port", String(port), "--pure"], {
+  const program = spawnProgram(options.binary, ["serve", "--hostname", "127.0.0.1", "--port", String(port)], {
     cwd: options.cwd,
     env: {
       ...options.env,
+      OPENCODE_CONFIG_DIR: configDir,
+      OPENCODE_DISABLE_PROJECT_CONFIG: "1",
       OPENCODE_SERVER_PASSWORD: password,
-      OPENCODE_CONFIG_CONTENT: JSON.stringify(opencodeConfig({ system: options.system, mcp: options.mcp })),
+      OPENCODE_CONFIG_CONTENT: JSON.stringify(options.config),
       OPENCODE_DISABLE_AUTOUPDATE: "1",
     },
     onLine: (line) => {
       if (/listening/i.test(line)) {
-        listening();
+        settle(true);
       }
     },
     onExit: (code) => {
-      if (!closed) {
-        options.onEvent({ type: "error", kind: "crash", message: program.stderrTail().slice(-400) || `opencode exited (${code})` });
-        options.onEvent({ type: "exit", code });
-      }
+      settle(false);
+      options.onExit(code, program.stderrTail());
     },
   });
-  const startup = await Promise.race([
-    ready.then(() => true),
-    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 45_000)),
-  ]);
-  if (!startup) {
+  if (!(await Promise.race([ready, sleep(45_000).then(() => false)]))) {
     program.kill();
-    throw new Error("opencode's server did not start within 45 seconds.");
+    throw new Error(`opencode's server did not start: ${program.stderrTail().trim().slice(-400) || "no answer within 45 seconds"}`);
   }
 
-  const api = async (method: string, path: string, body?: unknown) => {
-    const response = await fetch(`${base}${path}`, {
+  // `missing` is the answer to a 404 where one is expected: the directory's
+  // config loads after the server starts, and until then the agent is not
+  // there.
+  const api = async <T>(method: string, route: string, body?: unknown, missing?: T): Promise<T> => {
+    const response = await fetch(`${base}${route}`, {
       method,
       headers: { authorization: authHeader, "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
+    if (response.status === 404 && missing !== undefined) {
+      return missing;
+    }
+    // opencode 1.x answers its 2.x API's paths with its web app's page: the
+    // run stops at its first request, before any prompt.
+    if (response.headers.get("content-type")?.includes("text/html")) {
+      throw new Error(unsupportedMessage(undefined));
+    }
     const text = await response.text();
     if (!response.ok) {
-      throw new Error(`opencode ${method} ${path}: ${response.status} ${text.slice(0, 200)}`);
+      throw new Error(`opencode ${method} ${route}: ${response.status} ${text.slice(0, 200)}`);
     }
-    try {
-      return text ? JSON.parse(text) : null;
-    } catch {
-      return text;
+    return (text ? JSON.parse(text) : null) as T;
+  };
+  return { program, base, authHeader, api };
+}
+
+async function sweepStaleSessions(api: <T>(method: string, route: string) => Promise<T>) {
+  const tmpdir = realpathSync.native(os.tmpdir());
+  const stale: string[] = [];
+  let cursor: string | null = null;
+  do {
+    const page: { data: OpencodeSession[]; cursor: { next: string | null } } = await api(
+      "GET",
+      `/api/session?search=${encodeURIComponent(TITLE)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+    );
+    stale.push(...staleOdmSessions(page.data, { tmpdir, ignoreCase: onWindows(), exists: existsSync }));
+    cursor = page.data.length ? page.cursor.next : null;
+  } while (cursor);
+  for (const id of stale) {
+    await api("DELETE", `/api/session/${id}`);
+  }
+}
+
+async function start(options: HarnessStartOptions) {
+  return startOpencode(
+    options,
+    opencodeConfig({ system: options.system, mcp: options.mcp, providers: readAdminProviders(options.env) }),
+  );
+}
+
+// start() with the config passed in: a check of the lockdown refusals hands
+// it a config without ODM's agent, or with rules that allow more.
+export async function startOpencode(options: HarnessStartOptions, config: unknown) {
+  let closed = false;
+  const server = await startServer({
+    binary: options.binary,
+    env: options.env,
+    cwd: options.cwd,
+    config,
+    onExit: (code, stderr) => {
+      if (!closed) {
+        options.onEvent({ type: "error", kind: "crash", message: stderr.slice(-400) || `opencode exited (${code})` });
+        options.onEvent({ type: "exit", code });
+      }
+    },
+  });
+  const { api, program } = server;
+  const abort = new AbortController();
+  let sessionId = "";
+
+  const shutDown = async () => {
+    closed = true;
+    abort.abort();
+    if (sessionId) {
+      const id = sessionId;
+      // A server that already went down cannot be asked, and one that hangs
+      // must not keep the run open: either way the next run's sweep deletes
+      // the session.
+      await Promise.race([
+        api("POST", `/api/session/${id}/interrupt`)
+          .then(() => api("DELETE", `/api/session/${id}`))
+          .catch(() => undefined),
+        sleep(5_000),
+      ]);
     }
+    program.kill();
+  };
+  // Refuses the run before any prompt: the server goes, and the bridge hears
+  // why before the start fails.
+  const refuse = async (kind: "lockdown" | "crash", message: string): Promise<never> => {
+    await shutDown();
+    options.onEvent({ type: "error", kind, message });
+    throw new Error(message);
   };
 
-  // Anything the admin's own config connected besides ODM goes.
-  try {
-    const servers = (await api("GET", "/mcp")) as Record<string, unknown> | null;
-    for (const name of Object.keys(servers ?? {})) {
-      if (name !== "odm") {
-        await api("POST", `/mcp/${encodeURIComponent(name)}/disconnect`).catch(() => undefined);
+  const turn: OpencodeTurn = { text: "", inputTokens: 0, outputTokens: 0 };
+  void (async () => {
+    const response = await fetch(`${server.base}/api/event`, {
+      headers: { authorization: server.authHeader },
+      signal: abort.signal,
+    });
+    if (!response.body) {
+      throw new Error("opencode's event stream has no body.");
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      let index = buffer.indexOf("\n\n");
+      while (index >= 0) {
+        const data = buffer
+          .slice(0, index)
+          .split("\n")
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trim())
+          .join("");
+        buffer = buffer.slice(index + 2);
+        index = buffer.indexOf("\n\n");
+        if (!data) {
+          continue;
+        }
+        const event = JSON.parse(data) as { type: string; data?: Record<string, unknown> };
+        if (sessionId && event.data && event.data.sessionID === sessionId) {
+          for (const heard of readOpencodeEvent(turn, { type: event.type, data: event.data })) {
+            options.onEvent(heard);
+          }
+        }
       }
     }
-  } catch {
-    // Older servers have no MCP listing; the deny rules still hold.
+  })().catch((error: unknown) => {
+    if (!closed) {
+      options.onEvent({ type: "error", kind: "crash", message: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  try {
+    await sweepStaleSessions(api);
+
+    const agent = await waitFor(() => api<{ data: { permissions: OpencodeRule[] } } | null>("GET", `/api/agent/${AGENT}`, undefined, null));
+    if (!agent) {
+      return await refuse("lockdown", `opencode did not load ODM's ${AGENT} agent, so no turn was started.`);
+    }
+    // The agent's rules as opencode resolved them (its defaults, any system
+    // config, ODM's), checked alone: the session's rules come on top and
+    // must not hide an agent that would allow more.
+    if (!opencodeLockdownHolds(agent.data.permissions, Boolean(options.mcp))) {
+      return await refuse("lockdown", "opencode's resolved rules allow more than ODM's tools, so no turn was started.");
+    }
+
+    const [providerID, ...rest] = options.model.split("/");
+    let model: { providerID: string; id: string; variant?: string } | undefined;
+    if (options.model && rest.length) {
+      const models = await api<{ data: OpencodeModelInfo[] }>("GET", "/api/model");
+      const variant = opencodeVariant(models.data, options.model, options.effort);
+      model = { providerID, id: rest.join("/"), ...(variant ? { variant } : {}) };
+    }
+    const created = await api<{ data: { id: string } }>("POST", "/api/session", {
+      title: TITLE,
+      agent: AGENT,
+      metadata: SESSION_TAG,
+      permissions: LOCKDOWN_RULES(Boolean(options.mcp)),
+      ...(model ? { model } : {}),
+    });
+    sessionId = created.data.id;
+
+    // A prompt sent before ODM's MCP server is connected goes out with no
+    // tools: the directory's MCP servers connect after the server starts.
+    if (options.mcp) {
+      let status = "not listed";
+      await waitFor(async () => {
+        const servers = await api<{ data: Array<{ name: string; status: { status: string; error?: string } }> }>("GET", "/api/mcp");
+        const odm = servers.data.find((entry) => entry.name === "odm");
+        status = odm ? [odm.status.status, odm.status.error].filter(Boolean).join(": ") : "not listed";
+        return status === "connected" || null;
+      });
+      if (status !== "connected") {
+        return await refuse("crash", `opencode could not reach ODM's tools (MCP status: ${status}), so no turn was started.`);
+      }
+      // "connected" comes before the tools are offered: opencode rebuilds
+      // its tool list from the server's 100 ms after it connects (2.0.27,
+      // with no event to say when), and a prompt before that still goes out
+      // with no tools.
+      await sleep(TOOLS_SETTLE_MS);
+    }
+  } catch (error) {
+    if (!closed) {
+      await shutDown();
+    }
+    throw error;
   }
 
-  const session = (await api("POST", "/session", {
-    title: "Open Dungeon Master",
-    permission: OPENCODE_SESSION_RULES(Boolean(options.mcp)),
-  })) as { id: string };
-
-  const partTypes = new Map<string, string>();
-  let busy = false;
-  const abort = new AbortController();
-
-  const finishTurn = async () => {
-    // The authoritative text is the last assistant message's text parts; the
-    // stream also carries reasoning, which the players must never see.
-    let text = "";
-    try {
-      const messages = (await api("GET", `/session/${session.id}/message`)) as Array<{
-        info?: { role?: string };
-        parts?: Array<{ type?: string; text?: string; synthetic?: boolean }>;
-      }>;
-      const last = [...(messages ?? [])].reverse().find((entry) => entry.info?.role === "assistant");
-      text = (last?.parts ?? [])
-        .filter((part) => part.type === "text" && !part.synthetic)
-        .map((part) => part.text ?? "")
-        .join("")
-        .trim();
-    } catch {
-      text = "";
-    }
-    options.onEvent({ type: "turn_end", text });
-  };
-
-  (async () => {
-    try {
-      const response = await fetch(`${base}/event`, { headers: { authorization: authHeader }, signal: abort.signal });
-      if (!response.body) {
-        return;
-      }
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) {
-          break;
-        }
-        buffer += decoder.decode(value, { stream: true });
-        let index = buffer.indexOf("\n\n");
-        while (index >= 0) {
-          const chunk = buffer.slice(0, index);
-          buffer = buffer.slice(index + 2);
-          index = buffer.indexOf("\n\n");
-          const data = chunk
-            .split("\n")
-            .filter((line) => line.startsWith("data:"))
-            .map((line) => line.slice(5).trim())
-            .join("");
-          if (!data) {
-            continue;
-          }
-          let event: { type?: string; properties?: Record<string, unknown> };
-          try {
-            event = JSON.parse(data);
-          } catch {
-            continue;
-          }
-          const props = event.properties ?? {};
-          if (props.sessionID && props.sessionID !== session.id) {
-            continue;
-          }
-          if (event.type === "message.part.updated") {
-            const part = props.part as { id?: string; type?: string } | undefined;
-            if (part?.id && part.type) {
-              partTypes.set(part.id, part.type);
-            }
-          } else if (event.type === "message.part.delta") {
-            if (props.field === "text" && partTypes.get(String(props.partID)) === "text") {
-              options.onEvent({ type: "delta", text: String(props.delta ?? "") });
-            }
-          } else if (event.type === "session.error") {
-            const error = props.error as { name?: string; data?: { message?: string } } | undefined;
-            const message = error?.data?.message ?? error?.name ?? "opencode reported an error.";
-            options.onEvent({
-              type: "error",
-              kind: error?.name === "ProviderAuthError" ? "signed-out" : /limit|quota|429/i.test(message) ? "limit" : "crash",
-              message,
-            });
-          } else if (event.type === "session.idle" && busy) {
-            busy = false;
-            await finishTurn();
-          }
-        }
-      }
-    } catch {
-      // The stream ends when the session closes.
-    }
-  })();
-
-  const [providerID, ...rest] = options.model.split("/");
-  const model = options.model && rest.length ? { providerID, modelID: rest.join("/") } : undefined;
   options.onEvent({ type: "ready", tools: [] });
 
   return {
     send(text: string) {
-      busy = true;
-      api("POST", `/session/${session.id}/prompt_async`, {
-        agent: AGENT,
-        ...(model ? { model } : {}),
-        parts: [{ type: "text", text }],
-      }).catch((error) => {
+      api("POST", `/api/session/${sessionId}/prompt`, { text }).catch((error: unknown) => {
         options.onEvent({ type: "error", kind: "crash", message: error instanceof Error ? error.message : String(error) });
       });
     },
     close() {
-      closed = true;
-      abort.abort();
-      api("POST", `/session/${session.id}/abort`).catch(() => undefined);
-      program.kill();
+      void shutDown();
     },
   };
 }
@@ -307,16 +600,49 @@ export const opencodeAdapter: HarnessAdapter = {
   lockdown: "removed",
   paints: false,
   async probe(binary, env) {
-    const version = await runProgram(binary, ["--version"], env, 15_000);
-    const installed = version.code === 0;
-    if (!installed) {
+    const printed = await runProgram(binary, ["--version"], env, 15_000);
+    if (printed.code !== 0) {
       return { installed: false, auth: { state: "unknown" }, models: [] };
     }
-    const listed = await runProgram(binary, ["models"], env, 45_000);
-    const models = parseOpencodeModels(listed.stdout);
+    const version = opencodeVersion(printed.stdout);
+    if (!version?.supported) {
+      return {
+        installed: true,
+        version: version?.version,
+        auth: { state: "unknown" },
+        models: [],
+        message: unsupportedMessage(version?.version),
+      };
+    }
+    // `opencode models` asks the admin's background service, which runs
+    // their plugins; a private server on the run's own config lists exactly
+    // what a run can use.
+    const cwd = mkdtempSync(path.join(os.tmpdir(), "odm-opencode-probe-"));
+    let models: HarnessModel[];
+    try {
+      const server = await startServer({
+        binary,
+        env,
+        cwd,
+        config: opencodeConfig({ system: "", mcp: null, providers: readAdminProviders(env) }),
+        onExit: () => undefined,
+      });
+      try {
+        models = opencodeModels((await server.api<{ data: OpencodeModelInfo[] }>("GET", "/api/model")).data);
+      } finally {
+        server.program.kill();
+      }
+    } finally {
+      try {
+        rmSync(cwd, { recursive: true, force: true });
+      } catch {
+        // Windows cannot remove the folder while opencode is still going
+        // down; it is a temp folder, and the probe's answer stands.
+      }
+    }
     return {
-      installed,
-      version: version.stdout.trim().split(/\s+/).pop(),
+      installed: true,
+      version: version.version,
       auth: models.length ? { state: "ready", kind: "api-key" } : { state: "signed-out" },
       models,
       lockdownProven: true,
