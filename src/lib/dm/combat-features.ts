@@ -31,6 +31,7 @@ import { tilesApart } from "@/lib/dm/board-reach";
 
 import { spendAction } from "@/lib/dm/action-budget";
 import { canAct } from "@/lib/dm/can-act";
+import { readiedReleaseFor } from "@/lib/dm/readied-release";
 import type { ConditionMetaMap } from "@/lib/dm/condition-logic";
 import { applyEnemyDamage, publishEncounter, resolveEnemyRef } from "@/lib/dm/enemy-damage";
 import { rollEnemySave } from "@/lib/dm/forced-save";
@@ -60,6 +61,18 @@ export function priceTheAction(
   encounter: Encounter | null,
   what: string,
 ): { commit: () => void } | { error: string } {
+  // Off their turn, a feature they readied: their reaction (readied-release.ts).
+  const readied = readiedReleaseFor(sheet, encounter, "feature");
+  if (readied && "error" in readied) {
+    return { error: readied.error };
+  }
+  if (readied) {
+    return {
+      commit: () => {
+        readied.release();
+      },
+    };
+  }
   const able = canAct({ sheet, encounter, kind: "action" });
   if (!able.ok) {
     return { error: able.error };

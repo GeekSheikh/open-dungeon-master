@@ -360,7 +360,6 @@ async function probeAppServer(binary: string, env: Record<string, string>) {
           models.push({
             id,
             label: entry.displayName ?? id,
-            cheap: /mini|nano/i.test(id),
             // The tiers this sign-in offers for the model (issue 255).
             fast: (entry.serviceTiers ?? []).some((tier) => /^(fast|priority)$/i.test(tier.id ?? "")),
           });

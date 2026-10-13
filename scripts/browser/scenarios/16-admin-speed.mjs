@@ -30,7 +30,17 @@ export default {
     // OpenAI's API with a model that has Fast: the choice is offered, and
     // its price is said once it is picked.
     await baseUrl.fill("https://api.openai.com/v1");
-    const model = storyBlock.locator("label").filter({ hasText: /^Model name/ }).locator("input").first();
+    // The model field is the registry's picker (PR 273): a text field while
+    // the backend lists nothing (OpenAI without a key here), a menu with
+    // "Type a model id…" once it does.
+    const model = storyBlock.locator('input[aria-label="Model name"]').first();
+    if (!(await model.isVisible().catch(() => false))) {
+      await t.tap(storyBlock.locator('button[aria-label="Model name"]').locator("visible=true").first());
+      const typeOwn = page.getByRole("option", { name: /Type a model id/ }).or(page.getByRole("menuitemradio", { name: /Type a model id/ })).locator("visible=true").first();
+      await eventually(() => typeOwn.count(), { label: "Type a model id in the model menu" });
+      await t.tap(typeOwn);
+    }
+    await eventually(() => model.isVisible(), { label: "the model field" });
     await model.fill("gpt-6-sol");
     const offered = storyBlock.locator(OFFERED).first();
     await eventually(() => offered.count(), { label: "Fast offered for gpt-6-sol on OpenAI" });
@@ -56,7 +66,11 @@ export default {
     await eventually(() => offered.count(), { label: "Fast offered again" });
     const save = page.locator(`${root}button`).filter({ hasText: /Save settings/ }).locator("visible=true").first();
     await save.scrollIntoViewIfNeeded();
-    await t.tap(save);
+    // The page's last control. In the app's phone emulation the fields above
+    // leave the visual viewport 48 px into the layout one, so a tap's hit
+    // point lands on the Storage section above the button; the click it
+    // answers is sent straight to it.
+    await (t.touch && t.app ? save.dispatchEvent("click") : t.tap(save));
     await eventually(async () => {
       const saved = await (await api.get(`${base}/api/admin/settings`)).json();
       return saved.config?.text?.speed === "fast";

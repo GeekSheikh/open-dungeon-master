@@ -6,14 +6,17 @@ backend is llama.cpp's `llama-server` (the app's defaults point at it); the
 legacy Ollama-native "Local" provider and any OpenAI-compatible server keep
 working.
 
-## The default DM model: qwen3.6-35b (llama.cpp, preferred)
+## The recommended DM model: Qwen3.6-35B on llama.cpp
 
-Campaign play defaults to llama-server (llama.cpp) on
-`http://127.0.0.1:8001/v1` with a model named `qwen3.6-35b`: base
-Qwen3.6-35B-A3B Q8 with a 64K context and Qwen's recommended non-thinking
-samplers. A short default context silently truncates the long DM prompt
-(party sheets, scene, story summary), which makes the model loop; the 64K
-window is what fixes that. Direct llama-server run:
+The app looks for llama-server (llama.cpp) on `http://127.0.0.1:8001/v1`
+first. No model is named in the code: a server that lists exactly one chat
+model runs it with the model field left blank, and with several the admin
+picks one (the guided setup, or Admin > Text model defaults). The model these
+settings are tuned for is base Qwen3.6-35B-A3B Q8 with a 64K context and
+Qwen's recommended non-thinking samplers. A short default context silently
+truncates the long DM prompt (party sheets, scene, story summary), which
+makes the model loop; the 64K window is what fixes that. Direct llama-server
+run:
 
 ```bash
 llama-server -m Qwen3.6-35B-A3B-Q8_0.gguf \
@@ -23,10 +26,12 @@ llama-server -m Qwen3.6-35B-A3B-Q8_0.gguf \
   --port 8001 --alias qwen3.6-35b
 ```
 
-In llama-server's router mode the same settings live in the model's preset
-INI instead of flags. Settings to replicate on any server: **context 65536,
-temperature 0.7, top-p 0.8, top-k 20, min-p 0**, plus tool calling enabled
-(`--jinja` for llama.cpp). If the server runs with `--api-key`, set
+`--jinja` enables tool calling, which the dice engine and every sheet
+mutation depend on. In llama-server's router mode the same settings live in
+the model's preset INI instead of flags. Settings to replicate on any server:
+**context 65536, temperature 0.7, top-p 0.8, top-k 20, min-p 0,
+presence_penalty 0**, plus tool calling enabled and a way to turn reasoning
+on for tool calls. If the server runs with `--api-key`, set
 `OPENAI_COMPAT_API_KEY` in `.env.server`. Then point the app at the server
 (admin panel or `OPENAI_COMPAT_BASE_URL`). Only an admin chooses backend
 addresses: a player's campaign always runs on the server's, and only an
@@ -34,12 +39,49 @@ admin's own campaign can set another in its Story AI panel.
 
 Prefer Ollama? The same model is committed as a Modelfile with the context
 and samplers baked in; build it and point the app at
-`http://127.0.0.1:11434/v1`:
+`http://127.0.0.1:11434/v1`, model `qwen3.6-dm`:
 
 ```bash
 ollama pull qwen3.6:35b-a3b-q8_0
 ollama create qwen3.6-dm -f models/qwen3.6-dm.Modelfile
 ```
+
+### Tool calls need thinking mode
+
+This is the setting that matters most for a working table, and it is not obvious.
+Under the long DM prompt, qwen3.6-35b in non-thinking mode surfaces tool calls only
+about one turn in five: it narrates fights instead of starting an encounter, asks a
+player to roll in prose instead of calling `request_roll`, and generally stops
+driving the engines. With reasoning enabled it calls tools reliably.
+
+The app handles this per request, so you do not configure it on the server:
+
+- It sends `chat_template_kwargs: { enable_thinking: true }` on the **tool-decision**
+  model calls only, and keeps the **final narration** call non-thinking so it still
+  streams to players smoothly.
+- Set `DM_THINKING=0` to force thinking off everywhere. That makes turns fast but tool
+  calls unreliable; it is a fallback, not a normal mode.
+
+### Reasoning budget and latency
+
+Left uncapped, a reasoning-enabled decision call can occasionally spiral for minutes
+on a hard turn. Cap the reasoning budget on the server to roughly 1024-2048 tokens
+(llama-server's `--reasoning-budget`, or the equivalent key in the preset INI).
+Expect the tradeoff: tool-decision calls run about 50-100s and a full turn about
+1.5-3 minutes on a single local GPU. Combat and multi-tool turns sit at the longer
+end.
+
+### presence_penalty
+
+Keep `presence_penalty` at 0 for the DM. A meaningful presence penalty under the long
+prompt suppresses tool calls (the model paraphrases the tool in prose instead of
+emitting it). The app pins `presence_penalty: 0` in every request so a server-side
+preset penalty cannot break tool calling; if you drive the model from somewhere else,
+set it to 0 there too.
+
+The pin is written after the per-role sampling settings are applied, and no sampling
+profile offers `presence_penalty`, so this cannot be reintroduced from a settings
+screen. Breaking dice rolling should not be one checkbox away.
 
 ## Local models (legacy "Local" provider, Ollama)
 
@@ -52,7 +94,7 @@ ollama pull gemma4:e2b-it-qat       # 4.3 GB
 ollama pull gemma4:e4b-it-qat       # 6.1 GB
 ollama pull gemma4:12b-it-qat       # 7.2 GB
 ollama pull gemma4:26b-a4b-it-qat   # 16 GB
-ollama pull gemma4:31b-it-qat       # 19 GB (default when none is configured)
+ollama pull gemma4:31b-it-qat       # 19 GB
 ```
 
 Measured on an M2 Max (32 GB), real story prompts, ~300-token turns. RAM is
@@ -82,6 +124,58 @@ Two implementation notes baked into the app:
 - If a local model's chat template doesn't support function tools, the turn
   is retried without the image tool, so the story continues without auto
   images.
+
+## Choosing a model: the catalog and discovery
+
+Every model field in Admin > Text model defaults lists what its backend
+serves right now, with a line under each row about what the model can do.
+The list is help, not a gate: **Type a model id…** takes any id, a model
+pulled or released after this version shipped is picked the same way, and a
+campaign's chosen model is never swapped for another because a list
+changed. Three sources feed the pickers (src/lib/model-registry):
+
+- **The backend's own list.** Ollama is asked `/api/tags` and `/api/show`
+  (each model's window and whether it calls tools, which outrank the
+  catalog); an OpenAI-compatible server or hosted provider is asked
+  `/v1/models`, with the key saved for that host and no other; the agent
+  programs use their own discovery (Codex's `model/list`, opencode's and
+  Grok's `models` commands, Claude Code's `initialize` answer). An
+  OpenAI-compatible images API is asked `/v1/models` and kept to its picture
+  models. No model is named in the code: nothing is preselected that the
+  backend does not list, and a backend that lists exactly one chat model
+  runs it with the model field left blank (a llama-server started with one
+  model, an Ollama with one pull). The picker shows this machine's memory
+  and GPU (from ComfyUI's `/system_stats` when one is running) and keeps
+  off the list the models that cannot run the storyteller: no tool calls,
+  no text, or more weights than the machine can hold. One click shows them.
+- **The model catalog**, from [models.dev](https://models.dev): context
+  windows, tool calling, reasoning, modalities, prices and deprecations for
+  the models each provider serves. The server starts from a bundled copy,
+  caches a fresh one beside the database (`data/model-catalog.json`) and
+  refreshes it once a day in the background; offline it keeps serving the
+  copy it has. The catalog is data read field by field, never code, and it
+  never writes to any setting. `ODM_MODEL_CATALOG=off` stops the fetch
+  ([configuration.md](configuration.md)); `node scripts/refresh-model-snapshot.mjs`
+  rewrites the bundled copy for a release.
+- **This server's own tests.** Each **Test backend** result is remembered
+  per host and model (no key, no address) and shown beside the model.
+
+`scripts/test-no-model-ids.mjs` keeps it that way: it fails on any string
+literal in `src/` that is a model ID in the bundled catalog, apart from the
+models ODM downloads and runs itself and the few still waiting to come out.
+
+The catalog's word on a model decides the flags: a model that writes no text
+or takes no tool calls is marked unfit for the storyteller, a deprecated one
+warns before its provider retires it, a small window warns that the table
+will forget turns, and a chosen model its backend no longer lists says so.
+An id the catalog has never heard of is simply unknown, and runs as typed.
+The same catalog sets the prompt budget: a hosted provider reached by URL
+(OpenRouter, DeepSeek, Groq and the rest) packs against the model's catalog
+window, capped at 128K like OpenAI; an Ollama model packs against the window
+Ollama reports for it, or the catalog's row for the same weights.
+
+A campaign's Story AI panel shows the catalog's line under its model fields
+too (no backend is asked, no key is involved).
 
 ## Connect a server
 

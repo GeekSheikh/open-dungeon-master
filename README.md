@@ -7,8 +7,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-d4ab3a?labelColor=151229&style=flat-square)](LICENSE)
 [![Node 22+](https://img.shields.io/badge/node-22%2B-d4ab3a?labelColor=151229&style=flat-square)](package.json)
 [![Ruleset: D&D 5e SRD 5.1](https://img.shields.io/badge/ruleset-D%26D%205e%20SRD%205.1-d4ab3a?labelColor=151229&style=flat-square)](docs/rules-coverage.md)
-[![Runs: fully on-device](https://img.shields.io/badge/runs-fully%20on--device-d4ab3a?labelColor=151229&style=flat-square)](#requirements)
-[![AI: local, API or CLI agent](https://img.shields.io/badge/AI-local%20%C2%B7%20API%20%C2%B7%20CLI%20agent-d4ab3a?labelColor=151229&style=flat-square)](#requirements)
+[![Runs: fully on-device](https://img.shields.io/badge/runs-fully%20on--device-d4ab3a?labelColor=151229&style=flat-square)](docs/install.md#requirements)
+[![AI: local, API or CLI agent](https://img.shields.io/badge/AI-local%20%C2%B7%20API%20%C2%B7%20CLI%20agent-d4ab3a?labelColor=151229&style=flat-square)](docs/install.md#requirements)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-e0703a?labelColor=151229&style=flat-square)](#)
 
 </div>
@@ -125,184 +125,21 @@ a secret story arc it regenerates as the campaign moves.
   it can only touch game state through server tools that are clamped, audit-logged,
   and published live to every player. It treats player messages as intent, not
   outcome.
-- **The AI drives the table.** It asks the server for rolls (`request_roll`), starts
-  and runs combat, plays NPCs and AI companions, moves the party, and decides when
-  to spotlight specific players for input.
-- **It follows a secret story arc.** Every campaign gets a hidden spine generated at
-  start and refreshed with a small clamped delta each time a chapter closes, so the
-  plot advances without the model rewriting history. Player-safe pieces surface as
-  the quest log; DM-only hooks stay hidden.
+- **The AI drives the table.** It asks the server for rolls, starts and runs combat,
+  plays NPCs and AI companions, moves the party, and decides when to spotlight
+  specific players for input.
+- **It follows a secret story arc.** Every campaign gets a hidden spine that
+  advances as chapters close; player-safe pieces surface as the quest log.
 
-The authoritative ledger of exactly what is enforced, what is guidance, and what is
-out of scope is [docs/rules-coverage.md](docs/rules-coverage.md).
-
-## Systems &amp; engines
-
-The app is a stack of about fifty focused engines. The split is deliberate: pure
-rules math lives in `src/lib/srd/` (database-free, each with its own test), and the
-server-side enforcement and tool handlers live in `src/lib/dm/`. The model narrates
-and makes creative calls, but it never adjudicates: every number below is computed
-and clamped by code.
-
-### Combat (server-enforced)
-
-- **PC attack engine** - resolves player weapon and spell attacks: weapon pick, to-hit, damage, AC adjudication, and feature riders.
-- **Enemy damage and enemy attack engines** - the single server path for damage landing on an enemy and for monster attacks rolled against PC AC; also owns encounter-finish.
-- **Death and dying engine** - death-save state at 0 HP, auto-rolled saves on skipped turns, massive-damage instant death, and stabilize/heal clears.
-- **Conditions engine** - the SRD condition table with round and save-ends durations and resistances, plus a named buff-condition registry (Bless, Shield of Faith, and the like).
-- **Concentration engine** - casting sets and breaks it, incoming damage forces the CON save server-side, and dropping to 0 HP ends it.
-- **Action economy and multiattack engine** - the per-turn action/bonus/reaction budget, Extra Attack, once-per-turn riders like Sneak Attack, Dash/Disengage, and Haste.
-- **Opportunity attack engine** - fires when a token leaves an enemy's reach and resolves the reaction attack server-side.
-- **Spell and cast engine** - derives save DC, half-on-save, damage type, and applied conditions from data; covers cast-at-enemy, cast-at-player, area-of-effect, and buffs.
-- **Aura engine** - position-aware Aura of Protection reaching nearby allies on the battle map, non-stacking.
-- **Initiative and encounter engine** - deterministic initiative order, enemy spawning, and the encounter turn pointer.
-
-### Character sheet rules
-
-- **Sheet derivation engine** - central compute of AC, saves, spell attack and DC, and passive scores from what the character actually is and wears.
-- **Armor and AC engine** - the SRD armor table plus AC math (DEX caps, STR requirements, shields), shared by the server and the character builder.
-- **Weapons engine** - the SRD weapon table with proficiency and the properties (finesse, thrown, reach, ammunition) the attack engine reads.
-- **Class features engine** - grants SRD and genre-class features by level and subclass, including subclass always-prepared spells.
-- **Feature effects engine** - turns feature names into typed mechanical riders (fighting styles, damage riders, defenses) and parses authored prose into them.
-- **Class resource pools engine** - Rage, Ki, Channel Divinity, Second Wind, Lay on Hands, Bardic Inspiration and the rest: counts, recharge type, and effects.
-- **Spell scaling engine** - cantrip tier scaling and per-slot damage and heal increases derived from SRD data rather than trusted to the model.
-- **Class options engine** - invocations, maneuvers, metamagic, pact boons, infusions, runes, and disciplines stored as choice-sourced features.
-- **ASI and point-buy engine** - ability-score-improvement thresholds (cap 20) and the standard 27-point point buy for creation.
-- **Rest engine** - short and long rest math: hit-dice recovery, slot and resource refill, and condition pruning.
-- **Multiclass engine** - ability prerequisites both ways, the shared multiclass slot table, per-class caster contribution, and a 3-class cap.
-
-### Transformations, pets, and companions
-
-- **Transformation and polymorph engine** - real beast stat blocks for Wild Shape and Polymorph, with overflow damage and form reversion.
-- **Pet and familiar engine** - familiars, the Beast Master companion, the Drakewarden drake, and story pets, each validated against its source feature.
-- **Companion engine** - full companion characters with their own sheet and bot user, added to initiative and the battle map and auto-leveled with the party.
-
-### Items and anti-cheat
-
-- **Magic item effects engine** - mechanical items (AC, save bonuses, resistances) gated by carried, equipped, and attuned state, feeding the same AC engine.
-- **Consumables and items logic** - healing-potion tiers, generic consumable detection, and ammunition lookup.
-- **Sheet mutation guard** - a server ceiling on DM-driven sheet edits that blocks illegitimate level, HP, gold, ability, and XP jumps no matter how the model is prompted.
-- **Inventory approval engine** - an optional mode that turns DM inventory and gold changes into player-approved proposals instead of applying them immediately.
-
-### Leveling and XP
-
-- **XP and leveling engine** - the XP thresholds and level-for-XP math (the level-up itself is applied through the player's own in-app flow).
-- **Milestone XP engine** - chapter-close awards, so roleplay-heavy campaigns still level.
-
-### World simulation
-
-- **Overworld and region map generation** - seeded value-noise terrain on a 96x72 grid with genre reskins, reconciling locations to anchors lazily as the party travels.
-- **Battle map generation** - seeded tactical maps (terrain, lighting, spawns, line of sight and cover, movement budgets, pathfinding), regenerable from the encounter.
-- **Location persistence** - structured per-area layout, exits, and connections so narration stays spatially consistent, plus an illustrated top-down map image.
-- **Living-world tick engine** - a zero-model-call heartbeat that advances world state on dice and computes encounter pressure after each narration.
-- **World arcs** - one or two escalating off-screen storylines that advance whether or not the party engages them.
-- **NPC agency** - once-per-chapter goal advancement for every tracked NPC with no model call, surfacing outcomes as rumors and world facts.
-- **World facts register** - authoritative player-visible and DM-only facts extracted from play and fed to prompts as canon or rumor.
-- **Social and NPC attitude system** - attitudes tracked across sessions and `social_check` rolls against attitude-derived DCs that can shift them.
-- **NPC roster hygiene** - NPCs the party has ignored for chapters archive out of the prompt and restore on a name mention, and close name matches the engine refuses to merge on its own ("Aldric" and "Alaric") queue for the lead to merge, rename, or dismiss. Merging keeps the old spelling as an alias; it never rewrites past narration.
-- **World utility engines** - CR-scaled treasure moved into real purses, object durability, and forced-march exhaustion via real CON saves.
-
-### Narrative
-
-- **Story arc and saga engine** - a three-tier secret spine (campaign-spanning saga, current-act beats, quest-scale sub-arcs) refreshed with clamped deltas and sequel chaining.
-- **Chapter engine** - chapters close on completed story beats rather than message volume, triggering XP, fact extraction, NPC agency, memory indexing, and a snapshot.
-- **Recap and compaction** - a rolling campaign summary and history compaction that keep prompts bounded.
-- **Chapter rewind and snapshots** - a full world-state snapshot at each chapter open; a lead-confirmed rewind restores a boundary after taking a safety copy.
-- **Narration reroll** - the lead rerolls a DM paragraph with optional guidance ("darker", "more dialogue") and browses the takes. Only the words change: the dice, the sheets and every resolved outcome stay byte-identical.
-- **Continue scene** - extends a narration that stopped short, in place. Not a turn: no counters, no chapter close, no world tick.
-- **Inline narration edit** - the lead fixes a typo or a wrong name directly, with every dice-roll marker preserved across the edit or the save refused.
-- **Director controls** - a one-turn steer the lead arms from the Direct composer mode: a canned event type, or a free-text direction sent privately, consumed exactly once. Players see that something is armed, never what it says.
-- **Arc beat editor** - reword, reorder, skip, set `[NOW]`, or add a single main beat instead of regenerating the whole spine. Beats that already played are immutable; they are a record, not a plan.
-- **Story export** - finished campaigns and chapters exported to DOCX, ODT, or HTML.
-
-### Memory and retrieval (RAG)
-
-- **Semantic recall and memory index** - MiniLM by default (384-dim) two-phase recall over chapter summaries then verbatim scene chunks, behind the `recall_story` tool.
-- **World lore builder** - lead-authored, embedded canon retrieved per turn, with `search_lore` searching lore, facts, notes, and chapter memory at once.
-- **House rules and rules manager** - embedded house-rules text plus structured variant toggles, retrieved into the prompt's variant and house-rules blocks.
-- **Per-turn context retrieval** - embeds the current moment once and rides only the most relevant lore and rule chunks into the prompt.
-- **Lore check** - a player-flagged consistency verifier that returns a verdict, citations, and a suggested rewrite.
-- **Pinned memories** - select a passage in any DM message and pin it; pins ride in every prompt under a hard token cap, and a pin that would blow the cap is refused rather than silently evicting an older one.
-- **Token-aware context budget** - per-section allocation with floors against the model's real context window, replacing a flat character count, with stable blocks ordered before volatile ones for prefix-cache hits.
-- **Context inspector** - a lead-only panel showing exactly what the DM was sent last turn, block by block, with token cost and the reason anything was dropped.
-- **Importance-tiered chapter LOD** - sealed chapters render as a full summary or a one-line synopsis by recency and importance, and degrade by tiering down before anything is dropped, so an old but pivotal chapter outlives a recent forgettable one.
-- **House-rule trigger keywords** - a rule reachable only by a word the party rarely uses no longer has to out-score everything else for one of three retrieval slots; a keyword hit admits it outright. Small enough rules documents skip retrieval entirely and ride whole.
-
-### AI and LLM integration
-
-- **Model client (dual provider)** - streaming against an OpenAI-compatible `/chat/completions` server (llama.cpp, LM Studio, vLLM, OpenAI, OpenRouter) or a local Ollama.
-- **Agent programs as the DM** - Claude Code, Codex, opencode or Grok Build, signed in on the server's computer, narrate on their own subscription. The program is started with none of its own tools; its only tools are the turn's DM tools over the server's MCP endpoint, so the same engines roll and clamp ([docs/agent-harness.md](docs/agent-harness.md)).
-- **Connected agents** - your own Claude Code, Codex or other MCP client connects to the server as you, scoped by a revocable token, to read campaigns, play your character or run a table from the DM seat.
-- **DM turn engine** - a persisted park/resume state machine and tool-calling loop (up to four rounds) that salvages malformed tool calls and streams filtered narration.
-- **DM prompt and tool families** - a rules-as-tools system prompt covering rolls, checks, encounters, casts, resources, rests, conditions, items, hazards, NPCs, notes, maps, and world.
-- **Engine boundary contract** - one explicit block naming the eight classes of fact the engine owns, so the model writes the prose and never the math.
-- **Halted-turn retry** - a crashed turn no longer wedges the table. The lead sends it back in and it resumes from the persisted conversation, so nothing is re-rolled and no context is lost.
-- **Context-window detection** - the real window is read from the server (llama.cpp `/props`, including the `--models-preset` router) rather than assumed, and cached per base URL and model.
-- **Per-role sampling** - separate story and utility sampling with named profiles, and a cloud-safe versus local-only parameter split so a local-only key never reaches a strict endpoint.
-- **Per-stage engine toggles** - every optional pipeline stage (compaction, recall, retrieval, chapter summary) is switchable per campaign with an engine-versus-model cost badge.
-- **Background-work visibility** - compaction, chapter seals, world ticks, lore checks and Asks surface as labelled chips with elapsed time instead of an opaque wait.
-- **TTS narration** - local Kokoro renders each DM message on the serial media queue, autoplayed latest-only with per-user mute.
-- **STT push-to-talk** - proxies audio to a local faster-whisper service, kept off the network.
-- **Portrait generation** - a one-shot ComfyUI character portrait at creation, with an icon fallback.
-- **Table language** - each campaign plays in one of 15 languages (English, Danish, Dutch, Finnish, French, German, Hungarian, Indonesian, Irish, Italian, Norwegian, Portuguese, Russian, Spanish, Swedish). The DM narrates and every prose call writes in it; nothing reads story text through English word lists: one utility call per narrated reply reads its claims (a hit, a kill, a spell, a roll asked in words) for the engine to check, word matching stems with each language's Snowball stemmer and stop list, and a place's kind of scene is picked from a list rather than read from its name. Rules names, the interface and the SRD rulebook stay English, image prompts are rewritten into English, and a non-English table needs a multilingual embedding model (below).
-
-### Human DM and the workshop
-
-- **Viewer roles and caps** - one pure decision for who sees the secret arc, real enemy numbers, and the unfogged map: the lead at an AI table, the DM seat at a human one.
-- **Adjudication facade** - a catalog of 64 engine adjudications the human DM invokes from the console, the same handlers the AI reaches through tools.
-- **Assisted-mode delegation** - the DM hands the AI the monsters' turns, beat read-alouds, or a counted cover stretch while they step away; the AI spends one answer per turn it takes.
-- **Story-beat capture** - a cadence nudge reminds the DM to jot beats between voice narration, and beats feed the same chapter summaries, recaps and exports an AI table gets.
-- **DM console panels** - initiative editing, bestiary and NPC forges, a map studio and map library, roll tables, encounter prep with live difficulty, odds, effects and scene tracking.
-- **Roll visibility** - public, DM-only, blind and self rolls, redacted rather than hidden so a secret roll still visibly happened.
-- **Workshop kind** - a campaign row that never plays: same content tables, same editors, no AI turns, measured against a stand-in target party.
-- **Content import** - a transactional planner/executor pair copies lore, locations, maps, NPCs, encounters, tables, storyboards and house rules from a workshop or campaign into a new campaign, renumbering collisions.
-- **Cloning** - whole workshops and campaigns clone (prep travels, transcript does not), library characters duplicate, and individual assets copy in place.
-
-### Live table audio and dice
-
-- **Voice SFU** - in-process mediasoup with floor-aware turn taking, side rooms, hand raising, and optional proximity, whisper/shout range, wall attenuation and downed-deafness rules.
-- **Ambience engine** - a 65-cue catalog in three layers (bed, music, sting) driven by the AI's tools, the DM's hand, or scene inference, with per-listener volume and TTS ducking.
-- **Dice sources** - per die shape, each player picks typed physical entry, a server roll, or a paired Pixels Bluetooth die; rolls auto-submit when no die needs typing.
-
-### Platform and multiplayer
-
-- **Event bus (SSE)** - per-campaign publish/subscribe, the real-time multiplayer backbone.
-- **Media queue** - a global serial GPU queue (one ComfyUI or TTS job at a time) since the iGPU shares memory with the DM model.
-- **Whispers and side-chat** - one-way DM-to-player whispers and private player-to-player threads that never enter the DM prompt or the shared stream.
-- **Ask, and the note back** - out-of-character questions answered from the campaign record without moving the story, plus a one-turn note a player can hand the DM. The note is drafted from your own thread, shown in an editable box, and only sent once you confirm the exact text.
-- **Turn, lead, and pending-roll flow** - lead controls, turn coalescing, and parked physical-dice roll requests.
-- **Auth** - session cookies with scrypt hashing, optional Discord OAuth, and reverse-proxy-aware origin resolution.
-- **Login throttle** - a per-username-and-IP lockout with backoff.
-- **Admin panel and global config** - admin-gated settings with database-over-env-over-default precedence and a sign-ups toggle.
-- **Encrypted storage** - single-writer SQLite encrypted at rest (ChaCha20) alongside the read-only Open5e content pack.
-
-## Requirements
-
-- **Node 22.18+, 24 or 26+** (npm). `npm install` pulls everything the app itself needs. Or
-  **Docker**, if you would rather not install a toolchain at all: see
-  [Run with Docker](#run-with-docker).
-- **A text model backend** (one of):
-  - [llama.cpp](https://github.com/ggml-org/llama.cpp) `llama-server` at
-    `http://127.0.0.1:8001` serving a model named `qwen3.6-35b`. This is the default
-    and preferred configuration (see below). Or:
-  - any other OpenAI-compatible server with tool calling: Ollama, LM Studio, vLLM,
-    TabbyAPI, KoboldCpp, or a remote API key like OpenAI or OpenRouter. Or:
-  - a CLI agent already installed and signed in on the server's computer: Claude
-    Code, Codex, opencode or Grok Build, running on the plan you already pay for.
-    Pick it in **Admin > Agent program**. Works for a server started with npm or
-    systemd, not inside the Docker image
-    ([docs/agent-harness.md](docs/agent-harness.md)).
-- **Optional services** (each feature simply stays off, or falls back to a
-  placeholder, without it):
-  - [ComfyUI](https://github.com/comfyanonymous/ComfyUI) at `:8188` for character
-    portraits, inline scene art, and battle maps
-    ([docs/image-generation.md](docs/image-generation.md))
-  - [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI) at `:8880` for DM
-    voice narration
-  - a faster-whisper server at `:8870` for push-to-talk
-    ([docs/configuration.md](docs/configuration.md))
+The fifty-odd engines behind this: [docs/engines.md](docs/engines.md). What is
+enforced and what is guidance: [docs/rules-coverage.md](docs/rules-coverage.md).
 
 ## Quick start
+
+You need **Node 22.18+, 24 or 26+** (or Docker) and **a storyteller**: a local
+model server such as llama.cpp or Ollama, an API key (OpenAI, OpenRouter or any
+OpenAI-compatible provider), or a CLI agent you already pay for (Claude Code,
+Codex, opencode, Grok Build). Pictures and voice are optional.
 
 ```bash
 git clone <this repo> && cd open-dungeon-master
@@ -311,527 +148,45 @@ npm run setup        # database key, content pack, memory model, production buil
 npm run start:lan    # 0.0.0.0:3005 so your party can reach it on the LAN
 ```
 
-When it starts, the server prints a link with a one-time setup code. Open it in a
-browser on the same computer, create the admin account, and the **guided setup**
-takes it from there, one question at a time:
+The server prints a link with a one-time setup code. Open it on the same
+computer, create the admin account, and the **guided setup** finds what is
+running on the machine and walks through the storyteller, pictures, voice,
+players and your own agent, one question at a time.
 
-- **The storyteller.** It looks at what is already running on the computer
-  (llama.cpp, Ollama, LM Studio, vLLM, KoboldCpp, TabbyAPI, Jan) and offers each
-  server with its models, the documented default preselected. Or paste an API key
-  (OpenAI, OpenRouter, any OpenAI-compatible provider) and pick from the models it
-  can reach. Or pick an agent program you already pay for (Claude Code, Codex,
-  opencode, Grok Build): it shows whether each is installed and signed in, and the
-  exact command to fix it when not. Or choose a person at the table. Each choice is
-  tested the way a campaign uses it before you move on.
-- **Pictures and voice.** ComfyUI, Kokoro and Whisper are found the same way, with
-  ComfyUI's checkpoints and Kokoro's voices listed to pick from. One OpenAI key
-  covers pictures, narration and dictation too.
-- **Players.** The addresses to send your friends, and whether accounts take an
-  invite code.
-- **Your own agent.** Connect Claude Code, Codex or opencode to the server over
-  MCP as you: it shows the one line for your program and lights up when the agent's
-  first call arrives.
-
-Everything it saves is an ordinary admin setting, so the admin panel shows what was
-chosen; run it again any time from **Admin > Guided setup**. An admin whose server
-has no working storyteller is offered it on the home screen too.
-
-`npm run setup` is safe to run again: it keeps an existing key, content pack and
-model, and it refuses to make a new key for a database that already exists (a new
-key cannot open it). With `npm run setup -- --no-build` it skips the build, for
-`npm run dev:lan` instead of `start:lan`. By hand, the same steps are:
-
-```bash
-# The database is encrypted at rest; generate a key once and keep it safe.
-echo "DB_ENCRYPTION_KEY=$(openssl rand -hex 32)" > .env.server
-
-# Build the content pack: spells, feats, items, subclasses, monsters.
-# Downloads from api.open5e.com once, then caches for offline re-runs.
-node scripts/import-open5e.mjs
-
-# Warm the local embedding model (MiniLM by default, ~86MB) into models/embeddings.
-# Optional: the app auto-downloads it on first use, but this pulls it now
-# so an offline machine has it ready.
-npm run fetch-model
-
-npm run build
-```
-
-The **embedding model** (used for semantic story recall and lore search) is no
-longer bundled in the repo. transformers.js downloads it from HuggingFace into
-`models/embeddings/` the first time the app needs it, so first use requires network;
-`npm run fetch-model` fetches it ahead of time.
-
-The default, `Xenova/all-MiniLM-L6-v2`, understands English only. For a table that
-plays in another language (its Table language setting), set a multilingual model in `.env.server`:
-
-```bash
-EMBEDDING_MODEL=Xenova/multilingual-e5-small
-EMBEDDING_DTYPE=q8
-```
-
-Only 384-dim models are supported; any other fails with an error naming it.
-You can switch on an existing install: see
-[Changing the embedding model](#changing-the-embedding-model).
-
-Then start the DM model with llama.cpp's `llama-server`. See
-[The default DM model](#the-default-dm-model-qwen36-35b-on-llamacpp) below for the
-exact command and settings.
-
-**The first account registered becomes the server admin, and creating it takes a
-one-time setup code.** While the server has no accounts it prints the code in its log
-at every start, with a link that fills it in; open the link, or enter the code in the
-sign-up form's **Setup code** field. This stops whoever reaches a fresh server first
-from claiming it. To pick the code yourself (for scripted
-installs), set `ODM_SETUP_CODE`. The first account cannot be made with Discord; create
-it with a password and link Discord afterwards in settings. To promote someone on an
-existing install: `node scripts/make-admin.mjs <username>`.
-
-### Content pack
-
-`node scripts/import-open5e.mjs` builds `data/content/open5e.sqlite`, the read-only
-pack holding every spell, feat, item, subclass, lineage and monster the character
-builder and the DM can reach. Raw API pages are cached under `data/content/raw/`, so
-later runs need no network; `--refresh` re-downloads them, and `CONTENT_DB_PATH`
-points the app at a pack somewhere else.
-
-Run it before your first session. The app still boots without the pack, but it falls
-back to the much smaller bundled SRD 5.1 data in `src/lib/srd/` and shows a hint to
-run the import, so players will find most content missing. The pack is not committed:
-it is third-party open-licensed content (OGL, ORC and CC-BY documents) rebuildable
-from the script in one command. See [docs/content.md](docs/content.md) and
-[docs/LICENSES.md](docs/LICENSES.md).
-
-For real sessions run the production server (`npm run setup` already built it;
-after pulling a newer version, build again):
-
-```bash
-npm run build
-npm run start:lan   # 0.0.0.0:3005
-```
-
-### Tests
-
-```bash
-npm test            # every scripts/test-*.mjs, one at a time, failures listed at the end
-npm run coverage    # the same, plus a code coverage report in coverage/index.html
-```
-
-Each test script is a plain Node program, so `node scripts/test-<name>.mjs` runs one
-on its own. Code coverage counts the `.ts` files under `src/`; `.tsx` is left out,
-since the scripts render no UI. It shows which code ran, not what a test checked.
-A script reports a failure by throwing or by calling `process.exit(1)`; setting
-`process.exitCode` on its own is not seen by the runner.
-
-## Run with Docker
-
-The image is the whole install. It carries the built app, the Open5e content pack and
-the default embedding model, so a fresh container needs no network and no setup steps.
-Only the AI services stay outside, on the host. The published image carries only the
-default embedding model: with another `EMBEDDING_MODEL`, each new container downloads it
-on first use (so it needs internet then), unless you build the image yourself with
-`docker compose up -d --build`, which bakes the model set in `.env` into it.
-
-Every GitHub release is published to both registries as linux/amd64 (an arm64 host builds
-its own image from a clone, below, and gets working embeddings the same way):
-
-```bash
-docker pull lebbi/open-dungeon-master:latest                 # Docker Hub
-docker pull ghcr.io/lebbitheplow/open-dungeon-master:latest  # GHCR
-```
-
-Grab the compose file and start it:
+With Docker instead:
 
 ```bash
 curl -O https://raw.githubusercontent.com/Lebbitheplow/open-dungeon-master/main/docker-compose.yml
-docker compose pull
 docker compose up -d        # http://localhost:3005
 ```
 
-`:latest` follows the newest release; pin one with `ODM_IMAGE_TAG=0.10.1` in `.env`. The
-compose file pulls from Docker Hub by default; set
-`ODM_IMAGE=ghcr.io/lebbitheplow/open-dungeon-master` in `.env` to use GHCR instead. To
-build the image yourself from a clone rather than pulling it, use
-`docker compose up -d --build`.
-
-Nothing else is required. On first boot the container generates a database encryption
-key, stores it in the data volume, and prints it once:
-
-```
-docker compose logs | head -20
-```
-
-**Back that key up.** The database is encrypted at rest with it and there is no
-recovery path without it. If you would rather manage it yourself, put
-`DB_ENCRYPTION_KEY=...` in a `.env` file next to `docker-compose.yml` before the first
-start; an explicit key always wins over the stored one.
-
-The same log shows the one-time **setup code** that creating the first (admin) account
-needs, and a link that fills it in, in a banner that repeats at every start until that
-account exists:
-
-```
-docker compose logs | grep -A12 "no accounts yet"
-```
-
-Open the link and the guided setup follows the first account, as in the
-[Quick start](#quick-start). From inside the container it looks for your AI services on
-the host as `host.docker.internal`, so a model server on the host must listen on
-`0.0.0.0`, not only `127.0.0.1`.
-
-### Pointing at your AI services
-
-The container reaches the host through `host.docker.internal`, so llama.cpp on
-`127.0.0.1:8001` becomes `http://host.docker.internal:8001/v1`. Every URL is
-overridable in `.env`; copy [.env.docker.example](.env.docker.example) for the full
-list.
-
-```bash
-cp .env.docker.example .env    # then edit, then: docker compose up -d
-```
-
-On Linux you can instead share the host network stack, which makes the plain
-`127.0.0.1` defaults work exactly as they do in a host install:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.host-net.yml up -d
-```
-
-### Data, backups and maintenance
-
-Six named volumes hold everything worth keeping: `odm-data` (the encrypted database
-and the generated key), `odm-uploads` (avatars and portraits), `odm-generated` (scene
-art and maps), `odm-audio` (cached narration), `odm-speech` (the built-in speech
-recognition model, once downloaded) and `odm-home` (an agent program's sign-in).
-`docker compose down` leaves them alone; `docker compose down -v` destroys them.
-
-An agent program (Codex, Claude Code, opencode) can narrate from inside the
-container: build with `AGENT_PROGRAMS=@openai/codex` in `.env` and sign in once
-through `docker compose exec`. See [docs/agent-harness.md](docs/agent-harness.md).
-
-Maintenance scripts need the database key, so run them through the entrypoint, which
-loads it:
-
-```bash
-docker compose exec open-dungeon-master ./scripts/docker-entrypoint.sh \
-  node scripts/make-admin.mjs <username>
-```
-
-**Run exactly one container.** The app is a single synchronous SQLite writer with an
-in-process event bus, so it cannot be replicated or pointed at a shared volume from two
-hosts. See [Storage and the single-writer rule](#storage-and-the-single-writer-rule).
-
-To move to a newer release: `docker compose pull && docker compose up -d`. The volumes
-carry over. If you build locally instead, `docker compose up -d --build` refreshes the
-content pack from api.open5e.com, so the build needs network; the running container
-never does.
-
-### Publishing (maintainers)
-
-[.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml) builds and
-pushes whenever a GitHub release is published. A release tagged `v0.10.1` publishes
-`0.10.1`, `0.10` and, unless it is marked as a pre-release, `latest`. The workflow then
-starts the pushed image and waits for `/api/health` before it counts as successful, and
-it can be re-run by hand from the Actions tab.
-
-**GHCR needs no setup** - it authenticates with the built-in `GITHUB_TOKEN`. A brand new
-package is private, so make it public once (Packages > open-dungeon-master > Package
-settings > Change visibility) for other people to pull it.
-
-**Docker Hub is optional.** Set two repository secrets and it publishes there too;
-without them the workflow succeeds and publishes to GHCR only.
-
-- `DOCKERHUB_USERNAME` - your Docker ID, shown in the top-right menu on hub.docker.com.
-  It is not necessarily your GitHub username, even if you sign in through GitHub.
-- `DOCKERHUB_TOKEN` - Account settings > Personal access tokens, Read/Write scope.
-  Signing in through GitHub OAuth does not change this; a token is still how CI
-  authenticates.
-
-To publish under a different Docker ID, change `DOCKERHUB_IMAGE` in the workflow and the
-`image:` default in `docker-compose.yml` to match.
-
-## The default DM model (qwen3.6-35b on llama.cpp)
-
-The app defaults to llama.cpp's `llama-server` at `http://127.0.0.1:8001/v1` serving
-Qwen3.6-35B-A3B (a MoE model, q8) under the model name `qwen3.6-35b`, with a **64K
-context window** and Qwen's recommended samplers. A small default context silently
-truncates the DM prompt (party sheets, scene, story summary), which makes the model
-loop; the 64K window is what makes the difference. Run it:
-
-```bash
-llama-server -m Qwen3.6-35B-A3B-Q8_0.gguf \
-  -c 65536 --jinja \
-  --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0 \
-  --temp 0.7 --top-p 0.95 --top-k 20 --min-p 0.0 \
-  --port 8001 --alias qwen3.6-35b
-```
-
-`--jinja` enables tool calling, which the dice engine and every sheet mutation depend
-on. In llama-server's router mode the same settings live in the model's preset INI
-instead of flags. If your server runs with `--api-key`, put the key in `.env.server`
-as `OPENAI_COMPAT_API_KEY`.
-
-### Tool calls need thinking mode
-
-This is the setting that matters most for a working table, and it is not obvious.
-Under the long DM prompt, qwen3.6-35b in non-thinking mode surfaces tool calls only
-about one turn in five: it narrates fights instead of starting an encounter, asks a
-player to roll in prose instead of calling `request_roll`, and generally stops
-driving the engines. With reasoning enabled it calls tools reliably.
-
-The app handles this per request, so you do not configure it on the server:
-
-- It sends `chat_template_kwargs: { enable_thinking: true }` on the **tool-decision**
-  model calls only, and keeps the **final narration** call non-thinking so it still
-  streams to players smoothly.
-- Set `DM_THINKING=0` to force thinking off everywhere. That makes turns fast but tool
-  calls unreliable; it is a fallback, not a normal mode.
-
-### Reasoning budget and latency
-
-Left uncapped, a reasoning-enabled decision call can occasionally spiral for minutes
-on a hard turn. Cap the reasoning budget on the server to roughly 1024-2048 tokens
-(llama-server's `--reasoning-budget`, or the equivalent key in the preset INI).
-Expect the tradeoff: tool-decision calls run about 50-100s and a full turn about
-1.5-3 minutes on a single local GPU. Combat and multi-tool turns sit at the longer
-end.
-
-### presence_penalty
-
-Keep `presence_penalty` at 0 for the DM. A meaningful presence penalty under the long
-prompt suppresses tool calls (the model paraphrases the tool in prose instead of
-emitting it). The app pins `presence_penalty: 0` in every request so a server-side
-preset penalty cannot break tool calling; if you drive the model from somewhere else,
-set it to 0 there too.
-
-The pin is written after the per-role sampling settings are applied, and no sampling
-profile offers `presence_penalty`, so this cannot be reintroduced from a settings
-screen. Breaking dice rolling should not be one checkbox away.
-
-### The same model on other LLM software
-
-The setup is pure settings, so it ports to any OpenAI-compatible server with tool
-calling. The key settings to replicate anywhere: **context 65536, temperature 0.7,
-top-p 0.95, top-k 20, min-p 0, presence_penalty 0**, plus a way to enable reasoning
-for tool calls. Then point the app at your server (admin panel, campaign Text Model
-settings, or `OPENAI_COMPAT_BASE_URL`). For Ollama, the committed
-[Modelfile](models/qwen3.6-dm.Modelfile) bakes the same settings in:
-
-```bash
-ollama pull qwen3.6:35b-a3b-q8_0
-ollama create qwen3.6-dm -f models/qwen3.6-dm.Modelfile
-# then point the app at http://127.0.0.1:11434/v1, model qwen3.6-dm
-```
-
-More backends and model guidance: [docs/text-backends.md](docs/text-backends.md).
-
-## Image generation (ComfyUI)
-
-ComfyUI at `COMFYUI_URL` (default `http://127.0.0.1:8188`) drives three things:
-character portraits generated once at character creation, inline scene art during
-play, and the top-down battle maps. Any checkpoint works; the genre preset supplies
-the art style. If ComfyUI is down or busy, these features fail soft to a placeholder
-or a plain icon and the session keeps going.
-
-All GPU-heavy media (ComfyUI images and TTS) run on a **single serial media queue**.
-On a shared-memory iGPU the image model and the DM model compete for the same pool,
-so jobs are serialized to avoid out-of-memory stalls rather than run in parallel.
-Details in [docs/image-generation.md](docs/image-generation.md). Installing ComfyUI
-and pointing the server at it, step by step:
-[docs/media-setup.md](docs/media-setup.md).
-
-## Voice (TTS and push-to-talk)
-
-Step-by-step setup for narration and dictation (Kokoro in Docker, any
-OpenAI-compatible speech server, the built-in Whisper):
-[docs/media-setup.md](docs/media-setup.md).
-
-- **DM narration**: [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI) at
-  `KOKORO_URL` (default `http://127.0.0.1:8880`) renders each DM message to speech on
-  the media queue, with a per-campaign voice and per-user mute / volume / replay.
-  Admin > Speech can point narration at any OpenAI-compatible speech server instead
-  (its own address, model and key), test it, or switch it off; campaigns pick from
-  the voices that server lists, or type a custom one. A passage that could not be
-  read aloud says why at the table.
-- **Push-to-talk**: a faster-whisper server at `STT_URL` (default
-  `http://127.0.0.1:8870`, model `STT_MODEL`) transcribes your voice with a
-  confirm-then-send step.
-- **Ambience and music**: a library of public-domain cues (dungeons, forests,
-  deserts, rivers, towns, crowds, taverns, wind, plus music and one-shot
-  stings) that the AI DM, a human DM, or the engine following the scene can
-  trigger from the table's sound panel. Volume and mute are per listener. The
-  library ships with the project: public-domain and Creative Commons
-  recordings, each credited on the licenses page. See
-  [docs/configuration.md](docs/configuration.md#ambience-and-music).
-
-## Configuration and settings precedence
-
-Most things are configurable in the app itself. When the same setting exists in
-several places, the order is:
-
-1. **Campaign settings** (in-game Text Model / image panels), which always win
-2. **Admin panel** (`/admin`, stored in the database)
-3. **Environment variables** (`.env.server`, see
-   [docs/configuration.md](docs/configuration.md))
-4. Built-in defaults
-
-Secrets (API keys, `DB_ENCRYPTION_KEY`, Discord credentials) belong in `.env.server`
-or the admin panel, never in code or `.env.local`.
-
-## Admin panel
-
-Log in as an admin and open `/admin` (linked from the account menu):
-
-- **Guided setup**: the storyteller, pictures, voice, sign-ups and your own agent,
-  one question at a time, with what runs on the computer found and filled in (see
-  [Quick start](#quick-start)).
-- **Server settings**: default text model backend / URL / API key, ComfyUI and
-  image-worker URLs and checkpoint, TTS / STT URLs, Discord sign-in credentials, and
-  the sign-up toggle (close registration once your party is in).
-- **Users**: list everyone, promote / demote admins, delete accounts, and reset
-  passwords; a temporary password is shown once, and the user must set a new one at
-  their next login.
-
-## Discord sign-in (optional)
-
-1. Create an application at <https://discord.com/developers/applications>.
-2. Under OAuth2, add the redirect URI `<public-url>/api/auth/discord/callback` using
-   the exact URL players reach the app on: `http://<lan-host>:3005/...` on a LAN, or
-   `https://your.domain/...` behind a reverse proxy.
-3. Put the Client ID and Client Secret in the admin panel (or `DISCORD_CLIENT_ID` /
-   `DISCORD_CLIENT_SECRET` in `.env.server`).
-4. Behind a reverse proxy: set the **Public URL** in the admin panel's Server section
-   (or `APP_PUBLIC_URL` in `.env.server`) to the address players use, e.g.
-   `https://your.domain`.
-
-The "Sign in with Discord" button appears automatically once both are set. Existing
-users can link Discord to their account from Settings.
-
-## Voice chat (optional)
-
-The table can talk over live voice, in the lobby while everyone is still
-building characters and at any point during play. The server runs its own SFU
-(mediasoup) in-process, so there is no third-party service, no account and no
-audio leaving your machine.
-
-Voice is **off by default**: set `VOICE_ENABLED=1` to turn it on. It needs two
-more things, and both are easy to miss:
-
-1. **HTTPS.** Browsers block microphone access on plain http, so voice needs a
-   reverse proxy with a certificate. `localhost` is exempt, so a single-machine
-   install works as-is. (The push-to-talk speech-to-text button has always had
-   this requirement too.)
-2. **One extra open port, UDP and TCP.** Default `44444`. The audio is not HTTP
-   and cannot go through your reverse proxy: open the port on the firewall
-   pointing straight at the host. It is a single port, not a range, however
-   many tables are running.
-
-```bash
-VOICE_ENABLED=1
-VOICE_RTC_PORT=44444
-# The address a player's BROWSER can reach this host on. Required for Docker
-# or any NAT; leave empty only for a localhost-only install.
-VOICE_ANNOUNCED_IP=203.0.113.10
-# Optional: announce a hostname instead of the raw IP. Wins when set.
-VOICE_DOMAIN=voice.example.com
-```
-
-Whatever is announced must resolve directly to the host. If your site sits
-behind a Cloudflare proxy, point voice at the origin IP, or give `VOICE_DOMAIN`
-a DNS-only "grey cloud" record: a proxied hostname resolves to Cloudflare, which
-does not carry UDP, and the call will connect and then stay silent. Full
-details, including the trade this makes with origin-IP privacy, are in
-[docs/configuration.md](docs/configuration.md).
-
-Because the server already knows where every token stands and whose turn it is,
-voice can do things a separate call cannot:
-
-- **Turn-taking** rides the floor the table already has (open, hold, spotlight,
-  initiative). By default the panel just shows whose turn it is; a table that
-  wants it can have players off the floor muted server-side. The DM is never
-  muted, and anyone who cannot speak gets a Raise hand button.
-- **Proximity**, off by default: distance on the battle map decides who hears
-  whom, with whisper (5 ft) / normal / shout (120 ft), walls that muffle rather
-  than block, and an option for downed characters to stop hearing the table.
-  The DM always hears everyone.
-- **Side rooms** the DM can open and move people between, for a private word or
-  a split party. Moving somebody is instant, with no gap in their audio.
-
-Each campaign turns voice and each rule on or off in its settings, and a server
-owner can disable it entirely with `VOICE_ENABLED=0`. Full details in
-[docs/configuration.md](docs/configuration.md).
-
-## Physical and Bluetooth dice
-
-With the campaign's dice policy set to allow real dice, each player can opt in and
-then choose, per die shape, where that die's numbers come from:
-
-- **Type it in**: roll your physical die and enter the result; the DM turn parks
-  until the table's dice are in.
-- **Server roll**: the server rolls that die for you with a cryptographic RNG, so
-  a mixed handful (your d20, its damage dice) still submits in one go.
-- **Pixels Bluetooth dice**: pair a [Pixels](https://gamewithpixels.com/) die and
-  its rolls fill in as they land, with a blink-to-identify button and automatic
-  fallback to typing if it disconnects. Web Bluetooth requires a Chromium-based
-  browser and HTTPS (localhost is exempt), the same requirement voice has.
-
-When every die in a request is covered by a Pixel or the server, the roll submits
-itself as the last die settles. Dice-source choices are stored in the browser they
-were made in, per device, and the d100 pairs no single Pixel, so it stays typed or
-server-rolled.
-
-## Storage and the single-writer rule
-
-All state lives in a local SQLite database at `data/local-roleplay.sqlite` (override
-with `SQLITE_DB_PATH`), encrypted at rest with the `DB_ENCRYPTION_KEY` from
-`.env.server`; losing the key means losing the data. The read-only Open5e content
-pack (`data/content/open5e.sqlite`) stays unencrypted. The database driver is
-synchronous and the app assumes **one Next.js process owns the database file**. Do
-not run `npm run dev` and a production service against the same `data/` directory;
-point dev at a scratch database with `SQLITE_DB_PATH`.
-
-The single-process assumption goes beyond the database: the live event bus, the
-DM turn queue, and the voice-chat rooms are all in-process state. Running two
-instances behind a load balancer would split the table across processes, and a
-restart ends any voice call in progress (players simply rejoin). One instance is
-the supported shape.
-
-### Changing the embedding model
-
-Story recall and lore search compare new embeddings with the ones already stored,
-and embeddings from two different models compare without an error but rank at
-random. So the database records which model and dtype built its vectors, and you
-can change `EMBEDDING_MODEL` or `EMBEDDING_DTYPE` at any time: set the new values and
-restart the server.
-
-At its next start the server sees the change before it serves anything, clears the
-old vectors and re-embeds the whole story (lore, notes, house rules, facts, chapter
-summaries and every scene) in the background, logging a line when it starts and when
-it is done (a campaign with 600 scenes takes about 15 seconds on a desktop CPU).
-Nothing else in the database is touched. Until a given entry is re-embedded, search
-finds it by keyword only, so a table can keep playing meanwhile. Restoring a backup
-made under another model is handled the same way.
-
-`node scripts/backfill-embeddings.mjs` refuses to run against a database indexed with
-another model; start the server once first.
-
-## Campaign plugins
-
-Campaigns can run in a **world pack**: a single JSON manifest that renames the
-rules into a setting, with its own races, classes, spells, gear, monsters,
-factions and lore, plus a brief telling the DM how that world sounds. It is a
-pure name mapping. Every mechanic stays 5e, character sheets keep storing
-canonical names, and a character built in one world still works in another.
-
-Admins browse, install and remove packs under **Admin, Campaign plugins**, either
-from a registry or by uploading a `.json` by hand. A registry of community packs
-is built in, so a fresh install has something to browse; point a server somewhere
-else with the **World registry URL** setting or `WORLD_REGISTRY_URL`, or set
-either to `off` to browse none. Listing is not endorsing, and nothing installs
-until an admin installs it.
-
-Writing one is documented in [docs/worlds.md](docs/worlds.md), with
-`src/lib/worlds/bundled/saltmarch.json` as the worked example.
+## Documentation
+
+- **Getting started**
+  - [Install and first run](docs/install.md): requirements, the guided setup, setup by hand, the first admin account, the content pack, tests
+  - [Run with Docker](docs/docker.md): the image, reaching AI services on the host, volumes and maintenance, publishing
+  - [Backups and moving to another server](docs/backup-restore.md)
+- **The storyteller**
+  - [Text backends](docs/text-backends.md): the recommended DM model and its settings, Ollama, choosing a model (the models.dev catalog, no model named in code), OpenAI and other APIs, long-story memory
+  - [Agent programs as the DM](docs/agent-harness.md): Claude Code, Codex, opencode and Grok Build on their own sign-in
+- **Pictures, voice and sound**
+  - [Setting up pictures, narration and dictation](docs/media-setup.md): ComfyUI, an OpenAI key, Kokoro, Whisper
+  - [Image generation](docs/image-generation.md): the image models, measured hardware, AMD GPUs
+  - [Voice chat and real dice](docs/voice-and-dice.md): live voice with turn-taking and proximity, physical and Pixels dice
+- **Running a server**
+  - [Settings, admin panel and sign-in](docs/server-admin.md): which setting wins, the admin panel, Discord sign-in
+  - [Configuration reference](docs/configuration.md): every environment variable, phones, sharing a server, ambience
+  - [Storage and the single-writer rule](docs/storage.md): the encrypted database, one process per database, changing the embedding model
+  - [Player agents and webhooks](docs/player-webhooks.md): a player's own agent, woken on its turn
+  - [Multiple characters per player](docs/multi-character-players.md)
+- **Content and worlds**
+  - [Campaign plugins (world packs)](docs/worlds.md): renaming the rules into a setting, the registry, building a pack in the workshop
+  - [Workshop portability](docs/workshop-portability.md): bundles, imports and shared workshops
+  - [The content pack](docs/content.md) and [licenses](docs/LICENSES.md)
+- **How it works**
+  - [The engines](docs/engines.md): combat, sheets, world simulation, narrative, memory, AI integration, the human DM and the workshop
+  - [Rules coverage](docs/rules-coverage.md): what is enforced, what is guidance, what is out of scope
+  - [Roadmap](docs/ROADMAP.md)
 
 ## Credits and licenses
 

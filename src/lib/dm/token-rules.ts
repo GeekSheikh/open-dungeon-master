@@ -1,3 +1,4 @@
+import { readiedReleaseFor } from "@/lib/dm/readied-release";
 import type { Campaign } from "@/lib/db/campaigns";
 import type { DmTurn } from "@/lib/db/dm-turns";
 import type { Encounter, EncounterEnemy } from "@/lib/db/encounters";
@@ -184,14 +185,24 @@ export function walkCharacter(
   destination: XY,
   options: { drag?: boolean } = {},
 ): Record<string, unknown> {
-  const allowed = canAct({ sheet, encounter, kind: "move" });
-  if (!allowed.ok) {
-    return { error: allowed.error };
+  // Off their turn, the move they readied (SRD 5.1, Ready): their reaction,
+  // up to their full speed, their own turn's movement untouched.
+  const readied = readiedReleaseFor(sheet, encounter, "move");
+  if (readied && "error" in readied) {
+    return { error: readied.error };
+  }
+  if (!readied) {
+    const allowed = canAct({ sheet, encounter, kind: "move" });
+    if (!allowed.ok) {
+      return { error: allowed.error };
+    }
   }
   if (destination.x < 0 || destination.y < 0 || destination.x >= map.width || destination.y >= map.height) {
     return { error: `(${destination.x},${destination.y}) is outside the ${map.width}x${map.height} map.` };
   }
-  const { speed, fullTiles } = pcMoveBudget(campaign.id, encounter, map, sheet, token);
+  const budget = pcMoveBudget(campaign.id, encounter, map, sheet, token);
+  const speed = budget.speed;
+  const fullTiles = readied ? speedToTiles(speed) : budget.fullTiles;
   if (speed <= 0 || fullTiles <= 0) {
     return { error: `${sheet.name} has no movement left this turn.${stillAt(listTokens(map.id), token)}` };
   }
@@ -258,7 +269,7 @@ export function walkCharacter(
     return { error: `There is no room beside (${walk.at.x},${walk.at.y}) to set down the creature ${sheet.name} drags. Choose another square.` };
   }
   const spent = walk.spent * factor + standCost;
-  moveToken(token.id, walk.at.x, walk.at.y, token.movedThisRound + spent);
+  moveToken(token.id, walk.at.x, walk.at.y, token.movedThisRound + (readied ? 0 : spent));
   for (const entry of carried) {
     moveToken(entry.token.id, entry.at.x, entry.at.y, entry.token.movedThisRound);
   }
@@ -279,17 +290,20 @@ export function walkCharacter(
     : false;
   const opportunity = resolveOpportunityAttacks(campaign, sheet.id, origin, walk.at, disengaged, walked);
   if (opportunity.downedAt) {
-    moveToken(token.id, opportunity.downedAt.x, opportunity.downedAt.y, token.movedThisRound + spent);
+    moveToken(token.id, opportunity.downedAt.x, opportunity.downedAt.y, token.movedThisRound + (readied ? 0 : spent));
     publishEphemeral(campaign.id, "battle_map_updated", {});
   }
   const landed = opportunity.downedAt ?? walk.at;
+  // The walk was made, so the readied move is released, struck down or not.
+  const released = readied ? readied.release() : {};
   const zoneEffects = opportunity.downedAt ? [] : zonesAfterMove(campaign, encounter.id, { kind: "pc", refId: sheet.id }, origin, walked);
   return {
     ok: true,
     name: token.name,
     at: `(${landed.x},${landed.y})`,
     movementSpent: `${spent * 5} ft`,
-    movementLeft: `${(fullTiles - spent) * 5} ft`,
+    movementLeft: readied ? "their own turn's movement, untouched by the readied move" : `${(fullTiles - spent) * 5} ft`,
+    ...released,
     ...distancesFrom(listTokens(map.id), token, landed),
     ...(prone ? { stood: `stood up for ${standCost * 5} ft of movement` } : {}),
     ...(carried.length ? { dragged: carried.map((entry) => `${entry.token.name} to (${entry.at.x},${entry.at.y})`).join("; ") } : {}),

@@ -139,6 +139,8 @@ const NOT_NAMES = {
   "lib/db/overworld.ts": 1, // createdAt
   "lib/dm/call-tracker-logic.ts": 1, // call ids
   "lib/dm/chapter-lod.ts": 3, // chapter ids
+  "lib/model-registry/catalog-logic.ts": 4, // provider ids, model ids, ISO release dates
+  "lib/model-registry/catalog.ts": 2, // ISO release dates, model ids
   "lib/ops/backup.ts": 1, // createdAt
   "lib/voice/mesh-logic.ts": 1, // joinedAt
   "lib/voice/turn-logic.ts": 1, // raisedAt

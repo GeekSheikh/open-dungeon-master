@@ -4,8 +4,9 @@ import { getGlobalConfig } from "@/lib/db/app-settings";
 import { DEFAULT_STORY_SETTINGS } from "@/lib/defaults";
 import { endpointKind } from "@/lib/dm/sampling-logic";
 import { serverEnv } from "@/lib/server-env";
+import { soleListedModel } from "@/lib/model-registry/discovery";
+import { recordModelProbe } from "@/lib/model-registry/probes";
 import { keyForListing } from "@/lib/setup/discovery-logic";
-import { DEFAULT_LOCAL_TEXT_MODEL } from "@/lib/text-models";
 // The same three-stage probe the CLI runs (scripts/probe-openai-backend.mjs):
 // streamed text, a real structured tool call, and a continuation after the
 // tool result. One source of truth, so the admin panel and the CLI can never
@@ -67,14 +68,11 @@ export async function POST(request: Request) {
     (which === "utility"
       ? config.text.utilityModel || serverEnv("UTILITY_TEXT_MODEL")
       : local
-        ? config.text.localTextModel ||
-          serverEnv("LOCAL_TEXT_MODEL") ||
-          DEFAULT_LOCAL_TEXT_MODEL
+        ? config.text.localTextModel || serverEnv("LOCAL_TEXT_MODEL")
         : config.text.customModel ||
           serverEnv("OPENAI_COMPAT_MODEL") ||
-          (endpointKind(resolvedBaseUrl) === "openrouter"
-            ? serverEnv("OPENROUTER_MODEL", "google/gemini-3.5-flash")
-            : DEFAULT_STORY_SETTINGS.customModel));
+          (endpointKind(resolvedBaseUrl) === "openrouter" ? serverEnv("OPENROUTER_MODEL") : "") ||
+          (await soleListedModel({ provider: local ? "local" : "custom", baseUrl: resolvedBaseUrl, apiKey: apiKey || "" })));
   // A saved key is tried only against the host it was saved for: probing a
   // newly typed address must not hand it the key of the old one (the guided
   // setup probes a local server while an OpenAI key is still saved).
@@ -113,6 +111,9 @@ export async function POST(request: Request) {
       model: resolvedModel,
       apiKey: resolvedKey,
     });
+    // Remembered per host and model (no key, no address), so the model
+    // pickers can say what this server found of it.
+    recordModelProbe(resolvedBaseUrl, resolvedModel, result as unknown as Parameters<typeof recordModelProbe>[2]);
     return Response.json(result);
   } catch (error) {
     return Response.json(

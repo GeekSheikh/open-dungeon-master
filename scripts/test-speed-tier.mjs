@@ -40,11 +40,11 @@ assert.equal(tier.apiSpeedEligibility({ endpointKind: "local", model: "gpt-6.1-s
 assert.equal(tier.apiSpeedEligibility({ endpointKind: "openai", model: "gpt-4.1" }).ok, false);
 ok("Fast is offered on OpenAI's API for the models that have it, and nowhere else");
 
-assert.equal(tier.claudeFastModel("claude-opus-5-5"), true);
-assert.equal(tier.claudeFastModel("opus"), true);
-assert.equal(tier.claudeFastModel("claude-opus-4-7"), false, "Opus 4.7 refuses fast mode");
-assert.equal(tier.claudeFastModel("claude-sonnet-5"), false);
-assert.equal(tier.agentSpeedEligibility({ harnessId: "claude", model: "claude-opus-5", models: [] }).ok, true);
+const claudeModels = [{ id: "opus", fast: true }, { id: "sonnet" }];
+assert.equal(tier.agentSpeedEligibility({ harnessId: "claude", model: "opus", models: claudeModels }).ok, true);
+assert.equal(tier.agentSpeedEligibility({ harnessId: "claude", model: "sonnet", models: claudeModels }).ok, false, "listed without Fast");
+assert.equal(tier.agentSpeedEligibility({ harnessId: "claude", model: "claude-opus-4-8", models: claudeModels }).ok, false, "not listed on this sign-in");
+assert.equal(tier.agentSpeedEligibility({ harnessId: "claude", model: "", models: claudeModels }).ok, false, "the program's default may be any model");
 assert.equal(tier.agentSpeedEligibility({ harnessId: "codex", model: "gpt-6.1-sol", models: [{ id: "gpt-6.1-sol", fast: true }] }).ok, true);
 assert.equal(tier.agentSpeedEligibility({ harnessId: "codex", model: "gpt-6-mini", models: [{ id: "gpt-6-mini" }] }).ok, false);
 assert.equal(tier.agentSpeedEligibility({ harnessId: "opencode", model: "anything", models: [] }).ok, false);

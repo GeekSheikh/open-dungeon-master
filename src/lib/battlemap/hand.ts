@@ -330,7 +330,7 @@ const BASICS: Array<{ id: BasicActionId; name: string; rules: string; target: Ha
   { id: "search", name: "Search", rules: "Perception or Investigation to find what is hidden.", target: "none" },
   { id: "escape", name: "Escape", rules: "Athletics or Acrobatics against the grappler's Athletics.", target: "none" },
   { id: "stand-up", name: "Stand up", rules: "Getting up costs half your speed.", target: "none" },
-  { id: "ready", name: "Ready", rules: "Name a trigger; when it happens your reaction makes the attack.", target: "none", asks: "trigger" },
+  { id: "ready", name: "Ready", rules: "Name a trigger and what you will do when it happens; your reaction does it then.", target: "none", asks: "trigger" },
   { id: "grapple", name: "Grapple", rules: "Athletics against their Athletics or Acrobatics. Takes the place of one attack.", target: "enemy" },
   { id: "shove", name: "Shove", rules: "Knock them prone or push them 5 ft. Takes the place of one attack.", target: "enemy" },
   { id: "use-object", name: "Use an object", rules: "Drink, pull, light, throw: say what.", target: "none", compose: true },
@@ -474,17 +474,31 @@ export function deriveHand(sheet: CharacterSheet, turn: HandTurn = FRESH_TURN, o
   ];
 }
 
-// Ready may hold a spell instead of an attack (take_action ready with spell
-// and level): the engine casts it now, slot and concentration, and releases
-// it with the reaction when the trigger comes. The spells offered are the
-// hand's own one-action spell cards that the cast guard would take now.
+// Ready commits to one action (SRD 5.1; src/lib/dm/readied-kinds.ts): an
+// attack unless the player picks another. The "@" picks are take_action's
+// `readied` (hand-play.ts sends them as readyAction); a spell by its name is
+// take_action's `spell`: the engine casts it now, slot and concentration,
+// and releases it with the reaction when the trigger comes. The spells
+// offered are the hand's own one-action spell cards the cast guard would
+// take now.
+const READY_PICKS: NonNullable<HandCard["choice"]>["options"] = [
+  { value: "", label: "An attack" },
+  { value: "@move", label: "A move" },
+  { value: "@help", label: "Help" },
+  { value: "@hide", label: "Hide" },
+  { value: "@search", label: "Search" },
+  { value: "@use_object", label: "Use an object" },
+  { value: "@item", label: "Use an item" },
+  { value: "@grapple", label: "Grapple" },
+  { value: "@shove", label: "Shove" },
+];
+
 function withReadySpells(card: HandCard, spells: HandCard[]): HandCard {
   const ready = spells.filter(
     (spell) => spell.intent.card === "spell" && spell.cost === "action" && !spell.disabled,
   );
-  if (!ready.length) return card;
   const levels: Record<string, number> = {};
-  const options: NonNullable<HandCard["choice"]>["options"] = [{ value: "", label: "An attack" }];
+  const options: NonNullable<HandCard["choice"]>["options"] = [...READY_PICKS];
   for (const spell of ready) {
     if (spell.intent.card !== "spell") continue;
     options.push({ value: spell.name, label: spell.name, note: spell.resource });

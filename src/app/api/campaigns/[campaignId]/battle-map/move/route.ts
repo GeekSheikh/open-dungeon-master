@@ -1,3 +1,4 @@
+import { readiedReleaseFor } from "@/lib/dm/readied-release";
 import { z } from "zod";
 import { actingSheetFor } from "@/lib/character-seat";
 import { capsFor, isErrorResponse, requireMember } from "@/lib/campaign-api";
@@ -101,15 +102,23 @@ export async function POST(
   // The one guard every acting handler asks (src/lib/dm/can-act.ts): the
   // dead, the dying, the incapacitated and the surprised do not move, and in
   // a fight nobody moves on a turn that is not theirs.
-  const allowed = canAct({ sheet, encounter, kind: "move" });
-  if (!allowed.ok) {
-    return Response.json({ error: allowed.error }, { status: 409 });
+  // The move they readied releases off their turn: their reaction, up to
+  // their full speed, their own turn's movement untouched (readied-release.ts).
+  const readied = readiedReleaseFor(sheet, encounter, "move");
+  if (readied && "error" in readied) {
+    return Response.json({ error: readied.error }, { status: 409 });
+  }
+  if (!readied) {
+    const allowed = canAct({ sheet, encounter, kind: "move" });
+    if (!allowed.ok) {
+      return Response.json({ error: allowed.error }, { status: 409 });
+    }
   }
 
   const floor = getFloor(campaignId);
   if (floor.mode === "initiative") {
     const current = encounter.orderReady ? encounter.order[encounter.turnIndex] : undefined;
-    if (!current || current.kind !== "pc" || current.characterId !== sheet.id) {
+    if (!readied && (!current || current.kind !== "pc" || current.characterId !== sheet.id)) {
       return Response.json(
         { error: `It is ${current?.name || "another combatant"}'s turn to move.` },
         { status: 409 },
@@ -131,7 +140,10 @@ export async function POST(
   // gates and the heavy-armor Strength penalty, and the Dash action doubles
   // whatever is left. The same computation lights the board's reachable
   // tiles, so a tile the player was shown is never refused here.
-  const { speed, tiles: budget, fullTiles } = pcMoveBudget(campaignId, encounter, map, sheet, token);
+  const turnBudget = pcMoveBudget(campaignId, encounter, map, sheet, token);
+  const speed = turnBudget.speed;
+  const budget = readied ? speedToTiles(speed) : turnBudget.tiles;
+  const fullTiles = readied ? speedToTiles(speed) : turnBudget.fullTiles;
   if (speed <= 0) {
     const cause =
       sheet.conditions.join(", ") ||
@@ -149,6 +161,9 @@ export async function POST(
   // Frightened: a jump may not carry them closer to what they fear either.
   const feared = scene ? null : fearSourceAt(map.id, sheet.conditions, sheet.conditionMeta as Record<string, { source?: string }>);
   if (parsed.data.jump && campaign) {
+    if (readied) {
+      return Response.json({ error: "A readied move is a walk up to your speed; jump on your own turn." }, { status: 409 });
+    }
     const line = jumpLine(token, { x, y });
     if (feared && awayFromFear(token, line, feared).length < line.length) {
       return Response.json({ error: "You are frightened and cannot move closer to what you fear. Move away from it, or hold your ground." }, { status: 409 });
@@ -282,7 +297,7 @@ export async function POST(
     }
     carried = placed;
   }
-  moveToken(token.id, x, y, scene ? 0 : token.movedThisRound + spend);
+  moveToken(token.id, x, y, scene ? 0 : token.movedThisRound + (readied ? 0 : spend));
   for (const entry of carried) {
     moveToken(entry.token.id, entry.at.x, entry.at.y, entry.token.movedThisRound);
   }
@@ -301,6 +316,8 @@ export async function POST(
     }
   }
   publishBattleMapUpdate(campaignId);
+  // The walk was made: the readied move is released, whatever it draws.
+  const released = readied ? readied.release() : null;
 
   // Walking out of an enemy's reach is not free. Disengage suppresses it;
   // the budget carries that decision from the take_action tool.
@@ -320,13 +337,14 @@ export async function POST(
   // Struck down on the way: they fall where they were hit, not where they
   // were going.
   if (opportunity.downedAt) {
-    moveToken(token.id, opportunity.downedAt.x, opportunity.downedAt.y, token.movedThisRound + spend);
+    moveToken(token.id, opportunity.downedAt.x, opportunity.downedAt.y, token.movedThisRound + (readied ? 0 : spend));
     publishBattleMapUpdate(campaignId);
   }
 
   // Fresh self view in the response saves the mover a follow-up fetch.
   return Response.json({
     view: buildPlayerMapView(campaignId, user.id, { enemyNumbers: capsFor(context).enemyNumbers }),
+    ...(released ? { released: true } : {}),
     ...(opportunity.notes.length ? { opportunityAttacks: opportunity.notes } : {}),
     ...(zoneEffects.length ? { zoneEffects } : {}),
   });

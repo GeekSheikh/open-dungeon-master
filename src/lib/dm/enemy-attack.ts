@@ -3,6 +3,7 @@
 // encounter-tools.ts, which dispatches to it and whose auto-act fallback
 // calls it for the enemies a turn skipped. Must not import encounter-tools.
 
+import { readiedHolder } from "@/lib/dm/readied-release";
 import { martialAdvantageDice, surpriseAttackDice } from "@/lib/dm/monster-traits";
 import { tilesBetween } from "@/lib/dm/attack-spatial";
 import { incapacitatedBy } from "@/lib/dm/condition-logic";
@@ -166,7 +167,9 @@ export function handleEnemyAttack(
   // Battle-map positions are authoritative: an attacker out of reach walks
   // in along a legal path (not closer to what it fears), and the attack is
   // refused when the target is still out of reach or range.
-  const spatial = approachTarget(campaign, encounter.id, enemy, target.id, leadProfile(profiles));
+  // A decision point inside the enemy's turn (issue 264): while a
+  // character holds a readied action, an enemy out of reach stays put.
+  const spatial = approachTarget(campaign, encounter.id, enemy, target.id, leadProfile(profiles), readiedHolder(campaign.id));
   if (spatial.blocked) {
     return spatial.blocked;
   }

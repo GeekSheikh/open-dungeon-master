@@ -4,6 +4,7 @@
 
 import os from "node:os";
 import { getGlobalConfig } from "@/lib/db/app-settings";
+import { enrichHarnessModels } from "@/lib/model-registry/catalog";
 import { buildChildEnv } from "./child-env.ts";
 import { childPath, findBinary, hostAvailability } from "./discover.ts";
 import { claudeAdapter } from "./adapters/claude.ts";
@@ -173,6 +174,9 @@ export async function probeHarness(id: HarnessId, options: { refresh?: boolean; 
   const status: HarnessStatus = {
     ...base,
     ...probed,
+    // The program's own list, with the catalog's window and deprecations
+    // where the program gave none.
+    models: enrichHarnessModels(id, probed.models),
     path: binary,
     auth: { ...probed.auth, account: maskAccount(probed.auth.account) },
     lockdownProven: (probed.lockdownProven ?? false) || Boolean(globalThis.__odmHarnessProven?.has(id)),

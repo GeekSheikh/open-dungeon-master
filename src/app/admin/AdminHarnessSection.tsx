@@ -276,7 +276,7 @@ export function AdminHarnessSection({
                 onChange={(model) => setDraft({ ...draft, model })}
                 options={[
                   { value: "", label: "The program's own default" },
-                  ...models.map((model) => ({ value: model.id, label: model.label })),
+                  ...models.map((model) => ({ value: model.id, label: model.deprecated ? `${model.label} (deprecated)` : model.label })),
                   ...(draft.model && !models.some((model) => model.id === draft.model)
                     ? [{ value: draft.model, label: draft.model }]
                     : []),
@@ -291,8 +291,11 @@ export function AdminHarnessSection({
                   { value: "", label: "Same as the story model" },
                   ...[...models].sort((a, b) => Number(Boolean(b.cheap)) - Number(Boolean(a.cheap))).map((model) => ({
                     value: model.id,
-                    label: model.cheap ? `${model.label} (light)` : model.label,
+                    label: `${model.cheap ? `${model.label} (light)` : model.label}${model.deprecated ? " (deprecated)" : ""}`,
                   })),
+                  ...(draft.utilityModel && !models.some((model) => model.id === draft.utilityModel)
+                    ? [{ value: draft.utilityModel, label: draft.utilityModel }]
+                    : []),
                 ]}
               />
               {chosen.id === "claude" || chosen.id === "codex" ? (

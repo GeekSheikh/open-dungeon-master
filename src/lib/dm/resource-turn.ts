@@ -18,6 +18,7 @@ import { conditionExtraActions } from "@/lib/srd/condition-effects";
 import { matchResource, type ResourceAction } from "@/lib/srd/class-resources";
 import { spendAction } from "@/lib/dm/action-budget";
 import { canAct } from "@/lib/dm/can-act";
+import { readiedReleaseFor } from "@/lib/dm/readied-release";
 import { EMBODIMENT_MARK, LEVELLED_SPELL, SURGE_MARK } from "@/lib/dm/cast-rules";
 import {
   attacksAllowedFor,
@@ -70,6 +71,14 @@ export function prepareResourceCharge(
     return prepareReaction(encounter, sheet, def.displayName);
   }
   const kind = action === "none" ? "free" : action;
+  // Off their turn, a feature they readied: their reaction (readied-release.ts).
+  const readied = kind === "action" ? readiedReleaseFor(sheet, encounter, "feature") : null;
+  if (readied && "error" in readied) {
+    return { error: readied.error };
+  }
+  if (readied) {
+    return { commit: () => readied.release() };
+  }
   const able = canAct({ sheet, encounter, kind });
   if (!able.ok) {
     return { error: able.error };

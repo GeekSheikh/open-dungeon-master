@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, Loader2 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { shellHost } from "@/lib/shell-host";
 import { ui } from "@/lib/ui";
@@ -14,9 +15,11 @@ import { apiSpeedEligibility } from "@/lib/speed-tier";
 import { describeEndpoint } from "@/lib/dm/sampling-logic";
 import type { SpeedChannel, SpeedNote } from "@/lib/speed-status";
 import { AdminNetworkSections } from "@/app/admin/AdminNetworkSections";
+import { AdminPlayerAgentsSection } from "@/app/admin/AdminPlayerAgentsSection";
 import { AdminBackupSection } from "@/app/admin/AdminBackupSection";
 import { AdminStorageSection } from "@/app/admin/AdminStorageSection";
 import { BackendProbe } from "@/app/admin/BackendProbe";
+import { ModelChoiceField } from "@/app/admin/ModelChoice";
 import { AdminImagesSection } from "@/app/admin/AdminImagesSection";
 import { AdminSpeechSection } from "@/app/admin/AdminSpeechSection";
 import { AmbienceLibraryCard } from "@/app/admin/AmbienceLibraryCard";
@@ -44,6 +47,7 @@ const STOPS: Array<{ id: string; label: string; glyph: string; server?: boolean 
   { id: "admin-ambience", label: "Sound library", glyph: "tab-ambience" },
   { id: "admin-voice", label: "Voice chat", glyph: "ui-voice", server: true },
   { id: "admin-discord", label: "Discord", glyph: "system-share", server: true },
+  { id: "admin-player-agents", label: "Player agents", glyph: "ui-agent", server: true },
   { id: "admin-backup", label: "Backup", glyph: "ui-backup", server: true },
   { id: "admin-storage", label: "Storage", glyph: "ui-storage" },
 ];
@@ -95,6 +99,28 @@ export function AdminSettingsPanel() {
         }
       });
   }, []);
+
+  // A link from elsewhere can name one section (Settings > Connected agents
+  // sends an admin to ?section=admin-player-agents): it is brought into view
+  // once the sections are drawn. A query rather than a #hash, which the
+  // apps' router does not carry.
+  const section = useSearchParams().get("section");
+  const drawn = Boolean(config && env);
+  useEffect(() => {
+    if (!drawn || !section || !STOPS.some((stop) => stop.id === section)) return;
+    // The sections above fetch their own state and grow after the first
+    // paint, so the section is put back in view as they settle, until the
+    // reader scrolls for themselves.
+    const place = () => document.getElementById(section)?.scrollIntoView({ block: "start" });
+    const timers = [0, 300, 800, 1600].map((delay) => window.setTimeout(place, delay));
+    const stop = () => timers.forEach((timer) => window.clearTimeout(timer));
+    const events = ["wheel", "touchstart", "keydown"] as const;
+    events.forEach((name) => window.addEventListener(name, stop, { once: true, passive: true }));
+    return () => {
+      stop();
+      events.forEach((name) => window.removeEventListener(name, stop));
+    };
+  }, [drawn, section]);
 
   if (!config || !env) {
     return <PageSkeleton kind="flat" className="px-0 py-2" />;
@@ -341,19 +367,15 @@ export function AdminSettingsPanel() {
             ]}
           />
           {phoneWorld ? null : (
-            <Field label="Local model (Ollama native)">
-              <input
-                className={ui.input}
-                value={config.text.localTextModel}
-                onChange={(event) =>
-                  setConfig({
-                    ...config,
-                    text: { ...config.text, localTextModel: event.target.value },
-                  })
-                }
-                placeholder="gemma4:31b-it-qat"
-              />
-            </Field>
+            <ModelChoiceField
+              label="Local model (Ollama native)"
+              hint="What this machine's Ollama has pulled; any tag it serves can be typed."
+              role="story"
+              provider="local"
+              value={config.text.localTextModel}
+              onChange={(localTextModel) => setConfig({ ...config, text: { ...config.text, localTextModel } })}
+              placeholder="gemma4:31b-it-qat"
+            />
           )}
           <Field label="Backend base URL" hint={env.customBaseUrl ? `Env: ${env.customBaseUrl}` : undefined}>
             <input
@@ -365,16 +387,17 @@ export function AdminSettingsPanel() {
               placeholder={env.customBaseUrl || "http://127.0.0.1:11434/v1"}
             />
           </Field>
-          <Field label="Model name" hint={env.customModel ? `Env: ${env.customModel}` : undefined}>
-            <input
-              className={ui.input}
-              value={config.text.customModel}
-              onChange={(event) =>
-                setConfig({ ...config, text: { ...config.text, customModel: event.target.value } })
-              }
-              placeholder={env.customModel || "qwen3.6-dm"}
-            />
-          </Field>
+          <ModelChoiceField
+            label="Model name"
+            hint={env.customModel ? `Env: ${env.customModel}` : undefined}
+            role="story"
+            provider="custom"
+            baseUrl={config.text.customBaseUrl || env.customBaseUrl}
+            apiKey={apiKey === SECRET_KEPT ? "" : apiKey}
+            value={config.text.customModel}
+            onChange={(customModel) => setConfig({ ...config, text: { ...config.text, customModel } })}
+            placeholder={env.customModel || "qwen3.6-dm"}
+          />
         </div>
         <div className="mt-3">
           <SecretField
@@ -446,19 +469,18 @@ export function AdminSettingsPanel() {
               { value: "custom" as const, label: "OpenAI-compatible server" },
             ]}
           />
-          <Field
+          <ModelChoiceField
             label="Model name"
             hint="Blank = off. Anything in the 4B-8B class is plenty; e.g. gemma4:e4b-it-qat."
-          >
-            <input
-              className={ui.input}
-              value={config.text.utilityModel}
-              onChange={(event) =>
-                setConfig({ ...config, text: { ...config.text, utilityModel: event.target.value } })
-              }
-              placeholder="Off"
-            />
-          </Field>
+            role="utility"
+            provider={config.text.utilityProvider === "custom" ? "custom" : "local"}
+            baseUrl={config.text.utilityProvider === "custom" ? config.text.utilityBaseUrl : ""}
+            apiKey={utilityApiKey === SECRET_KEPT ? "" : utilityApiKey}
+            value={config.text.utilityModel}
+            onChange={(utilityModel) => setConfig({ ...config, text: { ...config.text, utilityModel } })}
+            placeholder="Off"
+            blankLabel="Off (everything runs on the story model)"
+          />
           <Field
             label="Backend base URL"
             hint="Only for an OpenAI-compatible utility server. Blank uses the Ollama endpoint."
@@ -532,6 +554,12 @@ export function AdminSettingsPanel() {
           discordSecret={discordSecret}
           setDiscordSecret={setDiscordSecret}
         />
+      )}
+
+      {deviceWorld ? null : (
+        <PageSection id="admin-player-agents" heading="Player agents" glyph="ui-agent">
+          <AdminPlayerAgentsSection />
+        </PageSection>
       )}
 
       {deviceWorld ? null : (

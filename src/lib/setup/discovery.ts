@@ -3,6 +3,7 @@
 // timeout, so a fresh server can offer what it found instead of asking for
 // URLs and model names. Admin-only (POST /api/admin/setup); the rules for
 // reading the answers are in discovery-logic.ts.
+import { comfyStatus, type ComfyStatus } from "@/lib/comfyui";
 import { hostAvailability } from "@/lib/harness/discover";
 import {
   COMFYUI_PORT,
@@ -13,17 +14,12 @@ import {
   modelsUrl,
   normalizeBaseUrl,
   originOf,
-  pickZImageFiles,
-  readComfyCheckpoints,
-  readComfyFiles,
   readKokoroVoices,
   readModelList,
   readModelsAnswer,
   recommendedModel,
   scanHosts,
   textPorts,
-  zImageMissing,
-  Z_IMAGE_SLOTS,
   type ListedModel,
   type TextServerKind,
 } from "@/lib/setup/discovery-logic";
@@ -48,8 +44,9 @@ export type FoundTextServer = {
 export type ScanResult = {
   inContainer: boolean;
   text: FoundTextServer[];
-  // zImage: all three Z-Image Turbo files are there to pick it.
-  comfyui: { url: string; checkpoints: string[]; zImage: boolean } | null;
+  // Its picture checkpoints, and the image model catalog curated for this
+  // ComfyUI and the hardware it runs on (src/lib/image-models).
+  comfyui: ({ url: string } & Pick<ComfyStatus, "checkpoints" | "models" | "hardware">) | null;
   kokoro: { url: string; voices: string[] } | null;
   whisper: { url: string } | null;
 };
@@ -93,16 +90,8 @@ async function findComfy(host: string) {
   if (stats.status !== 200) {
     return null;
   }
-  const { unet, clip, vae } = Z_IMAGE_SLOTS;
-  const [info, unets, clips, vaes] = await Promise.all(
-    ["CheckpointLoaderSimple", unet.node, clip.node, vae.node].map((node) => getJson(`${url}/object_info/${node}`, SCAN_TIMEOUT_MS)),
-  );
-  const zImage = pickZImageFiles({
-    unet: readComfyFiles(unets.body, unet.node, unet.input),
-    clip: readComfyFiles(clips.body, clip.node, clip.input),
-    vae: readComfyFiles(vaes.body, vae.node, vae.input),
-  });
-  return { url, checkpoints: readComfyCheckpoints(info.body), zImage: zImageMissing(zImage).length === 0 };
+  const status = await comfyStatus(url);
+  return status.ok ? { url, checkpoints: status.checkpoints, models: status.models, hardware: status.hardware } : null;
 }
 
 async function findKokoro(host: string) {
@@ -155,7 +144,7 @@ export type ModelListing =
 
 // One server's model list, for an address or key typed into the wizard.
 // The key is used for this one request and never stored here.
-export async function listModels(baseUrlInput: string, apiKey: string, preferred?: readonly string[]): Promise<ModelListing> {
+export async function listModels(baseUrlInput: string, apiKey: string): Promise<ModelListing> {
   const baseUrl = normalizeBaseUrl(baseUrlInput);
   if (!baseUrl) {
     return { ok: false, baseUrl, error: "Enter the server's address." };
@@ -189,5 +178,5 @@ export async function listModels(baseUrlInput: string, apiKey: string, preferred
   if (!models.length) {
     return { ok: false, baseUrl, error: `${host} lists no chat models. Load one, then look again.` };
   }
-  return { ok: true, baseUrl, models, recommended: recommendedModel(models, preferred) };
+  return { ok: true, baseUrl, models, recommended: recommendedModel(models) };
 }

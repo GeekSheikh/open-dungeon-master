@@ -10,7 +10,7 @@ import type { Encounter, EncounterEnemy } from "@/lib/db/encounters";
 import { actingCombatantId, canAct } from "@/lib/dm/can-act";
 import type { ConditionMetaMap } from "@/lib/dm/condition-logic";
 import { resolveEnemyRef } from "@/lib/dm/enemy-damage";
-import { readiedTrigger } from "@/lib/dm/object-actions";
+import { READIED_WORDS, RELEASE_TOOLS, readiedHeld } from "@/lib/dm/readied-kinds";
 import type { PcAttackArgs } from "@/lib/dm/pc-attack";
 import { inspirationProblem, strokeOfLuckProblem } from "@/lib/dm/attack-features";
 import { hasOpenHandTechnique, HURLED, hurlProblem } from "@/lib/dm/attack-onhit";
@@ -61,10 +61,16 @@ export function gatePcAttack(input: {
     // (src/lib/dm/reaction-attacks.ts).
     const target = resolveEnemyRef(encounter.id, args.targetEnemyId);
     giantKiller = Boolean(target && giantKillerOpen(campaign.id, encounter.id, sheet, target));
-    if (actingCombatantId(encounter) !== null && !readiedTrigger(sheet) && !giantKiller) {
+    // Ready commits to one action: a readied attack (or a readied
+    // attack-roll spell) releases here, a readied move or Help does not.
+    const held = readiedHeld(sheet);
+    const readiedStrike = held !== null && (held.holds === "attack" || held.holds === "spell");
+    if (actingCombatantId(encounter) !== null && !readiedStrike && !giantKiller) {
       return {
         refused: {
-          error: `It is not ${sheet.name}'s turn. Off their own turn a character attacks only with an opportunity attack, which the server rolls itself when an enemy leaves their reach, or with an attack they readied on their turn (take_action ready); ${sheet.name} has neither waiting.`,
+          error: held
+            ? `It is not ${sheet.name}'s turn, and what they readied is ${READIED_WORDS[held.holds]} (${held.trigger}), not an attack: a readied action is released only as the action that was readied (SRD 5.1, Ready). Nothing was spent. ${RELEASE_TOOLS[held.holds]} releases it.`
+            : `It is not ${sheet.name}'s turn. Off their own turn a character attacks only with an opportunity attack, which the server rolls itself when an enemy leaves their reach, or with an attack they readied on their turn (take_action ready); ${sheet.name} has neither waiting.`,
         },
       };
     }

@@ -161,9 +161,6 @@ export function readModelsAnswer(status: number): ProbeVerdict {
   return "absent";
 }
 
-// ODM's documented default DM model.
-export const DEFAULT_LOCAL_MODEL = "qwen3.6-35b";
-
 // The hosted providers the wizard knows by name. Their base URL is fixed,
 // so all that is asked is the key.
 export type KeyProviderId = "openai" | "openrouter" | "other";
@@ -174,10 +171,6 @@ export type KeyProvider = {
   baseUrl: string;
   keyUrl: string;
   keyPlaceholder: string;
-  // The model preselected when the provider lists it. The client app's
-  // OpenAI setup preselects the same one (open-dungeon-master-client
-  // src/shared/ai-setup.ts DEFAULT_MODEL).
-  preferred: readonly string[];
   // One key also covers pictures, narration and dictation.
   coversMedia: boolean;
 };
@@ -189,7 +182,6 @@ export const KEY_PROVIDERS: readonly KeyProvider[] = [
     baseUrl: "https://api.openai.com/v1",
     keyUrl: "https://platform.openai.com/api-keys",
     keyPlaceholder: "sk-...",
-    preferred: ["gpt-5.1", "gpt-5.4-mini", "gpt-5-mini", "gpt-5"],
     coversMedia: true,
   },
   {
@@ -198,7 +190,6 @@ export const KEY_PROVIDERS: readonly KeyProvider[] = [
     baseUrl: "https://openrouter.ai/api/v1",
     keyUrl: "https://openrouter.ai/keys",
     keyPlaceholder: "sk-or-...",
-    preferred: ["google/gemini-3.5-flash"],
     coversMedia: false,
   },
   {
@@ -207,7 +198,6 @@ export const KEY_PROVIDERS: readonly KeyProvider[] = [
     baseUrl: "",
     keyUrl: "",
     keyPlaceholder: "Your provider's API key",
-    preferred: [],
     coversMedia: false,
   },
 ];
@@ -240,17 +230,10 @@ export function providerForKey(key: string): KeyProviderId | null {
   return null;
 }
 
-// The model to preselect: the documented default when the server has it,
-// then the provider's preferred ones, then the first chat model listed.
-export function recommendedModel(models: readonly ListedModel[], preferred: readonly string[] = [DEFAULT_LOCAL_MODEL]): string {
-  for (const want of preferred) {
-    const exact = models.find((model) => model.id === want);
-    if (exact) return exact.id;
-  }
-  for (const want of preferred) {
-    const close = models.find((model) => model.id.toLowerCase().includes(want.toLowerCase()));
-    if (close) return close.id;
-  }
+// The model to preselect before the catalog has had its say: the first chat
+// model listed, in the server's own order. No model is named in code; the
+// setup route ranks the list with the catalog (src/lib/model-registry).
+export function recommendedModel(models: readonly ListedModel[]): string {
   return models[0]?.id ?? "";
 }
 
@@ -273,61 +256,6 @@ export function readComfyFiles(json: unknown, node: string, input: string): stri
 // ComfyUI's checkpoint list, from GET /object_info/CheckpointLoaderSimple.
 export function readComfyCheckpoints(json: unknown): string[] {
   return readComfyFiles(json, "CheckpointLoaderSimple", "ckpt_name");
-}
-
-// Z-Image Turbo is three files, not a checkpoint: the diffusion model
-// (UNETLoader), the Qwen 3 4B text encoder (CLIPLoader) and the FLUX VAE
-// (VAELoader). Each slot takes ComfyUI's own tutorial download when this
-// ComfyUI has it, then any other precision or rename of the same model
-// (fp8, nvfp4, int8, a fine-tune), first in ComfyUI's list. Matched on the
-// file name alone, so a copy kept in a subfolder counts. "" = not found.
-export type ZImageFiles = { unet: string; clip: string; vae: string };
-
-export const Z_IMAGE_SLOTS = {
-  unet: {
-    node: "UNETLoader",
-    input: "unet_name",
-    tutorial: ["z_image_turbo_bf16.safetensors"],
-    family: /z[-_ ]?image[-_ ]?turbo/i,
-    what: "the Z-Image Turbo model (models/diffusion_models)",
-  },
-  clip: {
-    node: "CLIPLoader",
-    input: "clip_name",
-    tutorial: ["qwen_3_4b.safetensors"],
-    family: /qwen[-_ ]?3[-_ ]?4b/i,
-    what: "the Qwen 3 4B text encoder (models/text_encoders)",
-  },
-  vae: {
-    node: "VAELoader",
-    input: "vae_name",
-    tutorial: ["ae.safetensors", "ae.sft"],
-    family: /flux.*vae|vae.*flux|z[-_ ]?image.*vae/i,
-    what: "the FLUX VAE, ae.safetensors (models/vae)",
-  },
-} as const;
-
-export type ZImageSlot = keyof typeof Z_IMAGE_SLOTS;
-
-const fileName = (name: string) => name.split(/[\\/]/).pop() ?? name;
-
-export function pickZImageFiles(lists: Record<ZImageSlot, readonly string[]>): ZImageFiles {
-  const pick = (slot: ZImageSlot) => {
-    const { tutorial, family } = Z_IMAGE_SLOTS[slot];
-    const names = lists[slot];
-    return (
-      names.find((name) => (tutorial as readonly string[]).includes(fileName(name).toLowerCase())) ??
-      names.find((name) => family.test(fileName(name))) ??
-      ""
-    );
-  };
-  return { unet: pick("unet"), clip: pick("clip"), vae: pick("vae") };
-}
-
-// What a ComfyUI still needs before it can paint with Z-Image Turbo, worded
-// for the admin; empty once every file is there.
-export function zImageMissing(files: ZImageFiles): string[] {
-  return (Object.keys(Z_IMAGE_SLOTS) as ZImageSlot[]).filter((slot) => !files[slot]).map((slot) => Z_IMAGE_SLOTS[slot].what);
 }
 
 // Kokoro-FastAPI's voice list, from GET /v1/audio/voices.

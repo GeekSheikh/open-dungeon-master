@@ -21,7 +21,7 @@ const { renderTurn, renderFollowUp, renderCompletion, toMcpTools, toolNames, HAR
   "../src/lib/harness/render.ts"
 );
 const { buildChildEnv, leaksServerSecret } = await import("../src/lib/harness/child-env.ts");
-const { claudeAdapter, claudeArgs, CLAUDE_ENV, CLAUDE_MCP_PREFIX, withCacheBoundary } = await import(
+const { claudeAdapter, claudeArgs, CLAUDE_ENV, CLAUDE_MCP_PREFIX, parseClaudeModels, withCacheBoundary } = await import(
   "../src/lib/harness/adapters/claude.ts"
 );
 const { codexAdapter, codexArgs, ignoredCodexSettings, userCodexMcpServers } = await import("../src/lib/harness/adapters/codex.ts");
@@ -161,11 +161,41 @@ test("Claude Code is started with no built-in tools and only ODM's MCP server", 
   assert.equal(JSON.parse(value("--settings")).disableAllHooks, true);
   assert.equal(CLAUDE_ENV.ENABLE_CLAUDEAI_MCP_SERVERS, "false");
   assert.equal(CLAUDE_ENV.CLAUDE_CODE_DISABLE_ADVISOR_TOOL, "1", "no second model consulted behind the lockdown's back");
-  assert.equal(CLAUDE_ENV.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, "1", "no telemetry or error reports from a story run");
+  assert.equal(CLAUDE_ENV.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, "1", "no telemetry, error reports or auto-updates from a story run");
+  assert.equal(CLAUDE_ENV.DISABLE_AUTOUPDATER, undefined, "auto-updates are already off through the switch above");
   assert.ok(!args.some((arg) => arg.includes("Bearer")), "the token never appears on the command line");
   const completion = claudeArgs({ systemPromptPath: "/tmp/run/odm-system-prompt.md", model: "", effort: "", mcpConfigPath: null });
   assert.ok(!completion.includes("--mcp-config"));
   assert.equal(completion[completion.indexOf("--tools") + 1], "");
+});
+
+test("Claude Code's models are the ones its initialize answer lists", () => {
+  // Claude Code 2.1.296's answer on a Pro sign-in, trimmed to its models.
+  const recorded = JSON.parse(fs.readFileSync(new URL("./fixtures/claude-initialize.json", import.meta.url), "utf8"));
+  const models = parseClaudeModels(recorded.response.response.models);
+  assert.deepEqual(
+    models.map((model) => model.id),
+    ["opus", "claude-fable-5-1[1m]", "sonnet", "haiku"],
+    "in its order, without its own default (the pickers offer that), a [1m] variant under the name --model takes",
+  );
+  assert.deepEqual(
+    models.map((model) => model.label),
+    ["Opus 5.5", "Fable 5.1", "Sonnet 5.5", "Haiku 5.5"],
+    "an alias is labelled with the version it stands for",
+  );
+  assert.deepEqual(models.filter((model) => model.fast).map((model) => model.id), ["opus"], "Fast only where it says so");
+  assert.deepEqual(
+    models.map((model) => model.catalogId),
+    ["claude-opus-5-5", "claude-fable-5-1", "claude-sonnet-5-5", "claude-haiku-5-5"],
+    "each carries the model it stands for, which the catalog judges (light by price, never by name)",
+  );
+  assert.ok(models.every((model) => model.cheap === undefined), "light is left to the catalog");
+  const [variant] = parseClaudeModels([
+    { value: "opus[1m]", resolvedModel: "claude-opus-5-5", displayName: "Opus (1M context)", description: "Opus 5.5 · For long sessions" },
+  ]);
+  assert.equal(variant.label, "Opus (1M context)", "a variant keeps its own name, so it reads apart from the alias");
+  assert.throws(() => parseClaudeModels(undefined), /no model list/, "an answer without a model list is an error, not an empty list");
+  assert.deepEqual(parseClaudeModels([{ displayName: "Nameless" }]), [], "an entry --model could not take is skipped");
 });
 
 const CACHE_BOUNDARY = "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__";

@@ -42,6 +42,10 @@ export type ConditionMeta = {
   // ("stable" on the unconscious of a stabilized creature). Optional, and
   // absent on everything written before it existed.
   source?: string;
+  // Ready (readied-kinds.ts): the action the trigger releases ("move",
+  // "help", "item"...). Absent on a readied attack, and on everything
+  // written before it existed; a readied spell carries `spell` instead.
+  holds?: string;
   // Rage only: the barbarian has taken damage since their last turn ended,
   // which keeps the rage going through a turn with no attack in it.
   stoked?: boolean;

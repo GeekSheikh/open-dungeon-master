@@ -276,6 +276,17 @@ export function HelpDialog({
             toggles.
           </li>
         </ul>
+        <p>
+          On a wide screen the table can be arranged your way. Drag the line between two panels to
+          resize them. The <span className="text-stone-300">layout</span> button in the header opens{" "}
+          <span className="text-stone-300">Arrange the table</span>: give a tab such as Party, Story
+          or Notes a pane of its own so several show at once, drag a panel by its bar to dock it
+          beside another, float it over the table, maximize it (Escape puts it back) or set it aside
+          and show it again later with whatever it held. <span className="text-stone-300">Lock
+          layout</span> keeps it as it is and <span className="text-stone-300">Reset layout</span>{" "}
+          brings back the table&apos;s own. Only this browser remembers it; a phone keeps its bottom
+          bar.
+        </p>
       </Section>
 
       <Section icon={Dices} title="Dice">

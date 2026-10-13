@@ -1,4 +1,3 @@
-import { DEFAULT_LOCAL_TEXT_MODEL } from "@/lib/text-models";
 import type { StorySettings } from "@/lib/types";
 
 export const DEFAULT_CHAT_TITLE = "Untitled story";
@@ -8,17 +7,17 @@ export const DEFAULT_STORY_SETTINGS: StorySettings = {
     "A grounded interactive fiction scene with sharp dialogue, human stakes, and space for the player to steer the story.",
   style:
     "Classic text-adventure narration: direct second person, vivid but restrained prose, natural dialogue, and no purple exposition.",
-  // Default DM model is Qwen3.6-35B MoE Q8 served by llama-server (llama.cpp
-  // router mode) on :8001 via its OpenAI-compatible /v1 endpoint (tool
-  // calling verified). Context size and samplers live in the llama-server
-  // preset INI, not here. The legacy Ollama-native "local" provider stays
-  // selectable. Any API key comes from .env.server, never code; llama-server
-  // ignores auth headers.
+  // The shipped backend is a llama-server on :8001 (docs/text-backends.md),
+  // reached through its OpenAI-compatible /v1 endpoint. No model is named
+  // here: the admin picks one from what the server lists (the guided setup
+  // or Admin > Text model defaults), and a server that lists exactly one
+  // chat model runs that one unasked (src/lib/model-registry). The legacy
+  // Ollama-native "local" provider stays selectable. Any API key comes from
+  // .env.server, never code; llama-server ignores auth headers.
   textProvider: "custom",
-  localTextModel: DEFAULT_LOCAL_TEXT_MODEL,
+  localTextModel: "",
   customBaseUrl: "http://127.0.0.1:8001/v1",
-  // qwen3.6-35b = the llama-server router preset for qwen3.6-35b-a3b Q8.
-  customModel: "qwen3.6-35b",
+  customModel: "",
   customApiKey: "",
   // OFF by default: a second model is a hardware luxury, so the shipped
   // default keeps everything on the story model. Set utilityModel in the

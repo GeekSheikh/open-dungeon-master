@@ -27,6 +27,7 @@ const { openDatabase } = await import("../src/lib/db/driver.ts");
 const { leaveMaintenance, maintenanceState } = await import("../src/lib/maintenance.ts");
 const { readTarGz, writeTarGz } = await import("../src/lib/ops/tar.ts");
 const world = await import("../src/lib/ops/world-archive.ts");
+const worlds = await import("../src/lib/worlds/index.ts");
 const route = await import("../src/app/api/admin/world/route.ts");
 
 let passed = 0;
@@ -66,6 +67,14 @@ put(media("uploads", portrait.replace(".png", ".w256.webp")), randomBytes(500));
 put(media("generated", "1700000000000-scene.png"), randomBytes(4000));
 put(media("generated-audio", table.id, `${message}.mp3`), randomBytes(2000));
 put(media("generated-audio", "previews", "voice.mp3"), randomBytes(100));
+// An installed world pack (data/worlds, the loader's INSTALLED_DIR under this
+// cwd): the bundled Saltmarch under another id, so the loader reads it back
+// after an import. The registry listing a publisher writes beside the packs
+// is not a pack.
+const packs = (...parts) => path.join(dir, "data", "worlds", ...parts);
+const saltmarch = JSON.parse(fs.readFileSync(new URL("../src/lib/worlds/bundled/saltmarch.json", import.meta.url), "utf8"));
+put(packs("hollow_marsh.json"), JSON.stringify({ ...saltmarch, id: "hollow_marsh" }));
+put(packs("index.json"), "[]");
 
 const asAdmin = () => (globalThis.__odmTestToken = mintSession(owner.id).token);
 const post = async (body) => {
@@ -106,7 +115,7 @@ await test("only the world's admin, and only in an app's own world, may move it"
   assert.equal((await route.GET()).status, 200);
 });
 
-await test("an export holds the story and the media, and leaves every secret out", async () => {
+await test("an export holds the story, the media and the installed world packs, and leaves every secret out", async () => {
   asAdmin();
   const started = await post({ action: "export" });
   assert.equal(started.status, 202);
@@ -114,12 +123,13 @@ await test("an export holds the story and the media, and leaves every secret out
   assert.equal(job.error, "");
   exported = path.join(world.worldTransferDir(), job.export.name);
   assert.ok(fs.existsSync(exported));
-  assert.deepEqual(job.export.counts, { campaigns: 1, users: 2, messages: 1, files: 4 });
+  assert.deepEqual(job.export.counts, { campaigns: 1, users: 2, messages: 1, files: 5 });
 
   const found = await entries(exported);
   assert.equal(found[0].name, "manifest.json", "the manifest comes first");
   const manifest = JSON.parse(found[0].bytes.toString("utf8"));
   assert.equal(manifest.format, "odm-world");
+  assert.equal(manifest.version, 2);
   assert.deepEqual(
     found.slice(1).map((entry) => entry.name).sort(),
     [
@@ -128,8 +138,9 @@ await test("an export holds the story and the media, and leaves every secret out
       `media/uploads/${portrait}`,
       `media/uploads/${portrait.replace(".png", ".w256.webp")}`,
       "world.sqlite",
+      "worlds/hollow_marsh.json",
     ].sort(),
-    "the voice preview cache stays behind",
+    "the voice preview cache and the registry listing stay behind",
   );
   const sqlite = found.find((entry) => entry.name === "world.sqlite").bytes;
   assert.equal(sqlite.subarray(0, 15).toString("latin1"), "SQLite format 3", "readable on any device");
@@ -172,6 +183,25 @@ await test("a tampered or foreign archive is refused before anything is touched"
   assert.match((await settled()).error, /should not/);
   assert.equal(fs.existsSync(path.join(dir, "escape.sh")), false);
 
+  const listing = path.join(transfer, "import-listing.tar.gz");
+  await rewrite(exported, listing, (all) => {
+    const manifest = JSON.parse(all[0].bytes.toString("utf8"));
+    manifest.files.push({ name: "worlds/index.json", size: 2, sha256: "0".repeat(64) });
+    return [{ name: "manifest.json", bytes: Buffer.from(JSON.stringify(manifest)) }, ...all.slice(1)];
+  });
+  await post({ action: "check", name: "import-listing.tar.gz" });
+  assert.match((await settled()).error, /should not/, "the registry listing is not a pack");
+
+  const older = path.join(transfer, "import-older.tar.gz");
+  await rewrite(exported, older, (all) => {
+    const manifest = JSON.parse(all[0].bytes.toString("utf8"));
+    manifest.version = 1;
+    manifest.files = manifest.files.filter((file) => !file.name.startsWith("worlds/"));
+    return [{ name: "manifest.json", bytes: Buffer.from(JSON.stringify(manifest)) }, ...all.slice(1).filter((entry) => !entry.name.startsWith("worlds/"))];
+  });
+  await post({ action: "check", name: "import-older.tar.gz" });
+  assert.equal((await settled()).error, "", "an archive from before the packs travelled still imports");
+
   const newer = path.join(transfer, "import-newer.tar.gz");
   await rewrite(exported, newer, (all) => {
     const manifest = JSON.parse(all[0].bytes.toString("utf8"));
@@ -188,18 +218,24 @@ await test("a tampered or foreign archive is refused before anything is touched"
 
 await test("an import checks first, then swaps the world in and signs its owner in with the app's password", async () => {
   asAdmin();
-  // The world moves on after the export: a new campaign, a lost portrait.
+  // The world moves on after the export: a new campaign, a lost portrait, a
+  // pack removed and another installed.
   createCampaign(owner.id, { title: "After the export", ...settings });
   fs.rmSync(media("uploads", portrait));
   put(media("uploads", "made-later.png"), randomBytes(100));
+  fs.rmSync(packs("hollow_marsh.json"));
+  put(packs("made_later.json"), JSON.stringify({ ...saltmarch, id: "made_later" }));
+  assert.equal(worlds.worldPackSource("hollow_marsh"), null);
+  assert.equal(worlds.worldPackSource("made_later"), "installed");
 
   fs.copyFileSync(exported, path.join(world.worldTransferDir(), "import-back.tar.gz"));
   await post({ action: "check", name: "import-back.tar.gz" });
   const job = await settled();
   assert.equal(job.error, "");
   assert.equal(job.preview.owner, "owner");
-  assert.deepEqual(job.preview.counts, { campaigns: 1, users: 2, messages: 1, files: 4 });
+  assert.deepEqual(job.preview.counts, { campaigns: 1, users: 2, messages: 1, files: 5 });
   assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM campaigns`).get().n, 2, "a check replaces nothing");
+  assert.equal(worlds.worldPackSource("made_later"), "installed", "a check replaces no pack either");
 
   assert.equal((await post({ action: "commit", name: "import-back.tar.gz", ownerPassword: "short" })).status, 400);
   const secret = randomBytes(24).toString("base64url");
@@ -229,6 +265,10 @@ await test("an import checks first, then swaps the world in and signs its owner 
   const previous = path.join(world.worldTransferDir(), "previous");
   assert.equal(fs.existsSync(path.join(previous, "media", "uploads", "made-later.png")), true, "the replaced world is kept aside");
   assert.equal(fs.existsSync(path.join(previous, "world.sqlite")), true);
+  assert.equal(worlds.worldPackSource("hollow_marsh"), "installed", "the archive's pack is back, and the loader knows");
+  assert.equal(worlds.worldPackSource("made_later"), null);
+  assert.equal(fs.existsSync(path.join(previous, "worlds", "made_later.json")), true, "the replaced world's packs wait beside it");
+  assert.equal(fs.existsSync(packs("index.json")), false, "the registry listing went aside with them");
   assert.equal(fs.existsSync(path.join(world.worldTransferDir(), "import-back.tar.gz")), false, "the staged file is gone");
 });
 

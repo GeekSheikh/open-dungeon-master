@@ -49,7 +49,7 @@ export function parseGrokModels(output: string): HarnessModel[] {
   for (const line of output.split("\n")) {
     const match = /^\s*[-*]?\s*(grok[\w.-]*)/i.exec(line);
     if (match && !models.some((entry) => entry.id === match[1])) {
-      models.push({ id: match[1], label: match[1], cheap: /mini|fast/i.test(match[1]) });
+      models.push({ id: match[1], label: match[1] });
     }
   }
   return models;

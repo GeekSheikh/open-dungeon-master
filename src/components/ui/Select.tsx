@@ -2,7 +2,7 @@
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronDown } from "lucide-react";
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { GameIcon } from "@/components/ui/GameIcon";
 import { cn } from "@/lib/cn";
 import type { IconRef } from "@/lib/icons";
@@ -58,9 +58,26 @@ export function Select<T extends string>({
     else groups.push({ name: key, items: [option] });
   }
   let row = 0;
+  // A finger opens the list on release, as Radix's own Select does: opened
+  // on touch-down, a list that springs open over its trigger (low on a
+  // phone's screen) takes the same tap as a choice. A mouse still opens on
+  // press, and keys work as before.
+  const [open, setOpen] = useState(false);
+  const pointer = useRef("mouse");
   return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild disabled={disabled}>
+    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
+      <DropdownMenu.Trigger
+        asChild
+        disabled={disabled}
+        onPointerDown={(event) => {
+          pointer.current = event.pointerType;
+          if (event.pointerType !== "mouse") event.preventDefault();
+        }}
+        onClick={() => {
+          if (pointer.current !== "mouse" && !disabled) setOpen((now) => !now);
+          pointer.current = "mouse";
+        }}
+      >
         <button type="button" aria-label={label} disabled={disabled} className={cn("kit-select", size === "sm" && "kit-select-sm", className)}>
           {chosen?.icon ? <GameIcon icon={chosen.icon} size={size === "sm" ? "size-4" : "size-5"} /> : null}
           <span className={cn("min-w-0 grow truncate text-left", !chosen && "text-stone-500")}>{chosen ? chosen.label : placeholder}</span>

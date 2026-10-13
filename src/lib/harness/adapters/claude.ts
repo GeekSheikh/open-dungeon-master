@@ -8,7 +8,7 @@
 // on every run, and a run that reports any other tool is killed.
 
 import { writeFileSync } from "node:fs";
-import { claudeFastModel } from "@/lib/speed-tier";
+import os from "node:os";
 import { noteSpeed } from "@/lib/speed-status";
 import path from "node:path";
 import { THIS_TURN_HEADING } from "../../prompt-boundary.ts";
@@ -17,19 +17,98 @@ import type { HarnessAdapter, HarnessModel, HarnessStartOptions } from "../types
 
 export const CLAUDE_MCP_PREFIX = "mcp__odm__";
 
-export const CLAUDE_MODELS: HarnessModel[] = [
-  { id: "sonnet", label: "Sonnet (latest)", contextTokens: 1_000_000 },
-  { id: "opus", label: "Opus (latest)", contextTokens: 1_000_000, fast: true },
-  { id: "haiku", label: "Haiku (latest)", contextTokens: 200_000, cheap: true },
-  { id: "claude-sonnet-5", label: "Claude Sonnet 5", contextTokens: 1_000_000 },
-  { id: "claude-opus-5", label: "Claude Opus 5", contextTokens: 1_000_000, fast: true },
-  { id: "claude-fable-5-1", label: "Claude Fable 5.1", contextTokens: 1_000_000 },
-  { id: "claude-haiku-4-5", label: "Claude Haiku 4.5", contextTokens: 200_000, cheap: true },
-];
+type InitializeModel = {
+  value?: string;
+  displayName?: string;
+  description?: string;
+  resolvedModel?: string;
+  supportsFastMode?: boolean;
+};
+
+// The models of an `initialize` answer: the ones this sign-in offers, under
+// the names `--model` takes. "default" is left out because both pickers
+// already offer the program's own default. An answer without a list throws,
+// so the card says the list could not be read.
+export function parseClaudeModels(models: unknown): HarnessModel[] {
+  if (!Array.isArray(models)) {
+    throw new Error("its answer carried no model list");
+  }
+  return (models as InitializeModel[]).flatMap((entry) => {
+    if (!entry.value || entry.value === "default") {
+      return [];
+    }
+    const name = entry.displayName || entry.value;
+    // "Opus 5.5 · Best for everyday, complex tasks" names the version the
+    // alias stands for; a variant's own name ("Opus (1M context)") is kept.
+    const head = entry.description?.includes(" · ") ? entry.description.split(" · ")[0] : "";
+    // Which one is light is the catalog's call, by price, asked about the
+    // model the alias stands for (src/lib/model-registry/catalog.ts).
+    return [
+      {
+        id: entry.value,
+        label: head.startsWith(name) ? head : name,
+        fast: entry.supportsFastMode === true,
+        ...(entry.resolvedModel ? { catalogId: entry.resolvedModel } : {}),
+      },
+    ];
+  });
+}
+
+const MODELS_REQUEST_ID = "odm-models";
+
+// Asks Claude Code which models it offers: the `initialize` control request
+// the Agent SDK's supportedModels() sends, answered before any model call.
+// It is started with a turn's own flags, so a flag this version no longer
+// takes fails here, on the admin card, rather than at a table; with no model
+// call there is no system prompt to give it, and nothing to leave behind.
+export function probeClaudeModels(binary: string, env: Record<string, string>, timeoutMs = 20_000): Promise<HarnessModel[]> {
+  return new Promise<HarnessModel[]>((resolve, reject) => {
+    let settled = false;
+    const finish = (outcome: HarnessModel[] | Error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      program.kill();
+      if (outcome instanceof Error) {
+        reject(outcome);
+      } else {
+        resolve(outcome);
+      }
+    };
+    const program = spawnProgram(binary, claudeArgs({ systemPromptPath: null, model: "", effort: "", mcpConfigPath: null }), {
+      cwd: os.tmpdir(),
+      env: { ...env, ...CLAUDE_ENV },
+      onLine: (line) => {
+        const event = parseJsonLine(line);
+        const response = event?.type === "control_response" ? (event.response as Record<string, unknown> | undefined) : undefined;
+        if (response?.request_id !== MODELS_REQUEST_ID) {
+          return;
+        }
+        if (response.subtype !== "success") {
+          finish(new Error(typeof response.error === "string" ? response.error : "it refused the request"));
+          return;
+        }
+        try {
+          finish(parseClaudeModels((response.response as Record<string, unknown> | undefined)?.models));
+        } catch (error) {
+          finish(error instanceof Error ? error : new Error(String(error)));
+        }
+      },
+      onExit: (code) => {
+        const tail = program.stderrTail().split("\n").filter(Boolean).slice(-2).join(" ").slice(0, 400);
+        finish(new Error(tail || `it exited with code ${String(code)}`));
+      },
+    });
+    const timer = setTimeout(() => finish(new Error("it did not answer in time")), timeoutMs);
+    program.write(JSON.stringify({ type: "control_request", request_id: MODELS_REQUEST_ID, request: { subtype: "initialize" } }));
+  });
+}
 
 // Pure, so scripts/test-harness-logic.mjs can pin every lockdown flag.
 export function claudeArgs(options: {
-  systemPromptPath: string;
+  systemPromptPath: string | null;
   model: string;
   effort: string;
   mcpConfigPath: string | null;
@@ -45,8 +124,7 @@ export function claudeArgs(options: {
     "stream-json",
     "--verbose",
     "--include-partial-messages",
-    "--system-prompt-file",
-    options.systemPromptPath,
+    ...(options.systemPromptPath ? ["--system-prompt-file", options.systemPromptPath] : []),
     "--tools",
     "",
     "--strict-mcp-config",
@@ -75,16 +153,16 @@ export const CLAUDE_ENV = {
   // The claude.ai connectors and an open IDE would both add tools.
   ENABLE_CLAUDEAI_MCP_SERVERS: "false",
   CLAUDE_CODE_AUTO_CONNECT_IDE: "0",
-  DISABLE_AUTOUPDATER: "1",
   // The advisor is a server tool (a second model that reads the whole
   // conversation), so it never shows in the init event's tool list that the
   // lockdown checks; Claude Code attaches it unasked.
   CLAUDE_CODE_DISABLE_ADVISOR_TOOL: "1",
   // A program reading the table's story sends nothing beyond its model
-  // requests: no telemetry, error reports or feature-flag fetches.
+  // requests: no telemetry, error reports, feature-flag fetches or
+  // auto-updates.
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-  // Long engine calls (a parked roll, a slow handler) must not time out
-  // inside the program before ODM answers them.
+  // A slow engine call must not time out inside the program before ODM
+  // answers it.
   MCP_TOOL_TIMEOUT: "600000",
   MCP_TIMEOUT: "30000",
 };
@@ -131,13 +209,12 @@ async function start(options: HarnessStartOptions) {
   // could not start at all.
   const systemPromptPath = path.join(options.cwd, "odm-system-prompt.md");
   writeFileSync(systemPromptPath, withCacheBoundary(options.system), { mode: 0o600 });
-  const fast = Boolean(options.speed) && claudeFastModel(options.model);
   const args = claudeArgs({
     systemPromptPath,
     model: options.model,
     effort: options.effort,
     mcpConfigPath,
-    fast,
+    fast: Boolean(options.speed),
   });
   let turnText = "";
   let closed = false;
@@ -206,7 +283,7 @@ async function start(options: HarnessStartOptions) {
         const usage = event.usage as { input_tokens?: unknown; output_tokens?: unknown; speed?: unknown } | undefined;
         // What the session ran at, where Claude Code passes the API's word
         // for it on (usage.speed: "fast" or "standard").
-        if (fast && options.speed) {
+        if (options.speed) {
           noteSpeed(options.speed.role === "utility" ? "agent-utility" : "agent-story", {
             model: options.model,
             reported: typeof usage?.speed === "string" ? usage.speed : null,
@@ -308,17 +385,23 @@ export const claudeAdapter: HarnessAdapter = {
         auth = { state: "ready", kind: "api-key" };
       }
     }
+    const notes: string[] = [];
+    if (installed && auth.state === "signed-out") {
+      notes.push("Claude Code is installed but not signed in on this machine.");
+    }
+    const models = installed
+      ? await probeClaudeModels(binary, env).catch((error: Error) => {
+          notes.push(`Claude Code did not list its models (${error.message}).`);
+          return [];
+        })
+      : [];
     return {
       installed,
       version: installed ? version.stdout.trim().split(/\s+/)[0] : undefined,
       auth,
-      models: CLAUDE_MODELS,
+      models,
       lockdownProven: true,
-      message: installed
-        ? auth.state === "signed-out"
-          ? "Claude Code is installed but not signed in on this machine."
-          : undefined
-        : undefined,
+      message: notes.length > 0 ? notes.join(" ") : undefined,
     };
   },
   start,

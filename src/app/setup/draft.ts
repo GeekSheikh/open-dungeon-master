@@ -4,7 +4,6 @@
 // from what is running on it). Saving turns each step's slice into an admin
 // settings patch (src/lib/setup/patches.ts).
 import {
-  DEFAULT_LOCAL_MODEL,
   KEY_PROVIDERS,
   normalizeBaseUrl,
   storySourceForUrl,
@@ -34,7 +33,9 @@ export type Draft = {
   key: { provider: KeyProviderId; baseUrl: string; apiKey: string; model: string; list: ModelList };
   agent: { id: HarnessChoiceId | ""; model: string; utilityModel: string };
   pictures: "comfyui" | "openai" | "agent" | "none" | "";
-  comfy: { url: string; checkpoint: string; preset: "checkpoint" | "z_turbo" };
+  // preset: "checkpoint", or the catalog model (src/lib/image-models) that
+  // paints every picture.
+  comfy: { url: string; checkpoint: string; preset: string };
   picturesKey: string;
   narration: "kokoro" | "openai" | "off" | "";
   kokoro: { url: string; voice: string };
@@ -75,7 +76,7 @@ export function draftFromConfig(config: MaskedConfig, firstRun: boolean): Draft 
           : story === "local" && base
             ? normalizeBaseUrl(base)
             : "",
-      model: text.provider === "local" ? text.localTextModel : story === "local" ? text.customModel || (base ? "" : DEFAULT_LOCAL_MODEL) : "",
+      model: text.provider === "local" ? text.localTextModel : story === "local" ? text.customModel : "",
       apiKey: "",
       list: NO_LIST,
       typed: false,
@@ -121,15 +122,20 @@ export function draftFromConfig(config: MaskedConfig, firstRun: boolean): Draft 
 
 // The scan's findings fill whatever the saved settings left open. Nothing
 // the admin already chose (or saved) is overwritten.
-// The ComfyUI the scan found, filling what the draft left open: its first
-// checkpoint, or Z-Image Turbo when that is all it has the files for.
+// The ComfyUI the scan found, filling what the draft left open. A catalog
+// model already chosen stays while this ComfyUI has its files. A fresh draft
+// takes the model this hardware was measured recommending among those
+// installed, else its first checkpoint, else its first installed model.
 export function comfyFromScan(current: Draft["comfy"], found: NonNullable<ScanResult["comfyui"]>): Draft["comfy"] {
   const checkpoint = current.checkpoint || found.checkpoints[0] || "";
-  return {
-    url: found.url,
-    checkpoint,
-    preset: found.zImage && (current.preset === "z_turbo" || !checkpoint) ? "z_turbo" : "checkpoint",
-  };
+  const installed = found.models.filter((model) => model.missing.length === 0);
+  const kept = installed.find((model) => model.id === current.preset);
+  const fresh = !current.checkpoint && current.preset === "checkpoint";
+  const pick =
+    kept ??
+    (fresh ? installed.find((model) => model.verified?.verdict === "recommended") : undefined) ??
+    (checkpoint ? undefined : installed[0]);
+  return { url: found.url, checkpoint, preset: pick?.id ?? "checkpoint" };
 }
 
 export function draftWithScan(draft: Draft, scan: ScanResult, storyIsOpenAi: boolean): Draft {
