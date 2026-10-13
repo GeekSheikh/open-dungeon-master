@@ -54,12 +54,13 @@ function shapePool(data: { throws?: ServerThrow[]; kept?: boolean; createdAt?: s
 
 // Six throws of 4d6 from the server, shaped for the dice tray. Where each
 // die comes to rest is decoration, so that part is made up here.
-export async function requestAbilityPool(): Promise<AbilityPoolAnswer | { error: string }> {
+// At a table (campaignId), the roll is that table's, under its own rule.
+export async function requestAbilityPool(campaignId?: string | null): Promise<AbilityPoolAnswer | { error: string }> {
   try {
     const response = await fetch("/api/characters/rolls", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "abilities" }),
+      body: JSON.stringify({ kind: "abilities", ...(campaignId ? { campaignId } : {}) }),
     });
     const data = await response.json().catch(() => ({}));
     const answer = response.ok ? shapePool(data?.abilities) : null;
@@ -72,9 +73,9 @@ export async function requestAbilityPool(): Promise<AbilityPoolAnswer | { error:
 // The six already on record for this player, if any, without throwing: what
 // a new builder shows as kept instead of as dice in the air (issue #128).
 // The server's reroll rule comes with it either way.
-export async function fetchOpenAbilityPool(): Promise<{ open: AbilityPoolAnswer | null; rerollBelow: number } | null> {
+export async function fetchOpenAbilityPool(campaignId?: string | null): Promise<{ open: AbilityPoolAnswer | null; rerollBelow: number } | null> {
   try {
-    const response = await fetch("/api/characters/rolls");
+    const response = await fetch(campaignId ? `/api/characters/rolls?campaignId=${encodeURIComponent(campaignId)}` : "/api/characters/rolls");
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       return null;

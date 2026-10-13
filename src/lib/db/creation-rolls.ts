@@ -2,6 +2,7 @@ import { getGlobalConfig } from "@/lib/db/app-settings";
 import { getDatabase, nowIso, parseJson } from "@/lib/db/core";
 import { defaultRng } from "@/lib/dice";
 import { startingWealthDice, wealthFromFaces } from "@/lib/srd/starting-wealth";
+import { tableRerollBelow } from "@/lib/srd/ability-rerolls";
 
 // Dice a player is owed while building a character, thrown and kept by the
 // server: the six ability totals of the 4d6 method, and the starting wealth
@@ -21,6 +22,22 @@ const POOL_SIZE = 6;
 // the kept six add up to less than this; 0 allows no reroll (issue #128).
 export function abilityRerollBelow(): number {
   return getGlobalConfig().abilityRerollBelow;
+}
+
+// Where an ability roll is kept and the rule it is thrown under. A character
+// made at a table rolls there, under the table's own rule when it set one
+// (src/lib/srd/ability-rerolls.ts), and its six are that table's: a table
+// that rerolls freely cannot hand a fishing-trip's six to a stricter table
+// or to the library. The library's roll is the player's own, under the
+// server's rule, as it always was.
+export type AbilityRollPlace = { scope: string; rerollBelow: number };
+
+export function abilityRollPlace(
+  campaign?: { id: string; gameSettings: { abilityRerollBelow?: number | null } } | null,
+): AbilityRollPlace {
+  return campaign
+    ? { scope: campaign.id, rerollBelow: tableRerollBelow(campaign.gameSettings.abilityRerollBelow, abilityRerollBelow()) }
+    : { scope: "", rerollBelow: abilityRerollBelow() };
 }
 
 // Keyed by the connection, so a process that opens a second database (a
@@ -100,9 +117,13 @@ function throwFour(): AbilityPoolRoll["throws"][number] {
   return { dice, dropIndex, total };
 }
 
-const shaped = (throws: AbilityPoolRoll["throws"], kept: boolean, createdAt: string | null): AbilityPoolRoll => {
+const shaped = (
+  throws: AbilityPoolRoll["throws"],
+  kept: boolean,
+  createdAt: string | null,
+  rerollBelow: number,
+): AbilityPoolRoll => {
   const totals = throws.map((entry) => entry.total);
-  const rerollBelow = abilityRerollBelow();
   return {
     throws,
     totals,
@@ -113,27 +134,28 @@ const shaped = (throws: AbilityPoolRoll["throws"], kept: boolean, createdAt: str
   };
 };
 
-// The player's open pool, or null when none was rolled.
-export function openAbilityPool(userId: string): AbilityPoolRoll | null {
-  const open = read<AbilityPoolRoll["throws"]>(userId, "abilities", "");
-  return open?.payload.length === POOL_SIZE ? shaped(open.payload, true, open.createdAt) : null;
+// The player's open pool at this place (the library unless a table is
+// given), or null when none was rolled there.
+export function openAbilityPool(userId: string, place: AbilityRollPlace = abilityRollPlace()): AbilityPoolRoll | null {
+  const open = read<AbilityPoolRoll["throws"]>(userId, "abilities", place.scope);
+  return open?.payload.length === POOL_SIZE ? shaped(open.payload, true, open.createdAt, place.rerollBelow) : null;
 }
 
 // Six throws of 4d6, the lowest die of each set aside. A pool at or over
-// the server's threshold stands: asking again returns the same six, marked
+// the place's threshold stands: asking again returns the same six, marked
 // as kept.
-export function rollAbilityPool(userId: string): AbilityPoolRoll {
-  const open = openAbilityPool(userId);
+export function rollAbilityPool(userId: string, place: AbilityRollPlace = abilityRollPlace()): AbilityPoolRoll {
+  const open = openAbilityPool(userId, place);
   if (open && !open.canReroll) {
     return open;
   }
   const throws = Array.from({ length: POOL_SIZE }, throwFour);
-  write(userId, "abilities", "", throws);
-  return shaped(throws, false, nowIso());
+  write(userId, "abilities", place.scope, throws);
+  return shaped(throws, false, nowIso(), place.rerollBelow);
 }
 
-export function spendAbilityPool(userId: string) {
-  clear(userId, "abilities", "");
+export function spendAbilityPool(userId: string, place: AbilityRollPlace = abilityRollPlace()) {
+  clear(userId, "abilities", place.scope);
 }
 
 export type WealthRoll = { classId: string; faces: number[]; gold: number };

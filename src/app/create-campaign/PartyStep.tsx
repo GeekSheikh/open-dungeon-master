@@ -4,6 +4,7 @@ import { InfoButton } from "@/components/ui/InfoDialog";
 import { NumberStepper } from "@/components/ui/NumberStepper";
 import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/cn";
+import { REROLL_LOW_DEFAULT, rerollBelowFor, rerollChoiceOf, type RerollChoice } from "@/lib/srd/ability-rerolls";
 import {
   CAMPAIGN_DIFFICULTIES,
   CAMPAIGN_DIFFICULTY_HINTS,
@@ -96,6 +97,29 @@ export function PartyStep({ draft, patch, gates }: StepProps) {
           />
           <p className="mt-1 text-xs text-stone-500">
             What a new hero starts with; rolled gold is thrown by the server.
+          </p>
+        </label>
+        <label className="col-span-2 block">
+          <FieldLabel>Rolled stats</FieldLabel>
+          <Select<"server" | RerollChoice>
+            value={draft.abilityRerollBelow === null ? "server" : rerollChoiceOf(draft.abilityRerollBelow)}
+            onChange={(choice) =>
+              patch({
+                abilityRerollBelow:
+                  choice === "server" ? null : rerollBelowFor(choice, draft.abilityRerollBelow ?? REROLL_LOW_DEFAULT),
+              })
+            }
+            label="Rolled stats"
+            className="w-full"
+            options={[
+              { value: "server", label: "Follow the server's reroll rule" },
+              { value: "keep", label: "The first roll stands" },
+              { value: "low", label: `Reroll a roll totalling under ${REROLL_LOW_DEFAULT}` },
+              { value: "free", label: "Reroll as often as you like" },
+            ]}
+          />
+          <p className="mt-1 text-xs text-stone-500">
+            For 4d6 ability scores rolled here: whether a player may throw the six again. The server rolls them either way.
           </p>
         </label>
       </div>
