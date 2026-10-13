@@ -1474,7 +1474,11 @@ export function autoActSkippedEnemies(
     );
     const targetName = sheetsById.get(targetId)?.name ?? "a hero";
     if ("error" in result) {
-      // Out of reach or otherwise unable: the skipped turn passes quietly.
+      // Holding where it stands while a character has an action readied is
+      // worth a line; out of reach or otherwise unable passes quietly.
+      if (typeof result.heldGround === "string") {
+        notes.push(`${enemy.displayName} does not close in while ${result.heldGround} holds a readied action.`);
+      }
       continue;
     }
     const swings = Array.isArray(result.swings) ? (result.swings as Array<Record<string, unknown>>) : [];

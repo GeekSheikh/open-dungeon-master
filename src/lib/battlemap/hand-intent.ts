@@ -12,6 +12,7 @@
 // it spreads these fields in and calls the two describers, so a card that
 // carries an option reaches the model as the tool argument it stands for.
 // Pure: zod and strings only.
+import { READIABLE } from "@/lib/dm/readied-kinds";
 import { z } from "zod";
 
 const text = (max: number) => z.string().trim().min(1).max(max);
@@ -40,6 +41,8 @@ export const handIntentExtras = {
   // Ready with a spell: take_action's `spell` and `level`.
   readySpell: text(80).optional(),
   readyLevel: z.number().int().min(1).max(9).optional(),
+  // Ready with another action: take_action's `readied` (readied-kinds.ts).
+  readyAction: z.enum(READIABLE).optional(),
   // Search's skill.
   skill: z.enum(["perception", "investigation"]).optional(),
   // Where a spell's area is laid on the battle map, under the placement
@@ -88,6 +91,7 @@ export type HandIntentExtras = {
   trigger?: string;
   readySpell?: string;
   readyLevel?: number;
+  readyAction?: string;
   skill?: "perception" | "investigation";
   atX?: number;
   atY?: number;
@@ -107,6 +111,7 @@ export function handExtraArgs(intent: HandIntentExtras): string[] {
   if (intent.trigger) args.push(`trigger=${intent.trigger}`);
   if (intent.readySpell) args.push(`spell=${intent.readySpell}`);
   if (intent.readySpell && intent.readyLevel) args.push(`level=${intent.readyLevel}`);
+  if (intent.readyAction) args.push(`readied=${intent.readyAction}`);
   if (intent.skill) args.push(`skill=${intent.skill}`);
   for (const key of ["atX", "atY", "towardX", "towardY"] as const) {
     if (intent[key] !== undefined) args.push(`${key}=${intent[key]}`);

@@ -122,6 +122,10 @@ export function approachTarget(
   enemy: EncounterEnemy,
   targetRef: string,
   profile: EnemyAttackProfile,
+  // A character holding a readied action (readied-release.ts readiedHolder):
+  // while one waits, an enemy out of reach is not walked in and swung in one
+  // call. The DM moves it with move_token, judges the trigger, then attacks.
+  holdGround: { holder: string; trigger: string } | null = null,
 ): Approach {
   const map = getBattleMapForEncounter(encounterId);
   const attacker = map ? getTokenByRef(map.id, enemy.id) : null;
@@ -152,6 +156,15 @@ export function approachTarget(
 
   if (reachesFrom(origin)) {
     return { distance: startDistance };
+  }
+  if (holdGround) {
+    return {
+      distance: startDistance,
+      blocked: {
+        error: `${attacker.name} is ${startDistance * 5} ft from ${target.name}, out of reach, and ${holdGround.holder} holds a readied action (${holdGround.trigger}). It does not walk in and attack in one call while someone waits on a trigger: move it with move_token, release ${holdGround.holder}'s readied action if its movement fired the trigger (or let the trigger pass), then call enemy_attack. Nothing was spent.`,
+        heldGround: holdGround.holder,
+      },
+    };
   }
 
   const budget = Math.max(0, enemySpeedTiles(enemy) - attacker.movedThisRound);

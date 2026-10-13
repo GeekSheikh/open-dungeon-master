@@ -9,10 +9,11 @@
 //   - Search: an action, a Wisdom (Perception) or Intelligence
 //     (Investigation) check.
 //   - Ready: the action now, a trigger named, and the response later with
-//     the reaction. ODM holds a readied attack: the character carries
-//     "readied" until the start of their next turn, and the one off-turn
-//     pc_attack it allows spends it and the reaction
-//     (src/lib/dm/pc-attack-plan.ts).
+//     the reaction. Ready commits to one action (SRD 5.1): the character
+//     carries "readied" until the start of their next turn with what they
+//     readied in its metadata (readied-kinds.ts), and that action's own
+//     tool releases it off their turn for the reaction (readied-release.ts;
+//     a readied attack through pc_attack, src/lib/dm/pc-attack-plan.ts).
 
 import { coatsAsBonusAction, drinksAsBonusAction } from "@/lib/srd/feat-combat";
 import { isBasicPoison } from "@/lib/dm/attack-onhit";
@@ -24,19 +25,20 @@ import { publishPersisted } from "@/lib/events";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { conditionExtraActions } from "@/lib/srd/condition-effects";
 import { spendAction } from "@/lib/dm/action-budget";
-import { addSheetCondition } from "@/lib/dm/action-common";
 import { tilesBetween } from "@/lib/dm/attack-spatial";
 import { canAct } from "@/lib/dm/can-act";
-import { removeConditions } from "@/lib/dm/condition-logic";
 import { rollCharacterCheck } from "@/lib/dm/contest-roll";
 import { findCarriedItem, itemUseProblem } from "@/lib/dm/item-logic";
 import { attacksAllowedFor, budgetFor, storeBudget } from "@/lib/dm/turn-budget";
+import { READIED, READIED_WORDS, RELEASE_TOOLS, readiedHeld, type Readiable } from "@/lib/dm/readied-kinds";
+import { dropReadied, readiedReleaseFor } from "@/lib/dm/readied-release";
+import type { ConditionMetaMap } from "@/lib/dm/condition-logic";
 
 // Haste's extra action names this use by these words (action-budget.ts).
 const USE_AN_OBJECT = "use an object";
 
 // The readied condition a Ready action leaves on the character.
-export const READIED = "readied";
+export { READIED };
 
 // ---- use_item: what using a carried item costs ----
 
@@ -56,9 +58,17 @@ export function prepareUseItem(
     return { error: `${sheet.name} does not use up ${carried?.name ?? itemName}: ${problem}` };
   }
   const encounter = getActiveEncounter(campaign.id);
-  const allowed = canAct({ sheet, encounter, kind: "action" });
-  if (!allowed.ok) {
-    return { error: allowed.error };
+  // Off their turn, the use of an item they readied is their reaction, and
+  // nothing of the acting combatant's turn (readied-release.ts).
+  const readied = readiedReleaseFor(sheet, encounter, "item");
+  if (readied && "error" in readied) {
+    return { error: readied.error };
+  }
+  if (!readied) {
+    const allowed = canAct({ sheet, encounter, kind: "action" });
+    if (!allowed.ok) {
+      return { error: allowed.error };
+    }
   }
   if (target.id !== sheet.id && encounter) {
     const apart = tilesBetween(encounter.id, sheet.id, target.id);
@@ -67,6 +77,9 @@ export function prepareUseItem(
         error: `${target.name} is ${apart * 5} ft from ${sheet.name}; feeding them a potion needs them within 5 ft. ${sheet.name} moves next to them first.`,
       };
     }
+  }
+  if (readied) {
+    return { commit: () => readied.release() };
   }
   const budget = budgetFor(
     encounter,
@@ -158,12 +171,16 @@ export function searchAction(
   };
 }
 
+// Ready commits to one action (SRD 5.1): `holds` is what the trigger
+// releases, an attack unless the DM named another (take_action's `readied`;
+// a spell goes through readySpell instead).
 export function readyAction(
   campaign: Campaign,
   sheet: CharacterSheet,
   trigger: string | undefined,
   inFight: boolean,
   priced: Priced,
+  holds: Exclude<Readiable, "spell"> = "attack",
 ): Record<string, unknown> {
   const named = (trigger ?? "").trim();
   if (!inFight) {
@@ -175,33 +192,31 @@ export function readyAction(
     };
   }
   priced.spend();
-  addSheetCondition(campaign, getSheetById(sheet.id) ?? sheet, READIED, { untilTurnOf: sheet.id }, named);
+  const fresh = getSheetById(sheet.id) ?? sheet;
+  const meta: ConditionMetaMap = {
+    ...(fresh.conditionMeta as ConditionMetaMap),
+    [READIED]: { untilTurnOf: sheet.id, source: named.slice(0, 80), ...(holds === "attack" ? {} : { holds }) },
+  };
+  const conditions = fresh.conditions.some((entry) => entry.trim().toLowerCase() === READIED) ? fresh.conditions : [...fresh.conditions, READIED];
+  const updated = patchSheet(sheet.id, { conditions, conditionMeta: meta });
+  if (updated) {
+    publishPersisted(campaign.id, "sheet_updated", { sheet: updated });
+  }
   return {
     ok: true,
     action: "Ready",
+    readied: holds,
     trigger: named.slice(0, 80),
-    applied: `${sheet.name} has readied an action until the start of their next turn. When the trigger happens, resolve the readied attack with pc_attack: it is made off their turn with their reaction, and the server spends both. If the trigger never comes, the readied action is lost.`,
+    applied: `${sheet.name} has readied ${READIED_WORDS[holds]} until the start of their next turn, for: ${named.slice(0, 80)}. You judge the trigger. When it happens, release it off their turn with ${RELEASE_TOOLS[holds]}: the server spends their reaction and nothing of the acting combatant's turn. Any other action, or a second release, is refused. If the trigger never comes, the readied action is lost.`,
   };
 }
 
-// The readied action a character holds, or null.
+// The trigger of the readied action a character holds, or null.
 export function readiedTrigger(sheet: CharacterSheet): string | null {
-  const name = sheet.conditions.find((entry) => entry.trim().toLowerCase() === READIED);
-  if (!name) {
-    return null;
-  }
-  return (sheet.conditionMeta as Record<string, { source?: string }>)[name]?.source ?? "their trigger";
+  return readiedHeld(sheet)?.trigger ?? null;
 }
 
 // Spends a readied action: the off-turn attack it allowed has been made.
 export function spendReadied(campaign: Campaign, sheetId: string) {
-  const sheet = getSheetById(sheetId);
-  if (!sheet || !readiedTrigger(sheet)) {
-    return;
-  }
-  const cleared = removeConditions(sheet.conditions, sheet.conditionMeta, [READIED]);
-  const updated = patchSheet(sheet.id, { conditions: cleared.conditions, conditionMeta: cleared.meta });
-  if (updated) {
-    publishPersisted(campaign.id, "sheet_updated", { sheet: updated });
-  }
+  dropReadied(campaign.id, sheetId);
 }
