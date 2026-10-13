@@ -19,6 +19,8 @@ const { openBuilder } = await import("./lib/enforce-builder.mjs");
 const builder = await openBuilder();
 const campaigns = await import("../src/lib/db/campaigns.ts");
 const { combatRiders } = await import("../src/lib/srd/feature-effects.ts");
+const { asiOwed } = await import("../src/lib/srd/asi-ledger.ts");
+const { owedChoices } = await import("../src/lib/srd/owed-choices.ts");
 
 // A human sage wizard as a player fills the wizard in: standard array with
 // Intelligence first, the class's two skills, the race's and background's
@@ -121,20 +123,29 @@ await test("A level 1 build joining a level 5 table arrives as a level 5 fighter
   assert.ok(joined.maxHp > built.sheet.maxHp, "the table level brought no hit points");
   assert.equal(combatRiders(joined).extraAttacks, 1, "a level 5 fighter attacks twice");
   assert.equal(seated.character.level, 1, "joining a higher table changed the library's own level");
+  // Issue 293: nobody offered the level 4 improvement on the way up, so the
+  // table owes it, as it would a fighter built at 5, and the sheet says so.
+  assert.equal(joined.abilities.str, built.sheet.abilities.str, "an improvement was applied for the player");
+  assert.equal(asiOwed(joined, [{ id: "fighter", level: 5 }]), 1, "the join recorded the skipped improvement as taken");
+  assert.ok(owedChoices(joined).some((line) => /1 Ability Score Improvement/.test(line)), "the sheet does not list the owed improvement");
 
   campaigns.setCampaignStatus(campaignId, "active");
   const awarded = await world.invoke("award_xp", { characterIds: [joined.id], amount: 14000, reason: "the siege" });
   assert.equal(awarded.ok, true, awarded.error);
   world.signIn(player);
+  // The dialog offers the skipped one and level 6's own; the request carries both.
+  assert.equal(asiOwed(joined, [{ id: "fighter", level: 6 }]), 2);
   const levelled = await call(sheetRoute, "PATCH", {
     level: 6,
     levelUpClass: "fighter",
-    asiChoices: [{ mode: "plus2", ability: "str" }],
+    asiChoices: [{ mode: "plus2", ability: "str" }, { mode: "plus2", ability: "con" }],
   }, { campaignId });
   assert.equal(levelled.status, 200, JSON.stringify(levelled.json));
   const after = table.sheets.getSheetForUser(campaignId, player.id);
   assert.equal(after.level, 6);
-  assert.equal(after.abilities.str, joined.abilities.str + 2, "level 6's improvement did not land");
+  assert.equal(after.abilities.str, joined.abilities.str + 2, "the first improvement did not land");
+  assert.equal(after.abilities.con, joined.abilities.con + 2, "the second improvement did not land");
+  assert.equal(asiOwed(after, [{ id: "fighter", level: 6 }]), 0, "both improvements are taken");
   world.close();
 });
 
