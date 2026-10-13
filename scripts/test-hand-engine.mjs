@@ -457,4 +457,17 @@ test("a charged item shows its count, a pending attunement shows, and a cursed o
   assert.match(status.attuneRefusal, /is cursed/);
 });
 
+// The engine swings a versatile weapon one-handed while a shield is on the
+// arm (handsRuling), so the card must not offer the two-handed grip.
+test("a versatile weapon offers two hands only when no shield is worn", () => {
+  const free = byId(deriveHand(sheet({ equipment: [item("Longsword", { equipped: true })] }), mine()), "attack:longsword");
+  assert.match(free.rules, /Versatile: say two hands/);
+  const shielded = byId(
+    deriveHand(sheet({ equipment: [item("Longsword", { equipped: true }), item("Shield", { equipped: true })] }), mine()),
+    "attack:longsword",
+  );
+  assert.doesNotMatch(shielded.rules, /two hands/);
+  assert.equal(shielded.dice, free.dice);
+});
+
 console.log(`test-hand-engine: ${passed} passed`);
