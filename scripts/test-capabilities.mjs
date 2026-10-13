@@ -196,6 +196,31 @@ check("portrait renders are gated on imagesAvailable", () => {
   assert.match(source, /export async function imagesAvailable\(\s*(settings\?:|\))/);
 });
 
+// The DM's own pictures ask the same question. Setup's "no pictures" leaves
+// ComfyUI as the fallback backend, and before this the turn's maps and scene
+// pictures were queued against it anyway, so every new area put "Could not
+// reach ComfyUI" in front of the players. A ComfyUI address the admin or the
+// campaign typed still counts, so a real backend's failures stay visible.
+check("the DM's maps and scene pictures are gated on imagesAvailable", () => {
+  const turn = readFileSync(path.join(root, "src/lib/dm/turn.ts"), "utf8");
+  const dispatch = readFileSync(path.join(root, "src/lib/dm/invoke-dispatch.ts"), "utf8");
+  const images = readFileSync(path.join(root, "src/lib/dm/images.ts"), "utf8");
+  // Maps: the synchronous location handler takes the answer from its callers.
+  assert.match(turn, /export function handleLocationCall\([^)]*picturesAvailable = true,?\s*\)/);
+  assert.match(turn, /mapsEnabled &&\s*picturesAvailable &&/);
+  assert.match(turn, /await imagesAvailable\(campaign\.settings\)\)/);
+  assert.match(turn, /handleLocationCall\(campaign, locationCall\.name, locationCall\.rawArguments, picturesAvailable\)/);
+  assert.match(dispatch, /handleLocationCall\(campaign, name, rawArguments, await imagesAvailable\(campaign\.settings\)\)/);
+  // Scene pictures: the turn's own picture goes through the gated door, and a
+  // dropped one is marked not needed so its placeholder does not outlive it.
+  assert.match(turn, /void fulfillAutoImage\(campaignId, message\.id, message\.imageRequest/);
+  assert.doesNotMatch(turn, /fulfillMessageImage\(/);
+  assert.match(images, /if \(await imagesAvailable\(settings\)\) \{\s*return fulfillMessageImage\(/);
+  assert.match(images, /setMessageImageRequest\(messageId, \{ \.\.\.request, needed: false \}\)/);
+  // A campaign's own ComfyUI address answers like the admin panel's.
+  assert.match(source, /settings\?\.imageBackend === "comfyui" && settings\.comfyUrl\?\.trim\(\)\) \{\s*return true;/);
+});
+
 check("speech is configured by an explicit URL or a live default", () => {
   assert.equal(speechConfigured("http://127.0.0.1:8880", false), true);
   assert.equal(speechConfigured("", true), true);

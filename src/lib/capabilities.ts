@@ -287,7 +287,8 @@ export async function probeReachable(
 // through the same probe window as the endpoint, so a burst of character
 // creations costs one probe, not one per character.
 export async function imagesAvailable(
-  settings?: Pick<StorySettings, "imageBackend" | "customBaseUrl" | "customApiKey">,
+  settings?: Pick<StorySettings, "imageBackend" | "customBaseUrl" | "customApiKey"> &
+    Partial<Pick<StorySettings, "comfyUrl">>,
 ): Promise<boolean> {
   // A campaign holding its own OpenAI key answers for itself. The snapshot
   // below describes the SERVER's default backend, which on a
@@ -303,6 +304,12 @@ export async function imagesAvailable(
   // agent's own (installed, switched on, a test picture seen here).
   if (settings?.imageBackend === "harness") {
     return harnessImagesReady();
+  }
+  // A campaign pointed at its own ComfyUI asked for pictures by name, the
+  // same as an address in the admin panel (imagesConfigured): its failures
+  // are worth showing, so it is not second-guessed by the server's probe.
+  if (settings?.imageBackend === "comfyui" && settings.comfyUrl?.trim()) {
+    return true;
   }
   try {
     return (await capabilitiesSnapshot()).images.configured;

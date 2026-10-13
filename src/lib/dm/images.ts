@@ -1,4 +1,5 @@
 import { generateStoryImage, imageProducerReady } from "@/lib/image-generate";
+import { imagesAvailable } from "@/lib/capabilities";
 import {
   getCampaignMessage,
   getLatestDmMessage,
@@ -84,6 +85,30 @@ export function fulfillMessageImage(
       throw error;
     }
   });
+}
+
+// The picture the AI DM attaches to its own narration. Nobody at the table
+// asked for it, so on a server with no image backend running (setup's "no
+// pictures", which still falls back to ComfyUI) it is dropped rather than
+// failed: the request is marked not needed, which is what the placeholder
+// reads, so it goes away now and stays away on a reload. A ComfyUI started
+// later is picked up once the capability probe sees it.
+export async function fulfillAutoImage(
+  campaignId: string,
+  messageId: string,
+  request: ImageRequest,
+  settings: StorySettings,
+) {
+  if (await imagesAvailable(settings)) {
+    return fulfillMessageImage(campaignId, messageId, request, settings);
+  }
+  if (!setMessageImageRequest(messageId, { ...request, needed: false })) {
+    return;
+  }
+  const updated = getCampaignMessage(messageId);
+  if (updated) {
+    publishPersisted(campaignId, "message_updated", { message: updated });
+  }
 }
 
 // generate_image, as an adjudication a person can invoke.
