@@ -12,6 +12,7 @@ import { enterMaintenance } from "@/lib/maintenance";
 import { fileSha256, readTarGz, writeTarGz, type TarEntry } from "@/lib/ops/tar";
 import { serverEnv } from "@/lib/server-env";
 import { currentBuild } from "@/lib/update-check";
+import { INSTALLED_DIR, resetWorldPackCache } from "@/lib/worlds";
 
 // A whole device world in one file, and back (audit C7). The apps' own
 // worlds cannot use the server backup (it shells out to tar, wants the
@@ -23,9 +24,10 @@ import { currentBuild } from "@/lib/update-check";
 //     any device can read it, with every secret left out: sign-ins, agent
 //     connections and their webhooks, pending invites, and every key,
 //     secret, token or password inside the settings. Then the pictures,
-//     documents and narration, and a manifest with each file's size and
-//     sha256, written first so an import knows what to expect before it
-//     unpacks a byte.
+//     documents and narration, the world packs an admin installed
+//     (data/worlds, which a fresh install is otherwise without), and a
+//     manifest with each file's size and sha256, written first so an import
+//     knows what to expect before it unpacks a byte.
 //   - Import, in two steps so nothing is replaced before the person has
 //     seen what the archive holds: check (unpack beside the world, verify
 //     every file against the manifest, open the database and run its
@@ -39,8 +41,17 @@ import { currentBuild } from "@/lib/update-check";
 // apps put the file they picked and take the file they save.
 
 const FORMAT = "odm-world";
-const FORMAT_VERSION = 1;
+// Version 2 added the installed world packs (worlds/<id>.json). Both versions
+// import; an older app meets a version 2 archive with the "update the app"
+// message below rather than a complaint about a file it does not know.
+const FORMAT_VERSION = 2;
+const READABLE_VERSIONS = new Set([1, FORMAT_VERSION]);
 const MEDIA_ROOTS = ["uploads", "generated", "generated-audio"] as const;
+// A pack file as the loader names it (src/lib/worlds/index.ts): a pack id and
+// .json. index.json is the registry listing a publisher writes beside the
+// packs, not a pack, and the loader skips it, so it stays behind too.
+const PACK_NAME = /^[a-z][a-z0-9_]{2,49}\.json$/;
+const REGISTRY_LISTING = "index.json";
 const MANIFEST_MAX_BYTES = 8 * 1024 * 1024;
 const IMPORT_NAME = /^import-[A-Za-z0-9_-]{1,64}\.tar\.gz$/;
 const FLAT_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,200}$/;
@@ -262,6 +273,17 @@ async function listMedia(): Promise<Array<{ name: string; file: string }>> {
   return media;
 }
 
+// The world packs an admin installed, as the files they are: the loader on
+// the new device reads them back from the same folder.
+async function listPacks(): Promise<Array<{ name: string; file: string }>> {
+  const packs: Array<{ name: string; file: string }> = [];
+  for (const name of await regularFiles(INSTALLED_DIR, PACK_NAME)) {
+    if (name === REGISTRY_LISTING) continue;
+    packs.push({ name: `worlds/${name}`, file: path.join(INSTALLED_DIR, name) });
+  }
+  return packs;
+}
+
 async function clearStaged(dir: string, pattern: RegExp): Promise<void> {
   for (const name of await fs.promises.readdir(dir).catch(() => [] as string[])) {
     if (pattern.test(name)) await fs.promises.rm(path.join(dir, name), { recursive: true, force: true });
@@ -280,8 +302,8 @@ async function runExport(job: WorldJob): Promise<WorldExport> {
     live.exec(`VACUUM INTO '${quoted(copy)}'`);
     job.phase = "Leaving out passwords and keys";
     const counts = scrubCopy(copy, encrypted);
-    job.phase = "Finding pictures and narration";
-    const media = await listMedia();
+    job.phase = "Finding pictures, narration and world packs";
+    const media = [...(await listMedia()), ...(await listPacks())];
     const all = [{ name: "world.sqlite", file: copy }, ...media];
     const files: ManifestFile[] = [];
     for (const [index, item] of all.entries()) {
@@ -343,7 +365,7 @@ function parseManifest(text: string): Manifest {
   if (parsed?.format !== FORMAT || !Array.isArray(parsed.files)) {
     throw new WorldArchiveError("This is not an Open Dungeon Master world archive.");
   }
-  if (parsed.version !== FORMAT_VERSION) {
+  if (!READABLE_VERSIONS.has(parsed.version)) {
     throw new WorldArchiveError("This world archive was made by a different version of the format. Update the app, then try again.");
   }
   const names = new Set<string>();
@@ -370,6 +392,9 @@ function parseManifest(text: string): Manifest {
 function stagedRelative(name: string): string | null {
   if (name === "world.sqlite") return name;
   const parts = name.split("/");
+  if (parts[0] === "worlds" && parts.length === 2 && PACK_NAME.test(parts[1]) && parts[1] !== REGISTRY_LISTING) {
+    return path.join(...parts);
+  }
   if (parts[0] !== "media") return null;
   if ((parts[1] === "uploads" || parts[1] === "generated") && parts.length === 3 && FLAT_NAME.test(parts[2])) {
     return path.join(...parts);
@@ -580,12 +605,21 @@ export async function commitWorldImport(name: string, ownerPassword: string): Pr
       if (exists(incoming)) await step(incoming, publicDir(root));
       else await fs.promises.mkdir(publicDir(root), { recursive: true });
     }
+    // The installed world packs go the same way as the media: the archive's
+    // replace this world's, which wait in previous/ beside its database.
+    await fs.promises.mkdir(path.dirname(INSTALLED_DIR), { recursive: true });
+    if (exists(INSTALLED_DIR)) await step(INSTALLED_DIR, path.join(previous, "worlds"));
+    const packs = path.join(stage, "worlds");
+    if (exists(packs)) await step(packs, INSTALLED_DIR);
   } catch (error) {
     for (const [from, to] of done.reverse()) {
       await move(to, from).catch((undo) => console.error("[world-archive] could not undo a step", undo));
     }
     console.error("[world-archive] import swap failed; the previous world is back in place", error);
     throw new WorldArchiveError("The world could not be swapped in; the previous one is back in place. Restart the app.", 500);
+  } finally {
+    // Whatever is on disk now, the loader's memory of the packs is stale.
+    resetWorldPackCache();
   }
   await fs.promises.rm(stage, { recursive: true, force: true });
   await fs.promises.rm(path.join(dir, name), { force: true });

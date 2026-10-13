@@ -28,7 +28,10 @@ copy it as the starting point for your own.
 **Community packs are installed, never committed.** A pack based on an existing
 universe is downloaded from a registry or added from a file through
 Admin, Campaign plugins. It lands in `data/worlds/`, which is gitignored, is not
-part of this repository, and is not covered by its MIT license.
+part of this repository, and is not covered by its MIT license. In the apps' own
+worlds the folder survives a payload upgrade (both shells carry `data/` across,
+beside the uploads and paintings) and travels in a Move your world export, so a
+world brought to a fresh install arrives with the packs it had.
 
 An installed pack shadows a bundled one with the same id, so you can ship your
 own build of a world we bundle. Removing the override falls back to the bundled
