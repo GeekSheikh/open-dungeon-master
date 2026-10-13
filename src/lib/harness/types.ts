@@ -30,6 +30,9 @@ export type HarnessModel = {
   fast?: boolean;
   // Its vendor has deprecated it (the model catalog, src/lib/model-registry).
   deprecated?: boolean;
+  // The model an alias stands for, where the program says so (Claude Code's
+  // "opus" is claude-opus-5-5): what the catalog is asked about it.
+  catalogId?: string;
 };
 
 export type HarnessAuth = {

@@ -184,7 +184,12 @@ test("Claude Code's models are the ones its initialize answer lists", () => {
     "an alias is labelled with the version it stands for",
   );
   assert.deepEqual(models.filter((model) => model.fast).map((model) => model.id), ["opus"], "Fast only where it says so");
-  assert.deepEqual(models.filter((model) => model.cheap).map((model) => model.id), ["haiku"]);
+  assert.deepEqual(
+    models.map((model) => model.catalogId),
+    ["claude-opus-5-5", "claude-fable-5-1", "claude-sonnet-5-5", "claude-haiku-5-5"],
+    "each carries the model it stands for, which the catalog judges (light by price, never by name)",
+  );
+  assert.ok(models.every((model) => model.cheap === undefined), "light is left to the catalog");
   const [variant] = parseClaudeModels([
     { value: "opus[1m]", resolvedModel: "claude-opus-5-5", displayName: "Opus (1M context)", description: "Opus 5.5 · For long sessions" },
   ]);

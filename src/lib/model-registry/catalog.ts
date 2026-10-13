@@ -261,7 +261,10 @@ export function harnessCatalogProvider(id: HarnessId, modelId = ""): string {
 // by the catalog's price are: no name decides it.
 export function enrichHarnessModels(id: HarnessId, models: HarnessModel[]): HarnessModel[] {
   const { providers } = modelCatalog();
-  const rows = models.map((model) => findCatalogModel(providers, model.id, harnessCatalogProvider(id, model.id)));
+  const rows = models.map((model) => {
+    const asked = model.catalogId || model.id;
+    return findCatalogModel(providers, asked, harnessCatalogProvider(id, asked));
+  });
   const prices = rows.map((row) => row?.cost?.output ?? null);
   const known = prices.filter((price): price is number => price !== null);
   const cheapest = known.length > 1 ? Math.min(...known) : null;

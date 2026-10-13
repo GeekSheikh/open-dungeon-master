@@ -528,6 +528,15 @@ try {
     assert.equal(enriched[0].cheap, undefined);
     const said = store.enrichHarnessModels("claude", [{ id: "claude-opus-5-5", label: "Opus", cheap: true }, { id: "claude-sonnet-5", label: "Sonnet" }]);
     assert.equal(said[1].cheap, undefined, "a program that said which is light is believed");
+    // Claude Code names its models by alias ("opus"); its initialize answer
+    // says which model each stands for, and that is what the catalog is asked.
+    const aliases = store.enrichHarnessModels("claude", [
+      { id: "opus", label: "Opus 5.5", fast: true, catalogId: "claude-opus-5-5" },
+      { id: "sonnet", label: "Sonnet 5", catalogId: "claude-sonnet-5" },
+    ]);
+    assert.deepEqual(aliases.filter((model) => model.cheap).map((model) => model.id), ["sonnet"], "an alias is judged by the model it stands for");
+    assert.deepEqual(aliases.map((model) => model.contextTokens), [1_000_000, 1_000_000], "and gets that model's window");
+    assert.equal(store.enrichHarnessModels("claude", [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }]).some((model) => model.cheap), false, "a bare alias is not found, so no name decides");
     assert.equal(store.harnessCatalogProvider("opencode", "openai/gpt-5.6"), "openai");
     assert.equal(store.harnessCatalogProvider("codex"), "openai");
   });

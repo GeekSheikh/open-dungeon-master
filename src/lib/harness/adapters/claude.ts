@@ -41,12 +41,14 @@ export function parseClaudeModels(models: unknown): HarnessModel[] {
     // "Opus 5.5 · Best for everyday, complex tasks" names the version the
     // alias stands for; a variant's own name ("Opus (1M context)") is kept.
     const head = entry.description?.includes(" · ") ? entry.description.split(" · ")[0] : "";
+    // Which one is light is the catalog's call, by price, asked about the
+    // model the alias stands for (src/lib/model-registry/catalog.ts).
     return [
       {
         id: entry.value,
         label: head.startsWith(name) ? head : name,
-        cheap: /haiku/i.test(entry.resolvedModel ?? entry.value),
         fast: entry.supportsFastMode === true,
+        ...(entry.resolvedModel ? { catalogId: entry.resolvedModel } : {}),
       },
     ];
   });
