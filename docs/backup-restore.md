@@ -44,6 +44,10 @@ Nothing live is deleted. The archive's files are first copied in beside the live
 
 The state that was there before the restore stays in those `.odm-restore-previous` folders (and `.env.server.odm-restore-previous`) until the next restore replaces them, and backups leave them out. After a live restore, start ODM normally and verify the campaign before deleting them or any older backup.
 
+## Upgrading and going back
+
+Take a backup before upgrading (on Docker: before `docker compose pull`, or pin `ODM_IMAGE_TAG` and move it deliberately). The database records the schema revision of the newest server that opened it; when a release changes the schema in a way older code would misread, it raises that revision, and an older server then refuses to open the database instead of writing to it, with a message saying to update. Going back to an older version across such a change means restoring the backup taken before the upgrade together with the older version, not just reinstalling the older version.
+
 ## From the admin panel
 
 The admin panel's Backups section takes the same archive while the server keeps playing: the database is snapshotted with `VACUUM INTO` in a separate process, files are copied and compressed off the request thread, and only one backup, verify or restore runs at a time. Downloaded models are left out unless **Include downloaded models** is switched on, since they download again on first use. A backup that would not fit is refused before anything is written, with the free space it found.

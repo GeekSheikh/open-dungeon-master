@@ -2977,6 +2977,21 @@ export function resyncLibraryTraining(db: SqliteDatabase): number {
 
 let plaintextWarned = false;
 
+// The database's schema revision, kept in SQLite's user_version header field.
+// Bump it with a schema change older code would misread or damage: a table
+// rebuilt or dropped, rows moved elsewhere, a column whose meaning changed.
+// A table or column older code simply ignores needs no bump. A database
+// stamped past this number was written by a newer server, and this one
+// refuses to open it rather than run its schema sync over tables it does not
+// understand; going back across a bump takes the backup made before it.
+// Servers before revision 1 never read the field.
+export const SCHEMA_REVISION = 1;
+
+function schemaRevisionOf(db: SqliteDatabase): number {
+  const rows = db.pragma("user_version") as Array<{ user_version?: unknown }>;
+  return Number(rows?.[0]?.user_version) || 0;
+}
+
 function requireDbKey() {
   const key = serverEnv("DB_ENCRYPTION_KEY");
   if (!key) {
@@ -3054,6 +3069,15 @@ export function getDatabase() {
             "Set ODM_SQLITE_DRIVER=native on a host with the native module.",
     );
   }
+  // Checked before anything below writes to the file.
+  const revision = schemaRevisionOf(db);
+  if (revision > SCHEMA_REVISION) {
+    db.close();
+    throw new Error(
+      `${dbPath} was saved by a newer version of Open Dungeon Master (database revision ${revision}; ` +
+        `this version reads up to ${SCHEMA_REVISION}). Update the app or server to open it; nothing in it was changed.`,
+    );
+  }
   // A new database hands the pages its deletes free back to the disk a
   // little at a time (src/lib/ops/retention.ts). Only possible before the
   // first table; an older file switches when the admin compacts it.
@@ -3068,6 +3092,9 @@ export function getDatabase() {
   db.pragma("foreign_keys = ON");
   ensureSchema(db);
   schemaEnsured = true;
+  if (revision < SCHEMA_REVISION) {
+    db.pragma(`user_version = ${SCHEMA_REVISION}`);
+  }
 
   globalThis.__localRoleplayDb = db;
   return db;
