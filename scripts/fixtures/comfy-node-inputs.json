@@ -1,0 +1,394 @@
+{
+ "comfyui": "0.39.2",
+ "nodes": {
+  "BasicGuider": {
+   "required": [
+    "model",
+    "conditioning"
+   ],
+   "optional": []
+  },
+  "BasicScheduler": {
+   "required": [
+    "model",
+    "scheduler",
+    "steps",
+    "denoise"
+   ],
+   "optional": []
+  },
+  "BetaSamplingScheduler": {
+   "required": [
+    "model",
+    "steps",
+    "alpha",
+    "beta"
+   ],
+   "optional": []
+  },
+  "CFGGuider": {
+   "required": [
+    "model",
+    "positive",
+    "negative",
+    "cfg"
+   ],
+   "optional": []
+  },
+  "CFGNorm": {
+   "required": [
+    "model",
+    "strength"
+   ],
+   "optional": [
+    "pre_cfg"
+   ]
+  },
+  "CFGOverride": {
+   "required": [
+    "model",
+    "cfg",
+    "start_percent",
+    "end_percent"
+   ],
+   "optional": []
+  },
+  "CLIPLoader": {
+   "required": [
+    "clip_name",
+    "type"
+   ],
+   "optional": [
+    "device"
+   ]
+  },
+  "CLIPSetLastLayer": {
+   "required": [
+    "clip",
+    "stop_at_clip_layer"
+   ],
+   "optional": []
+  },
+  "CLIPTextEncode": {
+   "required": [
+    "text",
+    "clip"
+   ],
+   "optional": []
+  },
+  "CheckpointLoaderSimple": {
+   "required": [
+    "ckpt_name"
+   ],
+   "optional": []
+  },
+  "ChromaRadianceOptions": {
+   "required": [
+    "model",
+    "preserve_wrapper",
+    "start_sigma",
+    "end_sigma",
+    "nerf_tile_size",
+    "force_sequential_txt_ids"
+   ],
+   "optional": []
+  },
+  "ConditioningZeroOut": {
+   "required": [
+    "conditioning"
+   ],
+   "optional": []
+  },
+  "DualCFGGuider": {
+   "required": [
+    "model",
+    "cond1",
+    "cond2",
+    "negative",
+    "cfg_conds",
+    "cfg_cond2_negative",
+    "style"
+   ],
+   "optional": []
+  },
+  "DualCLIPLoader": {
+   "required": [
+    "clip_name1",
+    "clip_name2",
+    "type"
+   ],
+   "optional": [
+    "device"
+   ]
+  },
+  "DualModelGuider": {
+   "required": [
+    "model",
+    "positive",
+    "cfg"
+   ],
+   "optional": [
+    "model_negative",
+    "negative"
+   ]
+  },
+  "EmptyChromaRadianceLatentImage": {
+   "required": [
+    "width",
+    "height",
+    "batch_size"
+   ],
+   "optional": []
+  },
+  "EmptyFlux2LatentImage": {
+   "required": [
+    "width",
+    "height",
+    "batch_size"
+   ],
+   "optional": []
+  },
+  "EmptyHiDreamO1LatentImage": {
+   "required": [
+    "width",
+    "height",
+    "batch_size"
+   ],
+   "optional": []
+  },
+  "EmptyHunyuanImageLatent": {
+   "required": [
+    "width",
+    "height",
+    "batch_size"
+   ],
+   "optional": []
+  },
+  "EmptyHunyuanVideo15Latent": {
+   "required": [
+    "width",
+    "height",
+    "length",
+    "batch_size"
+   ],
+   "optional": []
+  },
+  "EmptyLatentImage": {
+   "required": [
+    "width",
+    "height",
+    "batch_size"
+   ],
+   "optional": []
+  },
+  "EmptySD3LatentImage": {
+   "required": [
+    "width",
+    "height",
+    "batch_size"
+   ],
+   "optional": []
+  },
+  "Flux2Scheduler": {
+   "required": [
+    "steps",
+    "width",
+    "height"
+   ],
+   "optional": []
+  },
+  "FluxGuidance": {
+   "required": [
+    "conditioning",
+    "guidance"
+   ],
+   "optional": []
+  },
+  "Ideogram4Scheduler": {
+   "required": [
+    "steps",
+    "width",
+    "height",
+    "mu",
+    "std"
+   ],
+   "optional": []
+  },
+  "KSampler": {
+   "required": [
+    "model",
+    "seed",
+    "steps",
+    "cfg",
+    "sampler_name",
+    "scheduler",
+    "positive",
+    "negative",
+    "latent_image",
+    "denoise"
+   ],
+   "optional": []
+  },
+  "KSamplerSelect": {
+   "required": [
+    "sampler_name"
+   ],
+   "optional": []
+  },
+  "LoraLoaderModelOnly": {
+   "required": [
+    "model",
+    "lora_name",
+    "strength_model"
+   ],
+   "optional": []
+  },
+  "ModelNoiseScale": {
+   "required": [
+    "model",
+    "noise_scale"
+   ],
+   "optional": []
+  },
+  "ModelSamplingAuraFlow": {
+   "required": [
+    "model",
+    "shift"
+   ],
+   "optional": [
+    "sampling"
+   ]
+  },
+  "ModelSamplingFlux": {
+   "required": [
+    "model",
+    "max_shift",
+    "base_shift",
+    "width",
+    "height"
+   ],
+   "optional": []
+  },
+  "ModelSamplingSD3": {
+   "required": [
+    "model",
+    "shift"
+   ],
+   "optional": []
+  },
+  "QuadrupleCLIPLoader": {
+   "required": [
+    "clip_name1",
+    "clip_name2",
+    "clip_name3",
+    "clip_name4"
+   ],
+   "optional": []
+  },
+  "QwenImage21Cache": {
+   "required": [
+    "model",
+    "device",
+    "dtype"
+   ],
+   "optional": []
+  },
+  "RandomNoise": {
+   "required": [
+    "noise_seed"
+   ],
+   "optional": []
+  },
+  "SamplerCustom": {
+   "required": [
+    "model",
+    "add_noise",
+    "noise_seed",
+    "cfg",
+    "positive",
+    "negative",
+    "sampler",
+    "sigmas",
+    "latent_image"
+   ],
+   "optional": []
+  },
+  "SamplerCustomAdvanced": {
+   "required": [
+    "noise",
+    "guider",
+    "sampler",
+    "sigmas",
+    "latent_image"
+   ],
+   "optional": []
+  },
+  "SamplerLCM": {
+   "required": [
+    "s_noise",
+    "s_noise_end",
+    "noise_clip_std"
+   ],
+   "optional": []
+  },
+  "SaveImage": {
+   "required": [
+    "images",
+    "filename_prefix"
+   ],
+   "optional": []
+  },
+  "T5TokenizerOptions": {
+   "required": [
+    "clip",
+    "min_padding",
+    "min_length"
+   ],
+   "optional": []
+  },
+  "TextEncodeMageFlowEdit": {
+   "required": [
+    "clip",
+    "prompt",
+    "negative_prompt",
+    "width",
+    "height",
+    "batch_size"
+   ],
+   "optional": [
+    "vae"
+   ]
+  },
+  "TextEncodeQwenImage21": {
+   "required": [
+    "clip",
+    "prompt",
+    "negative_prompt",
+    "resolution"
+   ],
+   "optional": [
+    "vae"
+   ]
+  },
+  "UNETLoader": {
+   "required": [
+    "unet_name",
+    "weight_dtype"
+   ],
+   "optional": []
+  },
+  "VAEDecode": {
+   "required": [
+    "samples",
+    "vae"
+   ],
+   "optional": []
+  },
+  "VAELoader": {
+   "required": [
+    "vae_name"
+   ],
+   "optional": []
+  }
+ }
+}
