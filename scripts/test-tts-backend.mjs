@@ -68,7 +68,7 @@ await test("a Kokoro address is used as given, with or without /v1", () => {
 await test("an OpenAI-kind server never falls back to the Kokoro address", () => {
   const backend = resolveTtsBackend({ ...blank, provider: "openai", kokoroUrl: "http://nas:8880" });
   assert.equal(backend.v1, "https://api.openai.com/v1");
-  assert.equal(backend.model, "gpt-4o-mini-tts");
+  assert.equal(backend.model, "", "no model is named for the admin");
   assert.equal(backend.defaultVoice, "alloy");
 });
 
@@ -77,7 +77,8 @@ await test("the shared OpenAI key is lent to api.openai.com and to nobody else",
   const local = resolveTtsBackend({ ...blank, provider: "openai", openaiUrl: "http://10.0.0.5:8000", sharedOpenAiKey: "sk-shared" });
   assert.equal(local.apiKey, "");
   assert.equal(local.v1, "http://10.0.0.5:8000/v1");
-  assert.equal(local.model, "tts-1");
+  assert.equal(local.model, "");
+  assert.equal(resolveTtsBackend({ ...blank, provider: "openai", model: " my-tts " }).model, "my-tts", "a picked model is sent as picked");
   assert.equal(resolveTtsBackend({ ...blank, provider: "openai", apiKey: "sk-own", sharedOpenAiKey: "sk-shared" }).apiKey, "sk-own");
 });
 
@@ -214,6 +215,34 @@ await test("speech is asked of the configured server, with its model, voice and 
   assert.deepEqual(call.body, { model: "my-tts", voice: "narrator_one", input: "Hello there.", response_format: "mp3", speed: 1.2 });
 });
 
+await test("with no model picked, narration is refused naming Admin > Speech, and no speech is asked for", async () => {
+  for (const ttsBaseUrl of ["https://api.openai.com/v1", base]) {
+    saveGlobalConfig({ speech: { ttsProvider: "openai", ttsBaseUrl, ttsModel: "", ttsApiKey: "sk-local", ttsVoice: "narrator_one" } });
+    const backend = ttsBackend();
+    const before = seen.filter((entry) => entry.url === "/v1/audio/speech").length;
+    const realFetch = globalThis.fetch;
+    let outside = 0;
+    globalThis.fetch = async (url, init) => {
+      if (!String(url).startsWith(base)) {
+        outside += 1;
+        return new Response("{}", { status: 500 });
+      }
+      return realFetch(url, init);
+    };
+    try {
+      await assert.rejects(synthesizeSpeech("Hello there.", "narrator_one", 1, backend), (error) => {
+        assert.match(describeSpeechFailure(error, backend), /No narration model is picked.*Admin > Speech/);
+        return true;
+      });
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    assert.equal(outside, 0, `a request went to ${ttsBaseUrl}`);
+    assert.equal(seen.filter((entry) => entry.url === "/v1/audio/speech").length, before, "the speech server was asked anyway");
+  }
+  saveGlobalConfig({ speech: { ttsProvider: "openai", ttsBaseUrl: base, ttsModel: "my-tts", ttsApiKey: "sk-local", ttsVoice: "narrator_one" } });
+});
+
 await test("the server's own voice list is what pickers are offered", async () => {
   const { ids, listed } = await serverVoices(ttsBackend(), true);
   assert.deepEqual(ids, ["af_heart", "narrator_one"]);
@@ -265,6 +294,22 @@ await test("an empty answer is a failure too, not a silent empty file", async ()
   await enqueueNarrationAudio(CAMP, "msg-empty", "Silence.", [], "narrator_one");
   assert.ok(!fs.existsSync(narrationAudioPath(CAMP, "msg-empty")));
   assert.match(takeNarrationFailure("msg-empty") ?? "", /without any audio/);
+});
+
+await test("a passage with no narration model picked is published as failed, saying where to pick one", async () => {
+  saveGlobalConfig({ speech: { ttsProvider: "openai", ttsBaseUrl: base, ttsModel: "" } });
+  const before = seen.filter((entry) => entry.url === "/v1/audio/speech").length;
+  await enqueueNarrationAudio(CAMP, "msg-unpicked", "The bell tolls.", [], "narrator_one");
+  assert.match(takeNarrationFailure("msg-unpicked") ?? "", /Admin > Speech/);
+  assert.equal(seen.filter((entry) => entry.url === "/v1/audio/speech").length, before);
+  saveGlobalConfig({ speech: { ttsModel: "my-tts" } });
+});
+
+await test("Kokoro still sends its own model name", async () => {
+  mode = "ok";
+  const kokoro = resolveTtsBackend({ ...blank, provider: "kokoro", kokoroUrl: base });
+  await synthesizeSpeech("Hi.", "af_heart", 1, kokoro);
+  assert.equal(seen.filter((entry) => entry.url === "/v1/audio/speech").at(-1).body.model, "kokoro");
 });
 
 await test("a server that is not there says where it was looked for", async () => {

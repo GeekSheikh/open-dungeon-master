@@ -10,7 +10,6 @@ import {
 import {
   describeEndpoint,
   endpointKind,
-  openAiToolRoute,
   profileById,
   resolveSampling,
   toolRouteFromError,
@@ -582,13 +581,11 @@ export async function requestCustomMessage(
     };
   }
 
-  // How this model runs its tools: what its name says on OpenAI's own host,
-  // overridden by what its first refusal taught (issue #129). The Responses
-  // route is a different endpoint on the same base.
+  // How this model runs its tools: Chat Completions until its first refusal
+  // names another route (issue #129), then that route for the life of the
+  // process. The Responses route is a different endpoint on the same base.
   const routeKey = contextCacheKey(trimmedBase, resolvedModel);
-  const route: OpenAiToolRoute =
-    learnedToolRoutes.get(routeKey) ??
-    (caps.kind === "openai" ? openAiToolRoute(resolvedModel) : "chat");
+  const route: OpenAiToolRoute = learnedToolRoutes.get(routeKey) ?? "chat";
   const viaResponses = route === "responses";
   const dropped = new Set([
     ...(rememberedDrops.get(routeKey) ?? []),
@@ -599,8 +596,10 @@ export async function requestCustomMessage(
   const { isGlobalBackend, isUtilityBackend, resolvedKey } = resolveCustomKey(trimmedBase, apiKey, endpoint);
   // The Fast tier (issue 255): asked for only on the server's own backend
   // for this role (a campaign's own key is never spent at a premium on the
-  // admin's word), on OpenAI's API, for a model that has it. Anywhere else
-  // nothing is sent, so a local or third-party server never sees the field.
+  // admin's word), on OpenAI's API, for any model: one without the tier
+  // refuses the field, and the drop below runs it at standard speed.
+  // Anywhere else nothing is sent, so a local or third-party server never
+  // sees the field.
   const role = options.role ?? "story";
   const speedWanted =
     (role === "utility" ? globalText.utilitySpeed : globalText.speed) === "fast" &&
@@ -671,10 +670,9 @@ export async function requestCustomMessage(
     if (tools?.length) {
       requestPayload.tools = tools;
       requestPayload.tool_choice = toolChoice ?? "auto";
-      // GPT-6 Sol and Luna reason by default, and Chat Completions cannot
-      // carry function tools alongside reasoning; "none" is what lets their
-      // tools run there (issue #129). Off this route the field is never
-      // sent: gpt-4.1 and the like 400 on it.
+      // A model whose refusal asked for reasoning off: Chat Completions
+      // cannot carry function tools alongside reasoning (issue #129). Off
+      // this route the field is never sent: gpt-4.1 and the like 400 on it.
       if (route === "chat-no-reasoning") {
         requestPayload.reasoning_effort = "none";
       }

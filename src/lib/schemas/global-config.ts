@@ -111,7 +111,8 @@ export const globalConfigSchema = z.object({
       // The "openai" backend: any OpenAI-compatible images API. The key is
       // the server owner's, applied at request time only, and never leaves
       // the server (masked like the Discord secret on the way to the admin
-      // UI). Blank model = gpt-image-1.
+      // UI). The model is the admin's pick from the server's list: a blank
+      // one is asked for, never guessed.
       openaiBaseUrl: z.string().trim().max(500).default(""),
       openaiModel: z.string().trim().max(200).default(""),
       openaiApiKey: z.string().trim().max(400).default(""),
@@ -131,6 +132,12 @@ export const globalConfigSchema = z.object({
       ttsApiKey: z.string().trim().max(400).default(""),
       ttsVoice: z.string().trim().max(120).default(""),
       sttUrl: z.string().trim().max(500).default(""),
+      // The models dictation sends: the Whisper service's (STT_MODEL is its
+      // environment fallback, push-to-talk and the voice-chat transcript
+      // alike) and OpenAI's transcription model (STT_OPENAI_MODEL). Blank
+      // skips that engine for the next one (src/lib/stt-logic.ts).
+      sttModel: z.string().trim().max(200).default(""),
+      sttOpenaiModel: z.string().trim().max(200).default(""),
     })
     .prefault({}),
   // Live voice chat (src/lib/voice/). Separate from `speech` above, which is

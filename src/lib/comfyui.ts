@@ -245,32 +245,26 @@ export async function generateComfyImage(options: {
   // catalog knows that checkpoint.
   const preset = getGlobalConfig().images.comfyWorkflowPreset;
   const presetModel = preset === CHECKPOINT_PRESET ? undefined : comfyModel(preset);
-  let checkpoint = (options.checkpoint || "").trim();
+  const checkpoint = (options.checkpoint || "").trim();
   let model: ComfyModel = ANY_CHECKPOINT;
   let files: ModelFiles = {};
-  if (presetModel || !checkpoint) {
+  if (!presetModel && !checkpoint) {
+    throw new Error("No ComfyUI checkpoint is picked. Choose one, or a model from the catalog, in Admin > Image generation.");
+  }
+  if (presetModel) {
     const status = await comfyStatus(url);
     if (!status.ok) {
       throw new Error(status.error || `Could not reach ComfyUI at ${url}.`);
     }
-    if (presetModel) {
-      // The files this ComfyUI has, whatever precision it downloaded; a
-      // missing one is named here rather than in ComfyUI's validation error.
-      const report = status.models.find((entry) => entry.id === presetModel.id);
-      if (!report || report.missing.length) {
-        const missing = report?.missing.map((file) => file.what) ?? [];
-        throw new Error(`ComfyUI is missing ${missing.join(", ")} for ${presetModel.label}. Add it, or pick another model in Admin > Images.`);
-      }
-      model = presetModel;
-      files = report.files;
-    } else {
-      checkpoint = status.checkpoints[0] || "";
-      if (!checkpoint) {
-        throw new Error(
-          "ComfyUI has no checkpoints installed. Put a model in ComfyUI/models/checkpoints and refresh.",
-        );
-      }
+    // The files this ComfyUI has, whatever precision it downloaded; a
+    // missing one is named here rather than in ComfyUI's validation error.
+    const report = status.models.find((entry) => entry.id === presetModel.id);
+    if (!report || report.missing.length) {
+      const missing = report?.missing.map((file) => file.what) ?? [];
+      throw new Error(`ComfyUI is missing ${missing.join(", ")} for ${presetModel.label}. Add it, or pick another model in Admin > Images.`);
     }
+    model = presetModel;
+    files = report.files;
   }
   if (!presetModel) {
     model = checkpointModel(checkpoint) ?? ANY_CHECKPOINT;

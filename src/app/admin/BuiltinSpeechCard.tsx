@@ -3,9 +3,10 @@
 import { Check, Download, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
+import type { SttStatus } from "@/lib/stt-backend";
 import { ui } from "@/lib/ui";
 
-type Status = {
+type Status = SttStatus & {
   builtin: {
     model: string;
     downloadMb: number;
@@ -14,7 +15,6 @@ type Status = {
     progress: number;
     error: string;
   };
-  active: "whisper" | "builtin" | "openai" | "none";
 };
 
 const ACTIVE_LABEL: Record<Status["active"], string> = {
@@ -126,6 +126,12 @@ export function BuiltinSpeechCard() {
       {status ? (
         <p className="mt-2 border-t border-stone-800 pt-2 text-[11px] text-stone-400">
           Dictation is using <span className="text-stone-200">{ACTIVE_LABEL[status.active]}</span>.
+        </p>
+      ) : null}
+      {status?.whisper.needsModel ? (
+        <p role="status" className="mt-1 text-[11px] text-amber-300">
+          A Whisper service answers, but no model is picked for it and it doesn&apos;t list exactly one, so dictation skips it. Pick
+          its model in the Whisper model field.
         </p>
       ) : null}
     </div>

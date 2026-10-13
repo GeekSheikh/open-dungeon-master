@@ -9,6 +9,7 @@ import { NumberStepper } from "@/components/ui/NumberStepper";
 import { Switch } from "@/components/ui/Switch";
 import { CopyLine } from "@/components/CopyLine";
 import { Field, SelectField } from "@/app/admin/AdminSettingsFields";
+import { BLANK } from "@/app/admin/model-blanks";
 import type { AdminConfigDraftPatch } from "@/app/admin/merge-config-draft";
 import { HarnessTestPanel } from "@/app/admin/HarnessTestPanel";
 import { SpeedField } from "@/app/admin/SpeedField";
@@ -275,7 +276,7 @@ export function AdminHarnessSection({
                 value={draft.model}
                 onChange={(model) => setDraft({ ...draft, model })}
                 options={[
-                  { value: "", label: "The program's own default" },
+                  { value: "", label: BLANK.programDefault },
                   ...models.map((model) => ({ value: model.id, label: model.deprecated ? `${model.label} (deprecated)` : model.label })),
                   ...(draft.model && !models.some((model) => model.id === draft.model)
                     ? [{ value: draft.model, label: draft.model }]
@@ -288,7 +289,7 @@ export function AdminHarnessSection({
                 value={draft.utilityModel}
                 onChange={(utilityModel) => setDraft({ ...draft, utilityModel })}
                 options={[
-                  { value: "", label: "Same as the story model" },
+                  { value: "", label: BLANK.utility },
                   ...[...models].sort((a, b) => Number(Boolean(b.cheap)) - Number(Boolean(a.cheap))).map((model) => ({
                     value: model.id,
                     label: `${model.cheap ? `${model.label} (light)` : model.label}${model.deprecated ? " (deprecated)" : ""}`,

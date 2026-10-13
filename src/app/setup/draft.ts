@@ -10,6 +10,7 @@ import {
   type KeyProviderId,
   type ListedModel,
 } from "@/lib/setup/discovery-logic";
+import { obviousComfyChoice } from "@/lib/image-models/curate";
 import type { ScanResult } from "@/lib/setup/discovery";
 import type { MaskedConfig } from "@/app/admin/AdminSettingsFields";
 import type { HarnessChoiceId } from "@/lib/setup/patches";
@@ -26,6 +27,8 @@ export type ModelList = {
 
 export const NO_LIST: ModelList = { state: "idle", models: [], recommended: "", error: "", needsKey: false };
 
+export type ModelField = "pictures" | "narration" | "whisper" | "transcription";
+
 export type Draft = {
   serverName: string;
   story: StoryKind | "";
@@ -37,9 +40,16 @@ export type Draft = {
   // paints every picture.
   comfy: { url: string; checkpoint: string; preset: string };
   picturesKey: string;
+  picturesModel: string;
   narration: "kokoro" | "openai" | "off" | "";
   kokoro: { url: string; voice: string };
   narrationKey: string;
+  narrationModel: string;
+  // The models dictation sends: the Whisper service's and OpenAI's.
+  dictation: { whisperModel: string; openaiModel: string };
+  // The model fields the admin has answered (or seen filled) on this run,
+  // so going back to a step never fills a None they chose.
+  answered: ModelField[];
   signupMode: "open" | "invite" | "closed";
   publicUrl: string;
 };
@@ -105,6 +115,7 @@ export function draftFromConfig(config: MaskedConfig, firstRun: boolean): Draft 
               : "none",
     comfy: { url: images.comfyUrl, checkpoint: images.comfyCheckpoint, preset: images.comfyWorkflowPreset },
     picturesKey: "",
+    picturesModel: images.openaiModel,
     narration:
       config.speech.ttsProvider === "kokoro" && config.speech.kokoroUrl
         ? "kokoro"
@@ -115,6 +126,9 @@ export function draftFromConfig(config: MaskedConfig, firstRun: boolean): Draft 
             : "",
     kokoro: { url: config.speech.kokoroUrl, voice: config.speech.ttsVoice },
     narrationKey: "",
+    narrationModel: config.speech.ttsModel,
+    dictation: { whisperModel: config.speech.sttModel, openaiModel: config.speech.sttOpenaiModel },
+    answered: [],
     signupMode: config.signupMode,
     publicUrl: config.publicUrl,
   };
@@ -124,18 +138,15 @@ export function draftFromConfig(config: MaskedConfig, firstRun: boolean): Draft 
 // the admin already chose (or saved) is overwritten.
 // The ComfyUI the scan found, filling what the draft left open. A catalog
 // model already chosen stays while this ComfyUI has its files. A fresh draft
-// takes the model this hardware was measured recommending among those
-// installed, else its first checkpoint, else its first installed model.
+// takes the obvious choice when there is one (obviousComfyChoice): the model
+// this hardware was measured recommending, or the one thing it can paint
+// with. Otherwise the admin picks.
 export function comfyFromScan(current: Draft["comfy"], found: NonNullable<ScanResult["comfyui"]>): Draft["comfy"] {
-  const checkpoint = current.checkpoint || found.checkpoints[0] || "";
-  const installed = found.models.filter((model) => model.missing.length === 0);
-  const kept = installed.find((model) => model.id === current.preset);
+  const kept = found.models.find((model) => model.id === current.preset && model.missing.length === 0);
+  if (kept) return { url: found.url, checkpoint: current.checkpoint, preset: kept.id };
   const fresh = !current.checkpoint && current.preset === "checkpoint";
-  const pick =
-    kept ??
-    (fresh ? installed.find((model) => model.verified?.verdict === "recommended") : undefined) ??
-    (checkpoint ? undefined : installed[0]);
-  return { url: found.url, checkpoint, preset: pick?.id ?? "checkpoint" };
+  const obvious = fresh ? obviousComfyChoice(found) : null;
+  return obvious ? { url: found.url, ...obvious } : { url: found.url, checkpoint: current.checkpoint, preset: "checkpoint" };
 }
 
 export function draftWithScan(draft: Draft, scan: ScanResult, storyIsOpenAi: boolean): Draft {

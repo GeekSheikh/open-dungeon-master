@@ -8,6 +8,7 @@ import { scheduleImageVariants } from "@/lib/image-variants";
 import { serverEnv } from "@/lib/server-env";
 import type { AspectPreset, GeneratedImage, ImageMode, StorySettings } from "@/lib/types";
 import { recordMediaFile } from "@/lib/media-access";
+import { FIRST_SIZES, pickImageSize, readSupportedSizes, type ImageSize } from "@/lib/openai-image-size-logic";
 
 // OpenAI Images backend: the paid escape hatch for a server (or an app-only
 // host) whose hardware cannot run a local image model. The key is the server
@@ -15,11 +16,12 @@ import { recordMediaFile } from "@/lib/media-access";
 // Model panel, or the environment, and every request originates server-side,
 // so campaign members never see it.
 //
-// The base URL is configurable for OpenAI-compatible image proxies, but the
-// defaults are api.openai.com and gpt-image-1.
+// The base URL is configurable for OpenAI-compatible image proxies, and
+// defaults to api.openai.com. The model has no default: it is the admin's
+// pick from what the server lists (Admin > Images), so no retired model is
+// ever asked for by name.
 
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_MODEL = "gpt-image-1";
 const GENERATE_TIMEOUT_MS = 4 * 60 * 1000;
 
 // The story backend's key, but only when that backend IS OpenAI. Images are a
@@ -55,7 +57,7 @@ function resolveConfig(story?: TextBackendKey) {
       /\/+$/,
       "",
     ),
-    model: configValue(images.openaiModel, "OPENAI_IMAGE_MODEL", DEFAULT_MODEL),
+    model: configValue(images.openaiModel, "OPENAI_IMAGE_MODEL"),
     // OPENAI_API_KEY before the borrowed text key because it is the name
     // every other tool trains people to set, and an image-specific setting
     // is a deliberate choice that must beat an inferred one.
@@ -77,11 +79,12 @@ export function openAiImagesPaid(story?: TextBackendKey): boolean {
 
 // The same key, lent to speech-to-text: when a server has no Whisper of its
 // own, dictation can go to OpenAI's transcription API on the key the images
-// and the story already use (on a device world, the one saved in the app).
-// No campaign in play, so only the server-wide sources count.
+// and the story already use (on a device world, the one saved in the app),
+// with the transcription model picked in Admin > Speech. No campaign in
+// play, so only the server-wide sources count.
 export function openAiSpeechConfig(): { baseUrl: string; apiKey: string; model: string } {
   const { baseUrl, apiKey } = resolveConfig();
-  return { baseUrl, apiKey, model: serverEnv("STT_OPENAI_MODEL", "gpt-4o-mini-transcribe") };
+  return { baseUrl, apiKey, model: configValue(getGlobalConfig().speech.sttOpenaiModel, "STT_OPENAI_MODEL") };
 }
 
 // Whether picking the "openai" backend can actually produce anything. The
@@ -91,20 +94,14 @@ export function openAiImagesConfigured(story?: TextBackendKey): boolean {
   return resolveConfig(story).apiKey !== "";
 }
 
-// gpt-image-1 sizes; dall-e-3 uses its own pair for the non-square shapes.
-function sizeFor(model: string, aspect: AspectPreset): { size: string; width: number; height: number } {
-  const dalle = model.startsWith("dall-e");
-  if (aspect === "portrait") {
-    return dalle
-      ? { size: "1024x1792", width: 1024, height: 1792 }
-      : { size: "1024x1536", width: 1024, height: 1536 };
-  }
-  if (aspect === "landscape") {
-    return dalle
-      ? { size: "1792x1024", width: 1792, height: 1024 }
-      : { size: "1536x1024", width: 1536, height: 1024 };
-  }
-  return { size: "1024x1024", width: 1024, height: 1024 };
+// The sizes a server listed for a model when it refused one, kept for the
+// life of the process (src/lib/openai-image-size-logic.ts), so the refusal
+// is paid once per model, not on every picture.
+const learnedSizes = new Map<string, ImageSize[]>();
+
+function sizeFor(aspect: AspectPreset, sizesKey: string): ImageSize | null {
+  const listed = learnedSizes.get(sizesKey);
+  return listed ? pickImageSize(aspect, listed) : FIRST_SIZES[aspect];
 }
 
 function promptSlug(prompt: string) {
@@ -132,25 +129,31 @@ export async function generateOpenAiImage(
       "The OpenAI image backend has no API key. Add one in Admin > Image generation, or point this story's Text Model at OpenAI so its key covers pictures too.",
     );
   }
+  if (!model) {
+    throw new Error("The OpenAI image backend has no model picked. Choose one from the server's list in Admin > Image generation.");
+  }
 
   const startedAt = Date.now();
-  const { size, width, height } = sizeFor(model, options.aspect);
-  const body: Record<string, unknown> = { model, prompt: options.prompt, size, n: 1 };
-  if (model.startsWith("dall-e")) {
-    // dall-e-3 defaults to returning a URL and its own quality names.
-    body.response_format = "b64_json";
-    body.quality = options.mode === "slow" ? "hd" : "standard";
-  } else {
-    // The app's fast/slow dial maps onto gpt-image quality tiers; "high" is
+  const sizesKey = `${baseUrl}::${model}`;
+  let chosen = sizeFor(options.aspect, sizesKey);
+  if (!chosen) {
+    throw new Error(`OpenAI image generation failed: ${model} offers no ${options.aspect} or square size.`);
+  }
+  const body: Record<string, unknown> = {
+    model,
+    prompt: options.prompt,
+    size: chosen.size,
+    n: 1,
+    // The app's fast/slow dial maps onto the quality tiers; "high" is
     // several times the price of "medium", which is exactly what the slow
     // switch is for.
-    body.quality = options.mode === "slow" ? "high" : "medium";
-    // gpt-image models can hand back WebP directly, a fifth the bytes of
-    // the PNG they default to; dall-e knows neither field. A compatible
-    // proxy that rejects them gets one more try without (below).
-    body.output_format = "webp";
-    body.output_compression = 85;
-  }
+    quality: options.mode === "slow" ? "high" : "medium",
+    // WebP straight from the API, a fifth the bytes of the PNG it defaults
+    // to. A compatible proxy that rejects the fields gets one more try
+    // without (below).
+    output_format: "webp",
+    output_compression: 85,
+  };
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GENERATE_TIMEOUT_MS);
@@ -169,7 +172,7 @@ export async function generateOpenAiImage(
       signal: controller.signal,
     });
     const answer = (await response.json().catch(() => ({}))) as typeof payload;
-    return { ok: response.ok, status: response.status, answer };
+    return { ok: response.ok, status: response.status, answer, request };
   };
   try {
     let result = await post(body);
@@ -179,6 +182,22 @@ export async function generateOpenAiImage(
       delete plain.output_format;
       delete plain.output_compression;
       result = await post(plain);
+    }
+    // A refused size names the sizes the model takes: one is picked from
+    // that list for this shape, remembered, and asked for once more.
+    const listed = result.ok ? null : readSupportedSizes(result.answer.error?.message ?? "");
+    if (listed) {
+      learnedSizes.set(sizesKey, listed);
+      const picked = pickImageSize(options.aspect, listed);
+      if (picked && picked.size !== chosen.size) {
+        chosen = picked;
+        const request: Record<string, unknown> = { ...body, size: picked.size };
+        if (!("output_format" in result.request)) {
+          delete request.output_format;
+          delete request.output_compression;
+        }
+        result = await post(request);
+      }
     }
     payload = result.answer;
     if (!result.ok) {
@@ -232,8 +251,8 @@ export async function generateOpenAiImage(
     mode: options.mode,
     backend: "openai",
     aspect: options.aspect,
-    width,
-    height,
+    width: chosen.width,
+    height: chosen.height,
     elapsedSeconds: Math.round((Date.now() - startedAt) / 100) / 10,
     warnings: options.hasReferences
       ? ["Character reference images are not used by the OpenAI backend."]
@@ -246,8 +265,8 @@ export async function generateOpenAiImage(
 // through the address it hands back.
 const MAX_PICTURE_BYTES = 32 * 1024 * 1024;
 
-// The picture behind the address an endpoint answered with (dall-e's default,
-// and some compatible proxies), read under a ceiling instead of buffered
+// The picture behind the address an endpoint answered with (some compatible
+// proxies answer that way), read under a ceiling instead of buffered
 // whole. Where the address points is the endpoint's business: the admin
 // chose the backend, and it may live anywhere they can reach.
 async function downloadPicture(url: string): Promise<Buffer | null> {

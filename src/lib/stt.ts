@@ -1,9 +1,50 @@
+import { configValue, getGlobalConfig } from "@/lib/app-config";
+import { soleListedModel } from "@/lib/model-registry/discovery";
+import { openAiSpeechConfig } from "@/lib/openai-images";
 import { serverEnv } from "@/lib/server-env";
+import { builtinSpeechInstalled } from "@/lib/stt-builtin";
+import { whisperSwitchedOff, type SttInputs } from "@/lib/stt-logic";
 
 // Speech to text (docs/vtt-parity-implementation-plan.md 13.3): a
 // faster-whisper server speaking the OpenAI transcription shape, named by
-// STT_URL. Off when unset; nothing here ever runs without an operator
-// choosing it.
+// STT_URL, with the model picked for it in Admin > Speech, or the one model
+// it lists. Off when either is missing; nothing here ever runs without an
+// operator choosing it.
+
+// Where dictation's Whisper service is: the admin's address, STT_URL, or
+// odm-stt's usual one.
+export function whisperUrl(): string {
+  return configValue(getGlobalConfig().speech.sttUrl, "STT_URL", "http://127.0.0.1:8870");
+}
+
+// The model the Whisper service at `base` is asked for, push-to-talk
+// (src/app/api/stt/route.ts) and the voice-chat transcript alike: the one
+// picked, else the only one the service lists (a Whisper service usually
+// loads one), else none and the service is skipped.
+export async function whisperModelFor(base: string): Promise<string> {
+  return configValue(getGlobalConfig().speech.sttModel, "STT_MODEL") || (await soleListedModel({ provider: "speech", baseUrl: base }));
+}
+
+// What the pure rule in stt-logic.ts decides from. `reachable` says whether
+// a Whisper service answers at an address (the capability probe's cached
+// answer, src/lib/capabilities.ts), passed in so this module stays below
+// that one.
+export async function sttInputs(reachable: (url: string) => Promise<boolean>): Promise<SttInputs> {
+  const configured = configValue(getGlobalConfig().speech.sttUrl, "STT_URL");
+  const off = whisperSwitchedOff(configured);
+  const explicitWhisperUrl = off ? "" : configured;
+  const whisperReachable = off ? false : explicitWhisperUrl ? true : await reachable(whisperUrl());
+  const openAi = openAiSpeechConfig();
+  return {
+    explicitWhisperUrl,
+    whisperReachable,
+    // Only a service that is there is asked for its list.
+    whisperModel: explicitWhisperUrl || whisperReachable ? await whisperModelFor(whisperUrl()) : "",
+    builtinInstalled: builtinSpeechInstalled(),
+    openAiKey: openAi.apiKey,
+    openAiModel: openAi.model,
+  };
+}
 
 export function sttUrl(): string {
   const value = serverEnv("STT_URL", "").replace(/\/+$/, "");
@@ -11,18 +52,20 @@ export function sttUrl(): string {
   return value.trim().toLowerCase() === "off" ? "" : value;
 }
 
-export function sttAvailable(): boolean {
-  return Boolean(sttUrl());
+export async function sttAvailable(): Promise<boolean> {
+  const base = sttUrl();
+  return Boolean(base) && Boolean(await whisperModelFor(base));
 }
 
 export async function transcribeAudio(audio: Blob, filename = "ring.webm"): Promise<{ text: string } | { error: string }> {
   const base = sttUrl();
-  if (!base) {
+  const model = base ? await whisperModelFor(base) : "";
+  if (!base || !model) {
     return { error: "This server has no transcription service configured." };
   }
   const form = new FormData();
   form.append("file", audio, filename);
-  form.append("model", serverEnv("STT_MODEL", "whisper-1"));
+  form.append("model", model);
   form.append("response_format", "json");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 60_000);

@@ -3,15 +3,17 @@
 import { useEffect, useState } from "react";
 import { ui } from "@/lib/ui";
 import { PageSection } from "@/components/PageShell";
-import { DEFAULT_STORY_SETTINGS } from "@/lib/defaults";
 import type { ComfyModelReport, ComfyStatus } from "@/lib/comfyui";
 import { CHECKPOINT_PRESET, comfyModel } from "@/lib/image-models/catalog";
-import { checkpointModel } from "@/lib/image-models/curate";
+import { checkpointModel, obviousComfyChoice, paintsHere } from "@/lib/image-models/curate";
 import { listWords, measuredLine } from "@/lib/image-models/describe";
 import { honoursNegative } from "@/lib/image-models/workflow";
 import { ComfyModelCatalog } from "@/app/admin/ComfyModelCatalog";
+import { ModelChoiceField } from "@/app/admin/ModelChoice";
+import { BLANK, fromEnv } from "@/app/admin/model-blanks";
 import {
   Field,
+  SECRET_KEPT,
   SecretField,
   SelectField,
   type EnvDefaults,
@@ -43,17 +45,11 @@ const loadsCheckpoint = (id: string) => {
   return Boolean(model && "checkpoint" in model.graph.load);
 };
 
-// The picker: the default checkpoint, the catalog models this ComfyUI has
-// every file for (measured ones first), then its picture checkpoints. The
-// saved choice stays listed when the check no longer finds it. `discovery`
-// is null until a check has answered.
-// Whether a catalog model can paint on the machine this ComfyUI runs on:
-// not one its hardware failed to run, and not one that peaked past what
-// this GPU holds. Unmeasured models pass: unknown is not unfit.
-export function paintsHere(report: Pick<ComfyModelReport, "verified" | "fits">): boolean {
-  return report.verified?.verdict !== "fails" && report.fits !== false;
-}
-
+// The picker: "None", the catalog models this ComfyUI has every file for
+// (measured ones first), then its picture checkpoints, the obvious one marked
+// recommended (never picked for the admin). The saved choice stays listed
+// when the check no longer finds it. `discovery` is null until a check has
+// answered.
 export function comfyModelOptions(saved: { checkpoint: string; preset: string }, discovery: ComfyDiscovery | null) {
   const succeeded = Boolean(discovery && !discovery.error);
   const hardware = discovery?.hardware?.label ?? null;
@@ -74,13 +70,16 @@ export function comfyModelOptions(saved: { checkpoint: string; preset: string },
     const report = reports.find((entry) => entry.id === known.id);
     return report?.verified ? `${known.label}. ${measuredLine(report, hardware)}` : `${known.label} settings.`;
   };
+  const unpicked = saved.preset === CHECKPOINT_PRESET && !saved.checkpoint;
+  const obvious = unpicked && discovery && succeeded ? obviousComfyChoice(discovery) : null;
+  const recommended = (label: string, isIt: boolean) => (isIt ? `${label} (recommended)` : label);
   return [
-    // A blank checkpoint is the shipped default for new campaigns
-    // (src/lib/runtime-defaults.ts), not "whatever ComfyUI lists first".
-    { value: CHECKPOINT_PREFIX, label: "Default checkpoint", hint: DEFAULT_STORY_SETTINGS.comfyCheckpoint },
+    // Nothing is painted in checkpoint mode until a checkpoint is picked:
+    // no file is named in code, and none is taken from ComfyUI's list.
+    { value: CHECKPOINT_PREFIX, label: BLANK.checkpoint },
     ...models.map(({ id, report }) => ({
       value: `${PRESET_PREFIX}${id}`,
-      label: comfyModel(id)?.label ?? id,
+      label: recommended(comfyModel(id)?.label ?? id, obvious?.preset === id),
       group: "Models",
       ...(report ? { hint: measuredLine(report, hardware) } : succeeded ? { hint: "Its files are not all on this ComfyUI." } : {}),
     })),
@@ -88,7 +87,7 @@ export function comfyModelOptions(saved: { checkpoint: string; preset: string },
       .filter((name, index, names) => name && names.indexOf(name) === index)
       .map((name) => {
         const hint = checkpointHint(name);
-        return { value: `${CHECKPOINT_PREFIX}${name}`, label: name, group: "Checkpoints", ...(hint ? { hint } : {}) };
+        return { value: `${CHECKPOINT_PREFIX}${name}`, label: recommended(name, obvious?.checkpoint === name), group: "Checkpoints", ...(hint ? { hint } : {}) };
       }),
   ];
 }
@@ -284,14 +283,17 @@ export function AdminImagesSection({
             placeholder="https://api.openai.com/v1"
           />
         </Field>
-        <Field label="Model name" hint="Blank = gpt-image-1.">
-          <input
-            className={ui.input}
-            value={images.openaiModel}
-            onChange={(event) => set({ openaiModel: event.target.value })}
-            placeholder="gpt-image-1"
-          />
-        </Field>
+        <ModelChoiceField
+          label="Model"
+          hint="The picture models the server lists."
+          role="image"
+          provider="images"
+          baseUrl={images.openaiBaseUrl}
+          apiKey={openaiKey === SECRET_KEPT ? "" : openaiKey}
+          value={images.openaiModel}
+          onChange={(openaiModel) => set({ openaiModel })}
+          blankLabel={env.openaiImageModel ? fromEnv(env.openaiImageModel, "OPENAI_IMAGE_MODEL") : BLANK.picture}
+        />
         <SecretField
           label="API key"
           isSet={images.hasOpenaiApiKey}
@@ -309,6 +311,9 @@ export function AdminImagesSection({
 
   const offered = (["comfyui", "flux", "openai"] as Group[]).filter((group) => !phoneWorld || group === "openai");
   const others = offered.filter((group) => group !== active);
+  // A folded backend's fields are drawn once it is opened, so its pickers
+  // do not ask a server (with the saved key) the admin is not using.
+  const [opened, setOpened] = useState<Group[]>([]);
 
   return (
     <PageSection id="admin-images" heading="Image generation" glyph="ui-paint">
@@ -354,9 +359,15 @@ export function AdminImagesSection({
         <div className="mt-4 space-y-2">
           <p className="text-xs text-stone-500">Other backends a campaign can pick:</p>
           {others.map((group) => (
-            <details key={group} className="rounded-lg border border-stone-800 bg-stone-950/40 px-3 py-2">
+            <details
+              key={group}
+              className="rounded-lg border border-stone-800 bg-stone-950/40 px-3 py-2"
+              onToggle={(event) => {
+                if (event.currentTarget.open && !opened.includes(group)) setOpened([...opened, group]);
+              }}
+            >
               <summary className="cursor-pointer text-sm text-stone-300">{GROUP_TITLE[group]}</summary>
-              <div className="mt-3">{blocks[group]}</div>
+              {opened.includes(group) ? <div className="mt-3">{blocks[group]}</div> : null}
             </details>
           ))}
         </div>

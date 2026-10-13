@@ -1,6 +1,6 @@
 import { configValue, getGlobalConfig } from "@/lib/app-config";
-import { openAiImagesConfigured, openAiSpeechConfig } from "@/lib/openai-images";
-import { builtinSpeechInstalled } from "@/lib/stt-builtin";
+import { openAiImagesConfigured } from "@/lib/openai-images";
+import { sttInputs } from "@/lib/stt";
 import { pickSttBackend, sttWantsWav, whisperSwitchedOff, type SttBackend } from "@/lib/stt-logic";
 import { configuredDefaultStorySettings } from "@/lib/runtime-defaults";
 import { endpointKind } from "@/lib/dm/sampling-logic";
@@ -404,16 +404,10 @@ export async function capabilitiesSnapshot(): Promise<Capabilities> {
       provider: speech.provider,
       place: backendPlace(speech.v1),
     },
-    // Whisper (an explicit URL, or the default address answering), then the
-    // built-in engine, then an OpenAI key: see src/lib/stt-logic.ts.
-    stt: sttCapability(
-      pickSttBackend({
-        explicitWhisperUrl: whisperSwitchedOff(sttBase) ? "" : configValue(cfg.speech.sttUrl, "STT_URL"),
-        whisperReachable: sttReachable,
-        builtinInstalled: builtinSpeechInstalled(),
-        openAiKey: openAiSpeechConfig().apiKey,
-      }),
-    ),
+    // Whisper (an explicit URL, or the default address answering) with its
+    // model, then the built-in engine, then an OpenAI key with its model:
+    // see src/lib/stt-logic.ts. The probe above is the one sttInputs asks.
+    stt: sttCapability(pickSttBackend(await sttInputs(async () => sttReachable))),
     voice: { enabled: voice.enabled, mode: voice.mode },
   };
 }
