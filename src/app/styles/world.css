@@ -1250,7 +1250,8 @@ html[data-theme="light"] .ts-below .ts-ghost:hover { background: rgba(255, 252, 
     display: flex;
     flex-direction: column;
     gap: 10px;
-    width: 236px;
+    /* The reader may drag it wider or narrower (table-layout.css). */
+    width: var(--tlay-rail-w, 236px);
     flex: none;
     padding: 12px 0 12px 12px;
     overflow-y: auto;
@@ -1717,8 +1718,10 @@ html[data-theme="light"] .ts-below .ts-ghost:hover { background: rgba(255, 252, 
    the right, whatever the width ---- */
 
 @media (horizontal-viewport-segments: 2) and (max-width: 1023px) {
-  .cine-row > .cine-chat { display: flex !important; flex: none; width: env(viewport-segment-width 0 0); }
-  .cine-row > .cine-panel {
+  /* Each column sits in its arrangement slot (table-layout.css), which
+     steps aside here as everywhere the table keeps its own arrangement. */
+  .cine-row > .tlay-slot > .cine-chat { display: flex !important; flex: none; width: env(viewport-segment-width 0 0); }
+  .cine-row > .tlay-slot > .cine-panel {
     display: flex !important;
     flex-direction: row;
     width: auto;
@@ -1727,7 +1730,7 @@ html[data-theme="light"] .ts-below .ts-ghost:hover { background: rgba(255, 252, 
     margin-left: calc(env(viewport-segment-left 1 0) - env(viewport-segment-right 0 0));
     border-left: 1px solid rgba(107, 99, 148, 0.3);
   }
-  .cine-row > .cine-panel > .cine-rail { display: flex; }
+  .cine-row > .tlay-slot > .cine-panel > .cine-rail { display: flex; }
   .cine-bottombar { display: none !important; }
   .cine-party { display: none; }
 }
@@ -2546,7 +2549,8 @@ button.cine-chronicle-earlier:focus-visible { outline: 2px solid #f4e0a6; outlin
      the window is short, and then the desk scrolls (issue 87's rule). */
   .cine-chat.cine-chat-staged {
     display: grid;
-    grid-template-columns: clamp(15rem, 20vw, 30rem) minmax(0, 1fr);
+    /* The scroll's width, unless the reader set one (table-layout.css). */
+    grid-template-columns: var(--tlay-chronicle-w, clamp(15rem, 20vw, 30rem)) minmax(0, 1fr);
     grid-template-rows: minmax(calc(280px + 1rem), 1fr) minmax(0, auto);
     column-gap: 12px;
     padding-left: 12px;
