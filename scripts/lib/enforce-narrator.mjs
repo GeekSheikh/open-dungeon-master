@@ -54,6 +54,12 @@ export function reply({ text = "", calls = [] } = {}) {
   return { text, calls };
 }
 
+// A call the backend fails instead of answering, as a server that falls over
+// mid-turn does: an HTTP error with an OpenAI-style error body.
+export function failure(status = 500, message = "The backend fell over.") {
+  return { text: "", calls: [], fail: { status, message } };
+}
+
 // A fake OpenAI-compatible server. Each /chat/completions request takes the
 // next scripted reply (a plain narration once the script runs out) and every
 // request body is kept, so a test can read what the turn loop sent.
@@ -105,6 +111,11 @@ export async function fakeModel() {
       requests.push(body);
       const entry = script[served] ?? fallback;
       served += 1;
+      if (entry.fail) {
+        res.writeHead(entry.fail.status, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: { message: entry.fail.message, type: "server_error" } }));
+        return;
+      }
       if (body.stream) {
         sse(res, entry);
         return;
