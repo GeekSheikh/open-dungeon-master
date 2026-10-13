@@ -21,7 +21,7 @@ const { createEncounter } = await import("../src/lib/db/encounters.ts");
 const { publishPersisted } = await import("../src/lib/events.ts");
 const { setDmStatus } = await import("../src/lib/dm/status.ts");
 const { playerOpportunities } = await import("../src/lib/agents/webhook-opportunities.ts");
-const { createPlayerWebhook, runPlayerWebhooksOnce, listPlayerWebhooks, deletePlayerWebhook, webhookUrl, webhookAuthorization, webhookHeaders, webhookSignature, playerWebhookState, reserveWebhookWrite, finishWebhookWrite } = await import("../src/lib/agents/webhooks.ts");
+const { createPlayerWebhook, runPlayerWebhooksOnce, listPlayerWebhooks, deletePlayerWebhook, webhookUrl, receiverOrigin, setAdminReceiverOrigins, adminReceiverOrigins, allowedReceiverOrigins, playerWebhooksEnabled, webhookAuthorization, webhookHeaders, webhookSignature, playerWebhookState, reserveWebhookWrite, finishWebhookWrite } = await import("../src/lib/agents/webhooks.ts");
 const { workbenchCall, workbenchTools } = await import("../src/lib/agents/workbench.ts");
 const { PlayerInbox, receiverServer, verifySignature, validateEvent, playerPrompt } = await import("./lib/player-webhook-receiver.mjs");
 const { runCodexPlayerTurn, playerCodexEnvironment, playerMcpOverride } = await import("./lib/player-webhook-codex.mjs");
@@ -50,6 +50,25 @@ try {
     for (const url of ["http://receiver.example/odm", "https://receiver.example.evil/odm", "https://127.0.0.1/", "https://receiver.example/?token=x", "https://x:y@receiver.example/", "https://receiver.example/#x"]) assert.throws(() => webhookUrl(url));
     assert.throws(() => webhookUrl("https://receiver.example/", ""));
     assert.equal(webhookUrl("https://receiver.example/odm"), "https://receiver.example/odm");
+  });
+  await test("an admin's receiver addresses join the environment's at once, as HTTPS origins only", () => {
+    const tunnel = "https://my-pc.example.ts.net:8443/odm-player";
+    assert.throws(() => webhookUrl(tunnel));
+    assert.deepEqual(setAdminReceiverOrigins([tunnel, " https://my-pc.example.ts.net:8443 "]), ["https://my-pc.example.ts.net:8443"]);
+    assert.equal(webhookUrl(tunnel), tunnel);
+    assert.deepEqual(allowedReceiverOrigins(), ["https://receiver.example", "https://my-pc.example.ts.net:8443"]);
+    assert.throws(() => webhookUrl(tunnel, ""), "an explicit empty list still approves nothing");
+    for (const bad of ["http://my-pc.example", "https://u:p@my-pc.example", "https://my-pc.example/?x=1", "https://my-pc.example/#x", "my-pc.example", "", 42]) assert.throws(() => receiverOrigin(bad));
+    assert.throws(() => setAdminReceiverOrigins(["https://ok.example", "http://not-https.example"]));
+    assert.deepEqual(adminReceiverOrigins(), ["https://my-pc.example.ts.net:8443"], "a refused list leaves the saved one");
+    assert.throws(() => setAdminReceiverOrigins(Array.from({ length: 21 }, (_, i) => `https://r${i}.example`)), /At most 20/);
+    const env = process.env.ODM_PLAYER_WEBHOOK_ORIGINS;
+    delete process.env.ODM_PLAYER_WEBHOOK_ORIGINS;
+    assert.equal(playerWebhooksEnabled(), true, "the admin's list alone turns delivery on");
+    setAdminReceiverOrigins([]);
+    assert.equal(playerWebhooksEnabled(), false);
+    assert.throws(() => webhookUrl(tunnel));
+    process.env.ODM_PLAYER_WEBHOOK_ORIGINS = env;
   });
   await test("subscription pins the grant's own active character and scopes", () => {
     assert.throws(() => createPlayerWebhook({ ...grant, userId: other.id }, { campaignId: campaign.id, characterId: sheetId, url: sub.url }));

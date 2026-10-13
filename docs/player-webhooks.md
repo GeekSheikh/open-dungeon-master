@@ -11,27 +11,75 @@ separate persistent Codex thread on the player's computer. It does not
 inject messages into an existing desktop chat. Other agents need their own
 adapter using their client's supported API.
 
+## Quick path: seat a Codex player agent
+
+On the agent's computer you need this repository, Node 22.18 or newer,
+Codex CLI 0.159.2 or newer, and an HTTPS address the ODM server can reach
+(a Tailscale Funnel works). You need a character at the table.
+
+1. **Admin:** under **Admin > Player agents**, allow the receiver's HTTPS
+   address, such as `https://my-pc.example.ts.net:8443`. It is live at
+   once, no restart.
+2. **Player:** in **Settings > Connected agents**, connect an agent with
+   **Read** and **Play**, limited to that campaign. Under the token, enter
+   the receiver's address and download the receiver file. It is filled in
+   with the server's address, the campaign and your character, and holds no
+   token. Keep it in a private folder outside the repository.
+3. From the repository on that computer, run the setup once. It asks for
+   the token (paste it; it is not shown), keeps it in the operating
+   system's credential store, signs the receiver's own Codex profile in,
+   and registers the webhook:
+
+   ```bash
+   node scripts/player-webhook-receiver.mjs --setup PATH/receiver-thorin-1a2b3c4d.json
+   ```
+
+4. Start the receiver and keep it running, and publish it at the address
+   from step 1 (Settings shows the Funnel line for a Tailscale address):
+
+   ```bash
+   node scripts/player-webhook-receiver.mjs --listen PATH/receiver-thorin-1a2b3c4d.json
+   tailscale funnel --bg --https=8443 http://127.0.0.1:8787
+   ```
+
+To seat several agents from one computer, connect each separately. Each
+receiver file (named for the character and its sheet) has its own state
+directory and stored token, so they can share a folder; give
+each its own local port (8787, 8788, 8789) and HTTPS port (Funnel serves
+443, 8443 and 10000).
+
+The token store is Windows' DPAPI (for this user), the macOS keychain, or
+the Secret Service through `secret-tool` on Linux. A config with its own
+`authCommand` keeps using that helper instead. The rest of this page is the
+same setup by hand, and what the receiver does.
+
 ## Enable delivery on the server
 
 1. Choose an HTTPS address for each player's receiver. The server must be
    able to reach it. A private Tailscale HTTPS address can work when both
-   machines belong to the same network. Tunnel only the receiver's chosen
-   path to its loopback port. Keep the ODM server on its existing address.
-2. In the server environment, set `ODM_PLAYER_WEBHOOK_ORIGINS` to the exact
-   receiver origins, separated by commas:
+   machines belong to the same network. Tunnel the receiver's chosen path
+   (or, as the quick path's Funnel line does, a port of its own that serves
+   nothing else) to its loopback port. The receiver answers only its path
+   and only signed requests. Keep the ODM server on its existing address.
+2. Allow the exact receiver origins under **Admin > Player agents**, or in
+   the server environment with `ODM_PLAYER_WEBHOOK_ORIGINS`, separated by
+   commas. The server uses both lists:
 
    ```dotenv
    ODM_PLAYER_WEBHOOK_ORIGINS=https://player-one.example,https://player-two.example
    ```
 
-   An origin is the scheme, host and port, without a path or trailing slash.
-   Approve only origins controlled by trusted receiver operators. Allowing
-   an origin authorizes outgoing requests to that host, including a private
-   network host. Receiver DNS and TLS are the operator's responsibility.
-3. Restart the server. Without this setting, delivery is disabled, no
-   receiver origin can be registered, and connected agents are not shown
-   the webhook tools or the guard fields on the play tools. Removing an
-   origin stops delivery to it, even for an existing subscription.
+   An origin is the scheme, host and port, without a path or trailing slash
+   (the admin panel drops a pasted path). Approve only origins controlled by
+   trusted receiver operators. Allowing an origin authorizes outgoing
+   requests to that host, including a private network host. Receiver DNS
+   and TLS are the operator's responsibility.
+3. An address added in the admin panel works at once. One added to the
+   environment needs a restart. With no origin allowed anywhere, delivery is
+   disabled, no receiver origin can be registered, and connected agents are
+   not shown the webhook tools or the guard fields on the play tools.
+   Removing an origin stops delivery to it, even for an existing
+   subscription.
 
 The server reconciles current player opportunities once a second. It puts
 decisions in a SQLite outbox, independently of ephemeral event callbacks,
@@ -52,8 +100,11 @@ that table.
 1. Create a private directory outside the repository. Restrict it to your
    operating system account. On Windows, use a directory whose inherited
    permissions already exclude other users. On macOS/Linux, use mode 700.
-2. Configure a local credential helper that returns JSON HTTP headers to
-   its calling process. Keep the bearer token in the operating system
+2. Either leave `authCommand` out of the config in step 3 and, once that
+   file exists, save the token in the operating system's credential store
+   with `node scripts/player-webhook-receiver.mjs --save-token
+   C:/private/receiver.json`; or configure a local credential helper that
+   returns JSON HTTP headers to its calling process. Keep the bearer token in the operating system
    credential store or an encrypted user account file. The helper's output
    must have an `Authorization` field containing the bearer header. Do not
    run the helper in a visible terminal, paste its output into chat or
@@ -157,7 +208,8 @@ Pass the exact header value as `authorizationHeader` when calling
   It is never returned by registration, listing or the opportunities tool,
   never logged, and is deleted with the subscription. Listing shows only
   `hasAuthorizationHeader`. To change it, unsubscribe and subscribe again.
-* The receiver origin must still be in `ODM_PLAYER_WEBHOOK_ORIGINS`, and the
+* The receiver origin must still be allowed (Admin > Player agents or
+  `ODM_PLAYER_WEBHOOK_ORIGINS`), and the
   URL still needs HTTPS without credentials, query or fragment. Put the
   receiver's credential in this header, never in the URL.
 
@@ -233,7 +285,9 @@ no longer matches.
    **Generate token**. Copy the fire URL and the token. The token starts
    with `sk-ant-oat01-`, is shown once, and generating a new one revokes
    the old one.
-3. The server operator adds the API origin to the allowlist and restarts:
+3. The server operator allows the API origin, `https://api.anthropic.com`,
+   under **Admin > Player agents** (live at once), or in the environment
+   and restarts:
 
    ```dotenv
    ODM_PLAYER_WEBHOOK_ORIGINS=https://api.anthropic.com

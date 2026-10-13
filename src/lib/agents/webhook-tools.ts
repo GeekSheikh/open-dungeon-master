@@ -1,8 +1,8 @@
 // The MCP tools for player webhooks (docs/player-webhooks.md). They act only
 // on the calling connection's own subscriptions, need read and play, and are
 // listed only on a server whose operator allowed receiver origins
-// (ODM_PLAYER_WEBHOOK_ORIGINS): with none allowed, nobody could subscribe, so
-// an agent is not shown tools that could only fail.
+// (Admin > Player agents or ODM_PLAYER_WEBHOOK_ORIGINS): with none allowed,
+// nobody could subscribe, so an agent is not shown tools that could only fail.
 
 import type { ConnectionGrant } from "@/lib/agents/grants";
 import type { WorkbenchOutcome } from "@/lib/agents/workbench";

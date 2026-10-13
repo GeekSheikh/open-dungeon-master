@@ -11,6 +11,7 @@ import { Select } from "@/components/ui/Select";
 import { Switch } from "@/components/ui/Switch";
 import { AgentConnectLines } from "@/components/AgentConnectLines";
 import { AssistantLink } from "@/components/AssistantLink";
+import { PlayerReceiverSetup, type ReceiverInfo } from "@/app/settings/PlayerReceiverSetup";
 
 type Grant = {
   id: string;
@@ -55,7 +56,7 @@ export function ConnectedAgentsSection() {
   const [campaignId, setCampaignId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [fresh, setFresh] = useState<{ id: string; token: string; name: string } | null>(null);
+  const [fresh, setFresh] = useState<{ id: string; token: string; name: string; receiver: ReceiverInfo | null } | null>(null);
   const [leaving, setLeaving] = useState<string | null>(null);
 
   useEffect(() => {
@@ -93,7 +94,7 @@ export function ConnectedAgentsSection() {
       setGrants((current) => [data.grant, ...(current ?? [])]);
       setMcpUrl(data.mcpUrl ?? mcpUrl);
       setAssistantUrl(data.assistantUrl ?? assistantUrl);
-      setFresh({ id: data.grant.id, token: data.token, name: data.grant.name });
+      setFresh({ id: data.grant.id, token: data.token, name: data.grant.name, receiver: data.receiver ?? null });
       setCreating(false);
       setName("");
     } finally {
@@ -129,6 +130,7 @@ export function ConnectedAgentsSection() {
           </p>
           <AssistantLink base={assistantUrl} token={fresh.token} />
           <AgentConnectLines grantId={fresh.id} token={fresh.token} mcpUrl={mcpUrl} />
+          {fresh.receiver ? <PlayerReceiverSetup receiver={fresh.receiver} mcpUrl={mcpUrl} /> : null}
           <button type="button" className={ui.btnSmall} onClick={() => setFresh(null)}>
             I have copied it
           </button>

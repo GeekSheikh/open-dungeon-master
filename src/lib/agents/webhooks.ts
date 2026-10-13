@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { getAppSetting, setAppSetting } from "@/lib/db/app-settings";
 import { getDatabase, nowIso } from "@/lib/db/core";
 import { getCampaignForUser, latestSeq } from "@/lib/db/campaigns";
 import { getSheetForUser } from "@/lib/db/sheets";
@@ -34,23 +35,69 @@ export type PlayerWebhookEvent = {
   text: string;
 };
 
+// The operator approves receiver origins in two places: the
+// ODM_PLAYER_WEBHOOK_ORIGINS environment variable, and Admin > Player agents,
+// which is stored here and live at once, with no restart. The server uses
+// both lists together.
+const ORIGINS_SETTING = "player_webhook_origins";
+export const MAX_RECEIVER_ORIGINS = 20;
+
+export function envReceiverOrigins(): string[] {
+  return (process.env.ODM_PLAYER_WEBHOOK_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+export function adminReceiverOrigins(): string[] {
+  const stored = getAppSetting<unknown>(ORIGINS_SETTING, []);
+  return Array.isArray(stored) ? stored.filter((origin): origin is string => typeof origin === "string") : [];
+}
+
+export function allowedReceiverOrigins(): string[] {
+  return [...new Set([...envReceiverOrigins(), ...adminReceiverOrigins()])];
+}
+
+// An address an admin types or pastes, as the origin it approves: HTTPS,
+// host and port. A pasted path (the receiver's /odm-player) is dropped, since
+// approval covers the whole origin; credentials, a query or a fragment are
+// refused, as they are on a receiver URL.
+export function receiverOrigin(value: unknown): string {
+  const invalid = "Give the receiver's HTTPS address, such as https://my-pc.example.ts.net:8443.";
+  if (typeof value !== "string" || !value.trim() || value.length > 2048) throw new Error(invalid);
+  let url: URL;
+  try { url = new URL(value.trim()); } catch { throw new Error(invalid); }
+  if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) throw new Error(invalid);
+  return url.origin;
+}
+
+// The caller starts the delivery loop (startPlayerWebhookRunner) once the
+// list is saved, so the first approved address works without a restart.
+export function setAdminReceiverOrigins(values: readonly unknown[]): string[] {
+  const origins = [...new Set(values.map(receiverOrigin))];
+  if (origins.length > MAX_RECEIVER_ORIGINS) throw new Error(`At most ${MAX_RECEIVER_ORIGINS} receiver addresses.`);
+  setAppSetting(ORIGINS_SETTING, origins);
+  return origins;
+}
+
 // Delivery is on only where the operator allowed at least one receiver
 // origin; with none, no subscription could be made or reached.
 export function playerWebhooksEnabled(): boolean {
-  return Boolean(process.env.ODM_PLAYER_WEBHOOK_ORIGINS?.trim());
+  return allowedReceiverOrigins().length > 0;
 }
 
 // The operator explicitly approves receiver origins. No browser/agent may
 // turn an arbitrary URL into a request to the server's internal services.
 // Tailscale origins work here too; the operator owns their DNS and TLS.
-export function webhookUrl(value: unknown, allowed = process.env.ODM_PLAYER_WEBHOOK_ORIGINS ?? ""): string {
+// allowed defaults to both approved lists; a string is read the way the
+// environment variable is (comma-separated), so "" approves nothing.
+export function webhookUrl(value: unknown, allowed: string | readonly string[] = allowedReceiverOrigins()): string {
   if (typeof value !== "string" || value.length > 2048) throw new Error("Supply a receiver URL.");
   const url = new URL(value);
   if (url.protocol !== "https:" || url.username || url.password || url.hash || url.search) {
     throw new Error("The receiver needs HTTPS, without credentials, query or fragment.");
   }
-  const origins = allowed.split(",").map((s) => s.trim()).filter(Boolean);
-  if (!origins.includes(url.origin)) throw new Error("The server operator has not allowed this receiver origin (ODM_PLAYER_WEBHOOK_ORIGINS).");
+  const origins = typeof allowed === "string" ? allowed.split(",").map((s) => s.trim()).filter(Boolean) : allowed;
+  if (!origins.includes(url.origin)) {
+    throw new Error("The server's admin has not allowed this receiver address (Admin > Player agents, or ODM_PLAYER_WEBHOOK_ORIGINS).");
+  }
   return url.href;
 }
 
