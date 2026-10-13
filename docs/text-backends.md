@@ -160,6 +160,10 @@ changed. Three sources feed the pickers (src/lib/model-registry):
 - **This server's own tests.** Each **Test backend** result is remembered
   per host and model (no key, no address) and shown beside the model.
 
+`scripts/test-no-model-ids.mjs` keeps it that way: it fails on any string
+literal in `src/` that is a model ID in the bundled catalog, apart from the
+models ODM downloads and runs itself and the few still waiting to come out.
+
 The catalog's word on a model decides the flags: a model that writes no text
 or takes no tool calls is marked unfit for the storyteller, a deprecated one
 warns before its provider retires it, a small window warns that the table

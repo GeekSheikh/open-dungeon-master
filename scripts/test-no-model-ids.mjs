@@ -26,10 +26,6 @@ const PINNED = new Map([]);
 const LEFTOVERS = new Map([
   ["gpt-image-1", "the OpenAI image default (mcerina's follow-up to #273)"],
   ["grok-4.6", "Grok's fallback when `grok models` cannot be read (mcerina's follow-up to #273)"],
-  ["claude-sonnet-5", "the Claude Code model list (#266 reads it from the program)"],
-  ["claude-opus-5", "the Claude Code model list (#266 reads it from the program)"],
-  ["claude-fable-5-1", "the Claude Code model list (#266 reads it from the program)"],
-  ["claude-haiku-4-5", "the Claude Code model list (#266 reads it from the program)"],
 ]);
 
 // Every catalog ID, lower case, and the part after the last slash of an

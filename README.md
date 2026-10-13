@@ -167,9 +167,8 @@ docker compose up -d        # http://localhost:3005
   - [Run with Docker](docs/docker.md): the image, reaching AI services on the host, volumes and maintenance, publishing
   - [Backups and moving to another server](docs/backup-restore.md)
 - **The storyteller**
-  - [Text backends](docs/text-backends.md): the recommended DM model and its settings, Ollama, choosing a model, OpenAI and other APIs, long-story memory
+  - [Text backends](docs/text-backends.md): the recommended DM model and its settings, Ollama, choosing a model (the models.dev catalog, no model named in code), OpenAI and other APIs, long-story memory
   - [Agent programs as the DM](docs/agent-harness.md): Claude Code, Codex, opencode and Grok Build on their own sign-in
-  - [No model named in code](docs/model-catalog.md): the models.dev catalog and the check that keeps model IDs out of `src/`
 - **Pictures, voice and sound**
   - [Setting up pictures, narration and dictation](docs/media-setup.md): ComfyUI, an OpenAI key, Kokoro, Whisper
   - [Image generation](docs/image-generation.md): the image models, measured hardware, AMD GPUs
