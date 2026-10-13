@@ -30,7 +30,17 @@ export default {
     // OpenAI's API with a model that has Fast: the choice is offered, and
     // its price is said once it is picked.
     await baseUrl.fill("https://api.openai.com/v1");
-    const model = storyBlock.locator("label").filter({ hasText: /^Model name/ }).locator("input").first();
+    // The model field is the registry's picker (PR 273): a text field while
+    // the backend lists nothing (OpenAI without a key here), a menu with
+    // "Type a model id…" once it does.
+    const model = storyBlock.locator('input[aria-label="Model name"]').first();
+    if (!(await model.isVisible().catch(() => false))) {
+      await t.tap(storyBlock.locator('button[aria-label="Model name"]').locator("visible=true").first());
+      const typeOwn = page.getByRole("option", { name: /Type a model id/ }).or(page.getByRole("menuitemradio", { name: /Type a model id/ })).locator("visible=true").first();
+      await eventually(() => typeOwn.count(), { label: "Type a model id in the model menu" });
+      await t.tap(typeOwn);
+    }
+    await eventually(() => model.isVisible(), { label: "the model field" });
     await model.fill("gpt-6-sol");
     const offered = storyBlock.locator(OFFERED).first();
     await eventually(() => offered.count(), { label: "Fast offered for gpt-6-sol on OpenAI" });
