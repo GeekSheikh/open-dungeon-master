@@ -14,9 +14,10 @@
 //     config.toml, and model/list says which models offer which tiers.
 //     2x to 2.5x the usage.
 //   - Claude Code: `--settings '{"fastMode":true}'` for that headless
-//     session only (v2.1.205 and later), on Opus 5.5, Opus 5 and Opus 4.8;
-//     paid from usage credits. The Claude API's own `speed: "fast"` is not
-//     a connection ODM has, so nothing else here offers it.
+//     session only (v2.1.205 and later), on the models its `initialize`
+//     answer marks `supportsFastMode`; paid from usage credits. The Claude
+//     API's own `speed: "fast"` is not a connection ODM has, so nothing
+//     else here offers it.
 //   - Any other OpenAI-compatible server, a local one, OpenRouter, opencode
 //     and Grok: no Fast tier ODM can ask for, so none is sent.
 
@@ -27,13 +28,6 @@ export type SpeedRole = "story" | "utility";
 export function openAiFastModel(model: string): boolean {
   const name = model.trim().toLowerCase();
   return !name.startsWith("ft:") && /^(gpt-6(\.\d+)?|gpt-5\.6)(-[a-z0-9.-]+)?$/.test(name);
-}
-
-// A Claude model Claude Code runs in fast mode. "opus" is Claude Code's own
-// alias for its newest Opus, which supports it.
-export function claudeFastModel(model: string): boolean {
-  const name = model.trim().toLowerCase().replace(/\[1m\]$/, "");
-  return name === "opus" || /^claude-opus-(5-5|5|4-8)(-\d{8})?$/.test(name);
 }
 
 export type SpeedEligibility = { ok: true } | { ok: false; reason: string };
@@ -54,27 +48,23 @@ export function apiSpeedEligibility(input: { endpointKind: string; model: string
   return { ok: true };
 }
 
-// Whether the agent program may run its model at Fast. Codex says per model
-// (model/list's service tiers, carried as `fast` on the probed model); Claude
-// Code supports it on the Opus models named above.
+// Whether the agent program may run its model at Fast. Codex and Claude Code
+// both say per model (Codex's model/list service tiers, Claude Code's
+// supportsFastMode), carried as `fast` on the probed model.
 export function agentSpeedEligibility(input: {
   harnessId: string;
   model: string;
   models: ReadonlyArray<{ id: string; fast?: boolean }>;
 }): SpeedEligibility {
-  if (input.harnessId === "claude") {
-    return claudeFastModel(input.model)
-      ? { ok: true }
-      : { ok: false, reason: "Claude Code runs Fast on Opus 5.5, Opus 5 and Opus 4.8 only; pick one of those as the model." };
-  }
-  if (input.harnessId === "codex") {
+  if (input.harnessId === "claude" || input.harnessId === "codex") {
+    const program = input.harnessId === "claude" ? "Claude Code" : "Codex";
     if (!input.model.trim()) {
-      return { ok: false, reason: "Pick the model first; Codex offers Fast per model." };
+      return { ok: false, reason: `Pick the model first; ${program} offers Fast per model.` };
     }
     const listed = input.models.find((model) => model.id === input.model);
     return listed?.fast
       ? { ok: true }
-      : { ok: false, reason: `Codex does not list a Fast tier for ${input.model} on this sign-in.` };
+      : { ok: false, reason: `${program} does not list a Fast tier for ${input.model} on this sign-in.` };
   }
   return { ok: false, reason: "This agent program has no Fast setting ODM can choose." };
 }
