@@ -388,6 +388,9 @@ try {
 
   await test("the local provider lists what Ollama has, with the catalog's word on each, and learns the chosen model's window", async () => {
     forgetOllamaInfoForTests();
+    // A 64 GB machine with no GPU, whatever runs the test: a 16 GB CI runner
+    // would find the 19 GB gemma too big, and a local ComfyUI would add a GPU.
+    globalThis.__odmMachine = { ramGb: 64, gpu: null, unified: false, checkedAt: Date.now() };
     const choices = await modelChoices({ role: "story", provider: "local", baseUrl: ollamaUrl, selected: "gemma4:31b-it-qat" });
     assert.equal(choices.reachable, true);
     assert.deepEqual(choices.models.map((model) => model.id), ["gemma4:31b-it-qat", "qwen3.6:35b-a3b-q8_0", "titan:999b"]);
