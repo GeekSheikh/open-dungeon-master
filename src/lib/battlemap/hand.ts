@@ -85,6 +85,9 @@ function attackCards(sheet: CharacterSheet, turn: HandTurn, riders: CombatRiders
   const standing = standingGate(sheet, turn, "attack");
   // Martial Arts only with no armor and no shield (the engine's own gate).
   const martialArts = martialArtsApplies(sheet);
+  // A shield on the arm keeps a versatile weapon in one hand, whatever is
+  // asked (handsRuling in src/lib/dm/attack-rules.ts).
+  const shieldName = acBreakdownFor(sheet).shieldName;
   const onHit = conditionOnHitDice(sheet.conditions);
   const cards: HandCard[] = [];
   const base = {
@@ -149,7 +152,7 @@ function attackCards(sheet: CharacterSheet, turn: HandTurn, riders: CombatRiders
     notes.push(...onHit.notes.map((note) => `${note}.`));
     notes.push(...profile.riderNotes.map((note) => `${note}.`));
     if (!profile.proficient) notes.push("Not proficient.");
-    if (srd?.properties?.includes("versatile") && !profile.twoHanded) notes.push("Versatile: say two hands for the bigger die.");
+    if (srd?.properties?.includes("versatile") && !profile.twoHanded && !shieldName) notes.push("Versatile: say two hands for the bigger die.");
     const ammoKind = srd?.properties?.includes("ammunition") ? ammoKindForWeapon(name) ?? ammoKindForWeapon(srd.name) : null;
     const ammo = ammoKind ? findAmmo(sheet.equipment, ammoKind) : null;
     const empty = ammoKind !== null && ammo === null;
@@ -190,7 +193,7 @@ function attackCards(sheet: CharacterSheet, turn: HandTurn, riders: CombatRiders
         equipment: sheet.equipment,
         feats: sheet.feats,
         campaignId: sheet.campaignId,
-        shieldName: acBreakdownFor(sheet).shieldName,
+        shieldName,
       });
       const opened: Gate = rule ? { reason: rule, spent: false } : null;
       return gated(card, standing, costGate("bonus", turn, sheet, `an off-hand attack with ${name}`), opened);
