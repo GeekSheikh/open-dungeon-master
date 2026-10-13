@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, Loader2 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { shellHost } from "@/lib/shell-host";
 import { ui } from "@/lib/ui";
@@ -98,6 +99,18 @@ export function AdminSettingsPanel() {
         }
       });
   }, []);
+
+  // A link from elsewhere can name one section (Settings > Connected agents
+  // sends an admin to ?section=admin-player-agents): it is brought into view
+  // once the sections are drawn. A query rather than a #hash, which the
+  // apps' router does not carry.
+  const section = useSearchParams().get("section");
+  const drawn = Boolean(config && env);
+  useEffect(() => {
+    if (drawn && section && STOPS.some((stop) => stop.id === section)) {
+      requestAnimationFrame(() => jumpTo(section));
+    }
+  }, [drawn, section]);
 
   if (!config || !env) {
     return <PageSkeleton kind="flat" className="px-0 py-2" />;

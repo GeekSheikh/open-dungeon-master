@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, Download, Loader2, TriangleAlert } from "lucide-react";
+import Link from "next/link";
 import { useRef, useState } from "react";
 import { CopyLine } from "@/components/CopyLine";
 import { downloadBlob } from "@/lib/download";
@@ -166,9 +167,9 @@ export function PlayerReceiverSetup({ receiver, mcpUrl }: { receiver: ReceiverIn
             <span>
               This server does not send to {shown.origin} yet.{" "}
               {shown.admin ? (
-                <a className="underline" href="/admin#admin-player-agents">
+                <Link className="underline" href="/admin?section=admin-player-agents">
                   Allow it under Admin &gt; Player agents
-                </a>
+                </Link>
               ) : (
                 "Ask its admin to allow it under Admin > Player agents"
               )}
