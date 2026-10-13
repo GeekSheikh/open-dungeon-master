@@ -66,7 +66,11 @@ export default {
     await eventually(() => offered.count(), { label: "Fast offered again" });
     const save = page.locator(`${root}button`).filter({ hasText: /Save settings/ }).locator("visible=true").first();
     await save.scrollIntoViewIfNeeded();
-    await t.tap(save);
+    // The page's last control. In the app's phone emulation the fields above
+    // leave the visual viewport 48 px into the layout one, so a tap's hit
+    // point lands on the Storage section above the button; the click it
+    // answers is sent straight to it.
+    await (t.touch && t.app ? save.dispatchEvent("click") : t.tap(save));
     await eventually(async () => {
       const saved = await (await api.get(`${base}/api/admin/settings`)).json();
       return saved.config?.text?.speed === "fast";
