@@ -107,9 +107,19 @@ export function AdminSettingsPanel() {
   const section = useSearchParams().get("section");
   const drawn = Boolean(config && env);
   useEffect(() => {
-    if (drawn && section && STOPS.some((stop) => stop.id === section)) {
-      requestAnimationFrame(() => jumpTo(section));
-    }
+    if (!drawn || !section || !STOPS.some((stop) => stop.id === section)) return;
+    // The sections above fetch their own state and grow after the first
+    // paint, so the section is put back in view as they settle, until the
+    // reader scrolls for themselves.
+    const place = () => document.getElementById(section)?.scrollIntoView({ block: "start" });
+    const timers = [0, 300, 800, 1600].map((delay) => window.setTimeout(place, delay));
+    const stop = () => timers.forEach((timer) => window.clearTimeout(timer));
+    const events = ["wheel", "touchstart", "keydown"] as const;
+    events.forEach((name) => window.addEventListener(name, stop, { once: true, passive: true }));
+    return () => {
+      stop();
+      events.forEach((name) => window.removeEventListener(name, stop));
+    };
   }, [drawn, section]);
 
   if (!config || !env) {
