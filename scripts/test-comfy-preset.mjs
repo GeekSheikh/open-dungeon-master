@@ -215,4 +215,6 @@ console.log("ok - any catalog model can be saved, and a retired one falls back t
 
 removeTempDir(dir);
 console.log(`test-comfy-preset: ${passed} passed`);
-});
+// Well under a second on Linux, but past vitest's five-second default on the
+// Windows runner (PR 274's Windows smoke), so it gets a minute.
+}, 60_000);

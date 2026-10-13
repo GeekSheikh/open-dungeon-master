@@ -610,12 +610,17 @@ try {
     assert.equal(storyContextTokens({ textProvider: "custom", localTextModel: "", customBaseUrl: "https://openrouter.ai/api/v1", customModel: "sao10k/l3-lunaris-8b" }), 8_192);
     assert.equal(storyContextTokens({ textProvider: "custom", localTextModel: "", customBaseUrl: "https://openrouter.ai/api/v1", customModel: "nobody/knows" }), 16_384, "an unknown model keeps the conservative default");
     assert.equal(storyContextTokens({ textProvider: "custom", localTextModel: "", customBaseUrl: "http://127.0.0.1:8001/v1", customModel: "gpt-5.6" }), 16_384, "a private server is not the catalog's provider; its /props decides");
+    // Where a local window comes from, whatever the platform: Windows caps an
+    // unset LOCAL_TEXT_CONTEXT at 64K (model-client.ts), so set it past every
+    // window here.
+    process.env.LOCAL_TEXT_CONTEXT = "1048576";
     assert.equal(localContextTokens("qwen3.6:35b-a3b-q8_0"), 40_960, "what Ollama said of it earlier in this process");
     assert.equal(localContextTokens("gemma-4-31b-it-GGUF"), 262_144, "the catalog's window for weights nobody has asked Ollama about");
     assert.equal(localContextTokens("gemma4:31b-it-qat"), 262_144, "learned from Ollama, no table needed");
     textModels.rememberLocalContextWindow("my-merge:latest", 65_536);
     assert.equal(localContextTokens("my-merge:latest"), 65_536, "what Ollama said of it");
     assert.equal(localContextTokens("never-heard-of"), 131_072);
+    delete process.env.LOCAL_TEXT_CONTEXT;
   });
 
   ollama.close();
