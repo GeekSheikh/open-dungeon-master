@@ -18,6 +18,7 @@ import { GENRE_PRESETS, genrePreset } from "@/lib/genres";
 import type { WorldPackSummary } from "@/lib/worlds/types";
 import { WorldPackGallery } from "@/components/WorldPackGallery";
 import { useTtsVoices, voiceLabel, VoicePicker } from "@/components/VoicePicker";
+import { useCapabilities } from "@/lib/use-capabilities";
 import { NarrationNote } from "@/app/campaigns/[campaignId]/NarrationNote";
 import { CharacterVoices } from "@/app/campaigns/[campaignId]/CharacterVoices";
 import { VoicePreviewButton } from "@/components/VoicePreviewButton";
@@ -93,6 +94,17 @@ export function GameSettingsPanel({
 }) {
   const [busy, setBusy] = useState(false);
   const voices = useTtsVoices();
+  // Narration switched off server-wide (Admin > Speech, or setup's text
+  // only): the row reads Off and its switch is held, whatever the table's
+  // own switch says, since nothing would be read aloud. A fresh install's
+  // first table said "Narration on" with a voice picked, over a note that
+  // the server had no narration (issue 275). The stored value is kept, so
+  // a server that gains a speech engine later brings the table's choice
+  // back. A speech server that is named but not answering is one switch
+  // away, and the note under the row says so; only off holds the switch.
+  const capabilities = useCapabilities();
+  const narrationOff = capabilities?.tts?.provider === "off";
+  const narrating = settings.ttsEnabled && !narrationOff;
   // Every control here renders the server's settings, so a refused PATCH
   // changes nothing on screen; without this line it changes nothing silently.
   const [error, setError] = useState("");
@@ -198,9 +210,11 @@ export function GameSettingsPanel({
           </span>
           <span className="flex items-center gap-1.5">
             <GameIcon icon={{ kind: "glyph", key: "cue-bell" }} size="size-5" />
-            {settings.ttsEnabled
+            {narrating
               ? `Narration on (${voiceLabel(voices, settings.ttsVoice)})`
-              : "Narration off"}
+              : narrationOff
+                ? "Narration off on this server"
+                : "Narration off"}
           </span>
           <span className="flex items-center gap-1.5">
             <GameIcon icon={{ kind: "glyph", key: "tab-ambience" }} size="size-5" />
@@ -259,7 +273,7 @@ export function GameSettingsPanel({
             AI companions: {COMPANION_LABELS[settings.companions]}
           </span>
         </div>
-        {settings.ttsEnabled ? <CharacterVoices campaignId={campaignId} settings={settings} steersStory={false} /> : null}
+        {narrating ? <CharacterVoices campaignId={campaignId} settings={settings} steersStory={false} /> : null}
       </section>
     );
   }
@@ -403,10 +417,10 @@ export function GameSettingsPanel({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="pk-rowlabel">Narration</span>
-          <SettingToggle label="Narration" on={settings.ttsEnabled} onToggle={() => patch({ ttsEnabled: !settings.ttsEnabled })}>
-            {settings.ttsEnabled ? "On" : "Off"}
+          <SettingToggle label="Narration" on={narrating} disabled={narrationOff} onToggle={() => patch({ ttsEnabled: !settings.ttsEnabled })}>
+            {narrating ? "On" : narrationOff ? "Off on this server" : "Off"}
           </SettingToggle>
-          {settings.ttsEnabled ? (
+          {narrating ? (
             <>
               <VoicePicker
                 size="sm"
@@ -418,10 +432,10 @@ export function GameSettingsPanel({
             </>
           ) : null}
         </div>
-        {settings.ttsEnabled ? (
+        {narrating ? (
           <CharacterVoices campaignId={campaignId} settings={settings} steersStory patch={patch} />
         ) : null}
-        {settings.ttsEnabled ? <NarrationNote /> : null}
+        {narrating || narrationOff ? <NarrationNote /> : null}
         <div className="flex flex-wrap items-center gap-2">
           <span className="pk-rowlabel">Faces</span>
           <Tooltip content="Theatre inserts: when a passage has someone speaking, their portrait comes up over the scene art while their lines play.">

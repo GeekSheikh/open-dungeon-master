@@ -27,7 +27,9 @@ export const STARTER_ONE_SHOT = {
   ].join("\n\n"),
 };
 
-export function createStarterCampaign(userId: string, options: { solo: boolean }): Campaign {
+// narration: whether the server can read aloud (narrationAvailable in
+// src/lib/capabilities.ts); unsaid, the table's switch starts on.
+export function createStarterCampaign(userId: string, options: { solo: boolean; narration?: boolean }): Campaign {
   const campaign = createCampaign(userId, {
     title: STARTER_ONE_SHOT.title,
     description: STARTER_ONE_SHOT.description,
@@ -39,6 +41,7 @@ export function createStarterCampaign(userId: string, options: { solo: boolean }
       dmMode: "ai",
       genre: "high_fantasy",
       campaignLength: "short",
+      ttsEnabled: options.narration ?? true,
       // The premise is written; the setup pass still fills the world's
       // small print (places, faces) from it.
       aiStorySetup: true,
