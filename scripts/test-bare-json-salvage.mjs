@@ -39,6 +39,7 @@ const { createCampaign, getCampaignById, getFloor, setCampaignStatus, updateStor
 const { createSheet } = await import("../src/lib/db/sheets.ts");
 const { createSheetSchema } = await import("../src/lib/schemas/sheet.ts");
 const { insertCampaignMessage, listRecentMessages } = await import("../src/lib/db/messages.ts");
+const { getDmTurn } = await import("../src/lib/db/dm-turns.ts");
 const { startDmTurn, dmTurnToolCatalogue, MAX_MODEL_CALLS } = await import("../src/lib/dm/turn.ts");
 
 const NARRATION = "Bram's shortsword is still too far away; the ragged bandit stands well beyond reach.";
@@ -152,6 +153,9 @@ const server = http.createServer((req, res) => {
       sse(res, [{ content: `${NARRATION} What will you do?` }, { content: askJson() }]);
     } else if (reply === "unknown-tool") {
       sse(res, [toolCall("dance_wildly", { style: "jig" })]);
+    } else if (reply === "repeat") {
+      const passage = "The Archmage's eyes flare, a spark of humor dancing in the blue light. It is a place of many doors. Choose yours wisely, Master Flamefinger. Even a scholar must know when to put down the book and pick up a glass of wine.";
+      sse(res, [{ content: (passage + "\n\n").repeat(4) }]);
     } else {
       sse(res, [{ content: NARRATION }]);
     }
@@ -212,8 +216,9 @@ async function run(title, replies) {
   requests = [];
   const campaign = table(title);
   await startDmTurn(campaign.id);
-  const dm = listRecentMessages(campaign.id, 20).filter((m) => m.authorType === "dm");
-  return { campaign, text: dm[dm.length - 1]?.content ?? "", calls, requests };
+  const messages = listRecentMessages(campaign.id, 20);
+  const dm = messages.filter((m) => m.authorType === "dm");
+  return { campaign, text: dm[dm.length - 1]?.content ?? "", messages, calls, requests };
 }
 
 const toolResults = (request) =>
@@ -255,6 +260,15 @@ const silent = await run("Empty throughout", Array(MAX_MODEL_CALLS + 3).fill("em
 assert.equal(silent.calls, 3, "one retry and one rescue, no loop");
 assert.ok(silent.text.length > 0, "the empty-turn line still lands");
 console.log("ok: a model that never answers costs three calls and ends on the empty-turn line");
+
+// If the tools-closed rescue call itself loops, the turn must remain retryable.
+const rescueLoop = await run("Repeating rescue", ["empty", "empty", "repeat"]);
+const haltNotice = rescueLoop.messages.find((message) => message.authorType === "system" && /repeating the same long passage/i.test(message.content));
+assert.ok(haltNotice, "a repeating rescue posts a clear halt notice");
+assert.equal(getDmTurn(haltNotice.dmTurnId)?.status, "failed", "the interrupted turn remains retryable");
+assert.equal(rescueLoop.text, "", "the loop is not persisted as successful narration");
+assert.equal(rescueLoop.calls, 3, "a repeating rescue does not start another model call");
+console.log("ok: a repetition error in the tools-closed rescue halts the turn for retry");
 
 // A call to a tool that does not exist, with no prose: told so, then narrated.
 const unknown = await run("Unknown tool only", ["unknown-tool", "narrate"]);
