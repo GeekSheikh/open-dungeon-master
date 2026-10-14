@@ -214,6 +214,15 @@ export function latestTurnParkedByAi(campaignId: string): boolean {
   return row?.status === "awaiting_rolls" && row.call_index > 0;
 }
 
+// The AI turns a process was running when it stopped. After a restart no
+// process owns them (src/lib/dm/restart-recovery.ts).
+export function listRunningAiTurns(): DmTurn[] {
+  const rows = getDatabase()
+    .prepare(`SELECT * FROM dm_turns WHERE actor = 'ai' AND status = 'running' ORDER BY created_at, rowid`)
+    .all() as TurnRow[];
+  return rows.map(mapTurn);
+}
+
 // ---- pending physical rolls ----
 
 export type PendingRollStatus = "pending" | "submitted" | "fallback";

@@ -2041,6 +2041,31 @@ function emptyTurnPlayer(context: TurnContext): EmptyTurnPlayer | null {
   };
 }
 
+// A turn that could not finish: the "DM ran into a problem" notice, and the
+// row parked as failed with its conversation intact. `claimed` is the place
+// a player's reply made the narration take, when one did
+// (src/lib/dm/narration-slot.ts). Also what a starting server writes for a
+// turn the last process was running when it stopped
+// (src/lib/dm/restart-recovery.ts).
+export function haltDmTurn(campaignId: string, turn: DmTurn, failed: string, claimed: number | null = null) {
+  const seq = claimed ?? allocateSeq(campaignId);
+  const message = insertCampaignMessage({
+    campaignId,
+    seq,
+    authorType: "system",
+    glyph: "cue-bell",
+    content: `${DM_HALTED_PREFIX}${failed}`,
+    // Link the notice to the halted turn so the lead can retry it from its
+    // persisted conversation (src/lib/dm/retry-turn.ts) instead of retyping
+    // the action, which would duplicate it in the transcript.
+    dmTurnId: turn.id,
+  });
+  publishWithSeq(campaignId, claimed === null ? seq : allocateSeq(campaignId), "message_added", { message });
+  setDmStatus(campaignId, "idle");
+  turn.status = "failed";
+  saveDmTurn(turn);
+}
+
 function finalize(context: TurnContext, turn: DmTurn, failed: string, spoken: readonly SpokenLine[]) {
   const campaignId = context.campaign.id;
   // The place a player's reply made this narration take, if one arrived
@@ -2050,22 +2075,7 @@ function finalize(context: TurnContext, turn: DmTurn, failed: string, spoken: re
   const claimed = takeNarrationSeq(campaignId, turn.id);
 
   if (failed) {
-    const seq = claimed ?? allocateSeq(campaignId);
-    const message = insertCampaignMessage({
-      campaignId,
-      seq,
-      authorType: "system",
-      glyph: "cue-bell",
-      content: `${DM_HALTED_PREFIX}${failed}`,
-      // Link the notice to the halted turn so the lead can retry it from its
-      // persisted conversation (src/lib/dm/retry-turn.ts) instead of retyping
-      // the action, which would duplicate it in the transcript.
-      dmTurnId: turn.id,
-    });
-    publishWithSeq(campaignId, claimed === null ? seq : allocateSeq(campaignId), "message_added", { message });
-    setDmStatus(campaignId, "idle");
-    turn.status = "failed";
-    saveDmTurn(turn);
+    haltDmTurn(campaignId, turn, failed, claimed);
     return;
   }
 

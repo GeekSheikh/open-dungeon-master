@@ -29,7 +29,9 @@ const { createDmTurn, getDmTurn, getLatestDmTurnId, listOpenPendingRolls, saveDm
 const { listRecentMessages } = await import("../src/lib/db/messages.ts");
 const { listRecentRolls } = await import("../src/lib/db/rolls.ts");
 const { getDmStatus } = await import("../src/lib/dm/status.ts");
-const { dmQueueDepth } = await import("../src/lib/dm/queue.ts");
+const { dmQueueDepth, pauseDmQueue } = await import("../src/lib/dm/queue.ts");
+const { agentTurnFor } = await import("../src/lib/dm/agent-turn.ts");
+const { DM_HALTED_PREFIX } = await import("../src/lib/campaign-types.ts");
 const { requestDmTurn } = await import("../src/lib/dm/loop.ts");
 const { xCardRaised } = await import("../src/lib/dm/safety.ts");
 const { register } = await import("../src/instrumentation.ts");
@@ -217,6 +219,69 @@ await test("A parked turn the table walked past reads idle after a restart, as i
   await restart();
   assert.equal(getDmStatus(world.campaignId), "idle", "a delegated monster pass put itself on the status line");
   model.close();
+  world.close();
+});
+
+const notices = (world) =>
+  listRecentMessages(world.campaignId, 50).filter(
+    (message) => message.authorType === "system" && message.content.startsWith(DM_HALTED_PREFIX),
+  );
+
+// The last roll goes in while something else holds the DM queue (an Ask, a
+// lore check, a chapter closing), so the resume it queues has not run yet.
+async function rollWhileQueueHeld(world, userId, pending) {
+  const submitRoute = await world.route("campaigns/[campaignId]/pending-rolls/[pendingRollId]");
+  pauseDmQueue(world.campaignId, "held by another job");
+  world.signIn({ id: userId });
+  const answered = await callRoute(submitRoute, "POST", { dice: [15] }, { campaignId: world.campaignId, pendingRollId: pending.id });
+  assert.equal(answered.status, 200, JSON.stringify(answered.json));
+  assert.equal(dmQueueDepth(world.campaignId), 1, "the last roll queued no resume");
+}
+
+await test("A turn the restart cut short is halted with the notice that offers Retry, and Retry narrates the player's roll once.", async () => {
+  const { world, userId, model, turnId, pending } = await parkedTable();
+  await rollWhileQueueHeld(world, userId, pending);
+  // The process dies with the turn claimed and its model call in flight:
+  // the row still says running, and nothing will ever finish it.
+  const claimed = getDmTurn(turnId);
+  claimed.status = "running";
+  saveDmTurn(claimed);
+  const served = model.served();
+
+  await restart();
+  assert.equal(getDmTurn(turnId).status, "failed", "the interrupted turn was left running");
+  const [notice] = notices(world);
+  assert.ok(notice, "the table was not told the DM stopped");
+  assert.match(notice.content, /server restarted/);
+  assert.equal(notice.dmTurnId, turnId, "the notice does not offer Retry");
+  assert.equal(getDmStatus(world.campaignId), "idle");
+  assert.equal(model.served(), served, "the boot called the model");
+
+  model.script([reply({ text: "Kara braces, and the gate slams against her shield." })]);
+  world.signIn(world.owner);
+  const retried = await callRoute(await world.route("campaigns/[campaignId]/dm-turn/retry"), "POST", { turnId }, { campaignId: world.campaignId });
+  assert.equal(retried.status, 200, JSON.stringify(retried.json));
+  await settleQueue(world.campaignId);
+  assert.equal(getDmTurn(turnId).status, "done");
+  const said = listRecentMessages(world.campaignId, 50).filter((message) => message.authorType === "dm");
+  assert.equal(said.length, 2, `expected the earlier narration and this one, found ${said.length}`);
+  assert.match(said.at(-1).content, /slams against her shield/);
+  // The roll the player entered reached the model, answered by the retry.
+  const roll = model.results(model.requests[0]).map((entry) => entry.result).find((result) => result.rolledBy);
+  assert.match(roll?.rolledBy ?? "", /physical dice/, "the retried turn lost the player's roll");
+  assert.equal(roll.total, 18);
+  model.close();
+  world.close();
+});
+
+await test("At boot a delegated monster pass the restart cut short is closed without a notice, and an agent program's turn is left to its program.", async () => {
+  const world = await openWorld({ gameSettings: { ttsEnabled: false } });
+  const pass = createDmTurn(world.campaignId, [], "ai");
+  const agent = agentTurnFor(world.campaignId);
+  await restart();
+  assert.equal(getDmTurn(pass.id).status, "failed", "the dead pass was left running");
+  assert.equal(getDmTurn(agent.id).status, "running", "the agent program's turn was taken from it");
+  assert.deepEqual(notices(world), [], "a turn with nothing to retry offered Retry");
   world.close();
 });
 
