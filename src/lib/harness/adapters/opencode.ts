@@ -8,8 +8,8 @@
 //
 // Each run gets an empty config folder of its own (OPENCODE_CONFIG_DIR), so
 // the admin's plugins, MCP servers and global AGENTS.md never join it; only
-// the providers from their global config are carried over, so a model they
-// set up there still runs. opencode keeps every session, transcript included,
+// the providers and default models from their global config are carried
+// over, so a model they set up there still runs. opencode keeps every session, transcript included,
 // in its own store: the run deletes its session when it closes, and the next
 // run deletes any a killed server left behind.
 //
@@ -24,7 +24,14 @@ import os from "node:os";
 import path from "node:path";
 import { onWindows } from "../../host-platform.ts";
 import { runProgram, spawnProgram } from "../process.ts";
-import type { HarnessAdapter, HarnessConfig, HarnessEvent, HarnessModel, HarnessStartOptions } from "../types.ts";
+import type {
+  HarnessAdapter,
+  HarnessConfig,
+  HarnessErrorKind,
+  HarnessEvent,
+  HarnessModel,
+  HarnessStartOptions,
+} from "../types.ts";
 
 const AGENT = "odm-dm";
 const TITLE = "Open Dungeon Master";
@@ -35,6 +42,7 @@ const SESSION_TAG = { openDungeonMaster: "run" };
 const RUN_DIR_PREFIX = "odm-harness-";
 const LOAD_TIMEOUT_MS = 30_000;
 const TOOLS_SETTLE_MS = 1_000;
+const NO_MODEL_MESSAGE = "opencode has no model it can use outside its own app. Connect a provider with `opencode auth login`.";
 
 type Effect = "allow" | "ask" | "deny";
 export type OpencodeRule = { action: string; resource: string; effect: Effect };
@@ -64,18 +72,34 @@ export const OPENCODE_BUILT_IN_ACTIONS = [
   "a-tool-opencode-adds-later",
 ];
 
+// What the admin's global config gives a run: the providers they set up, in
+// 1.x's shape (`provider`, which opencode 2 converts itself, and only under
+// that key) and in 2.x's (`providers`), and the models they chose as the
+// defaults (`model`, and 1.x's `small_model`, which opencode 2 makes its
+// title agent's model). Nothing else in it reaches ODM's run.
+export type AdminOpencodeConfig = {
+  provider: Record<string, unknown>;
+  providers: Record<string, unknown>;
+  model?: unknown;
+  small_model?: unknown;
+};
+
 // Pure, so scripts/test-harness-logic.mjs can pin the lockdown.
 export function opencodeConfig(options: {
   system: string;
   mcp: { url: string; token: string } | null;
-  providers: Record<string, unknown>;
+  admin: AdminOpencodeConfig;
 }) {
   const permissions = LOCKDOWN_RULES(Boolean(options.mcp));
+  const { provider, providers, model, small_model } = options.admin;
   return {
     share: "disabled",
     snapshots: false,
     permissions,
-    ...(Object.keys(options.providers).length ? { providers: options.providers } : {}),
+    ...(Object.keys(provider).length ? { provider } : {}),
+    ...(Object.keys(providers).length ? { providers } : {}),
+    ...(model !== undefined ? { model } : {}),
+    ...(small_model !== undefined ? { small_model } : {}),
     ...(options.mcp
       ? {
           mcp: {
@@ -158,6 +182,20 @@ export function opencodeModels(models: readonly OpencodeModelInfo[]): HarnessMod
     });
 }
 
+// The model a run asks for when ODM names none ("The program's own
+// default"): opencode's own default when a run can use it, which is the
+// admin's `model` when their config names one, else the first model a run
+// can use. Left to itself opencode falls back to one of its own free models,
+// which answer nothing outside its own app.
+export function opencodeDefaultModel(
+  models: readonly OpencodeModelInfo[],
+  programDefault: OpencodeModelInfo | null,
+): string | null {
+  const usable = opencodeModels(models).map((model) => model.id);
+  const preferred = programDefault ? `${programDefault.providerID}/${programDefault.id}` : "";
+  return usable.includes(preferred) ? preferred : (usable[0] ?? null);
+}
+
 // opencode takes effort as the model's variant; a model that does not list
 // the admin's effort runs at its own default.
 export function opencodeVariant(
@@ -201,29 +239,44 @@ function stripJsonc(text: string): string {
   return out.replace(/,(\s*[}\]])/g, "$1");
 }
 
-// The providers (and 1.x's `provider`, which opencode 2 converts) from one
-// global config file; nothing else in it reaches ODM's run.
-export function adminOpencodeProviders(text: string): Record<string, unknown> {
-  const parsed = JSON.parse(stripJsonc(text)) as { providers?: Record<string, unknown>; provider?: Record<string, unknown> };
-  return { ...parsed.provider, ...parsed.providers };
+const record = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+
+// What one global config file gives a run (AdminOpencodeConfig).
+export function adminOpencodeConfig(text: string): AdminOpencodeConfig {
+  const config = record(JSON.parse(stripJsonc(text)));
+  return {
+    provider: record(config.provider),
+    providers: record(config.providers),
+    ...(typeof config.model === "string" || (config.model && typeof config.model === "object") ? { model: config.model } : {}),
+    ...(typeof config.small_model === "string" ? { small_model: config.small_model } : {}),
+  };
 }
 
-function readAdminProviders(env: Record<string, string>): Record<string, unknown> {
+function readAdminConfig(env: Record<string, string>): AdminOpencodeConfig {
   const dir =
     env.OPENCODE_CONFIG_DIR ||
     path.join(env.XDG_CONFIG_HOME || path.join(env.HOME || os.homedir(), ".config"), "opencode");
-  let providers: Record<string, unknown> = {};
+  let admin: AdminOpencodeConfig = { provider: {}, providers: {} };
   for (const name of ["opencode.json", "opencode.jsonc"]) {
     const file = path.join(dir, name);
-    if (existsSync(file)) {
-      try {
-        providers = { ...providers, ...adminOpencodeProviders(readFileSync(file, "utf8")) };
-      } catch (error) {
-        throw new Error(`${file} could not be read: ${error instanceof Error ? error.message : String(error)}`);
-      }
+    if (!existsSync(file)) {
+      continue;
     }
+    let read: AdminOpencodeConfig;
+    try {
+      read = adminOpencodeConfig(readFileSync(file, "utf8"));
+    } catch (error) {
+      throw new Error(`${file} could not be read: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    admin = {
+      ...admin,
+      ...read,
+      provider: { ...admin.provider, ...read.provider },
+      providers: { ...admin.providers, ...read.providers },
+    };
   }
-  return providers;
+  return admin;
 }
 
 type OpencodeSession = {
@@ -426,7 +479,7 @@ async function sweepStaleSessions(api: <T>(method: string, route: string) => Pro
 async function start(options: HarnessStartOptions) {
   return startOpencode(
     options,
-    opencodeConfig({ system: options.system, mcp: options.mcp, providers: readAdminProviders(options.env) }),
+    opencodeConfig({ system: options.system, mcp: options.mcp, admin: readAdminConfig(options.env) }),
   );
 }
 
@@ -469,7 +522,7 @@ export async function startOpencode(options: HarnessStartOptions, config: unknow
   };
   // Refuses the run before any prompt: the server goes, and the bridge hears
   // why before the start fails.
-  const refuse = async (kind: "lockdown" | "crash", message: string): Promise<never> => {
+  const refuse = async (kind: HarnessErrorKind, message: string): Promise<never> => {
     await shutDown();
     options.onEvent({ type: "error", kind, message });
     throw new Error(message);
@@ -534,19 +587,26 @@ export async function startOpencode(options: HarnessStartOptions, config: unknow
       return await refuse("lockdown", "opencode's resolved rules allow more than ODM's tools, so no turn was started.");
     }
 
-    const [providerID, ...rest] = options.model.split("/");
-    let model: { providerID: string; id: string; variant?: string } | undefined;
-    if (options.model && rest.length) {
-      const models = await api<{ data: OpencodeModelInfo[] }>("GET", "/api/model");
-      const variant = opencodeVariant(models.data, options.model, options.effort);
-      model = { providerID, id: rest.join("/"), ...(variant ? { variant } : {}) };
+    // Every opencode model is named "provider/model"; anything else is no
+    // choice at all, and runs on the default.
+    const models = (await api<{ data: OpencodeModelInfo[] }>("GET", "/api/model")).data;
+    let wanted = options.model.includes("/") ? options.model : "";
+    if (!wanted) {
+      const programDefault = await api<{ data: OpencodeModelInfo | null } | null>("GET", "/api/model/default", undefined, null);
+      wanted = opencodeDefaultModel(models, programDefault?.data ?? null) ?? "";
+      if (!wanted) {
+        return await refuse("signed-out", NO_MODEL_MESSAGE);
+      }
     }
+    const [providerID, ...rest] = wanted.split("/");
+    const variant = opencodeVariant(models, wanted, options.effort);
+    const model = { providerID, id: rest.join("/"), ...(variant ? { variant } : {}) };
     const created = await api<{ data: { id: string } }>("POST", "/api/session", {
       title: TITLE,
       agent: AGENT,
       metadata: SESSION_TAG,
       permissions: LOCKDOWN_RULES(Boolean(options.mcp)),
-      ...(model ? { model } : {}),
+      model,
     });
     sessionId = created.data.id;
 
@@ -624,7 +684,7 @@ export const opencodeAdapter: HarnessAdapter = {
         binary,
         env,
         cwd,
-        config: opencodeConfig({ system: "", mcp: null, providers: readAdminProviders(env) }),
+        config: opencodeConfig({ system: "", mcp: null, admin: readAdminConfig(env) }),
         onExit: () => undefined,
       });
       try {
@@ -646,9 +706,7 @@ export const opencodeAdapter: HarnessAdapter = {
       auth: models.length ? { state: "ready", kind: "api-key" } : { state: "signed-out" },
       models,
       lockdownProven: true,
-      message: models.length
-        ? undefined
-        : "opencode has no model it can use outside its own app. Connect a provider with `opencode auth login`.",
+      message: models.length ? undefined : NO_MODEL_MESSAGE,
     };
   },
   start,

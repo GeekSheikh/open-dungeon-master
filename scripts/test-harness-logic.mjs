@@ -33,7 +33,8 @@ const {
   opencodeModels,
   opencodeVariant,
   opencodeVersion,
-  adminOpencodeProviders,
+  opencodeDefaultModel,
+  adminOpencodeConfig,
   staleOdmSessions,
   readOpencodeEvent,
   OPENCODE_BUILT_IN_ACTIONS,
@@ -549,7 +550,8 @@ test("Codex is started with its shell, web, apps and sub-agents off, read-only, 
 });
 
 test("opencode 2's agent denies everything but ODM's tools, with ODM's MCP server outside Code Mode", () => {
-  const config = opencodeConfig({ system: "SYS", mcp: { url: "http://127.0.0.1:1/api/mcp", token: "tok" }, providers: {} });
+  const none = { provider: {}, providers: {} };
+  const config = opencodeConfig({ system: "SYS", mcp: { url: "http://127.0.0.1:1/api/mcp", token: "tok" }, admin: none });
   const rules = [
     { action: "*", resource: "*", effect: "deny" },
     { action: "odm_*", resource: "*", effect: "allow" },
@@ -563,6 +565,8 @@ test("opencode 2's agent denies everything but ODM's tools, with ODM's MCP serve
   assert.equal(config.mcp.servers.odm.oauth, false);
   assert.equal(config.mcp.servers.odm.headers.Authorization, "Bearer tok");
   assert.equal(config.providers, undefined);
+  assert.equal(config.provider, undefined);
+  assert.equal(config.model, undefined);
   // Read as opencode reads it: the last matching rule wins.
   assert.ok(opencodeLockdownHolds(agent.permissions, true));
   assert.ok(OPENCODE_BUILT_IN_ACTIONS.includes("execute") && OPENCODE_BUILT_IN_ACTIONS.includes("browser"));
@@ -570,7 +574,7 @@ test("opencode 2's agent denies everything but ODM's tools, with ODM's MCP serve
     assert.equal(opencodeEffect(agent.permissions, action), "deny", action);
   }
   assert.equal(opencodeEffect(agent.permissions, "odm_request_roll"), "allow");
-  const completion = opencodeConfig({ system: "S", mcp: null, providers: {} });
+  const completion = opencodeConfig({ system: "S", mcp: null, admin: none });
   assert.equal(completion.mcp, undefined);
   assert.equal(opencodeEffect(completion.agents["odm-dm"].permissions, "odm_request_roll"), "deny");
   assert.ok(opencodeLockdownHolds(completion.agents["odm-dm"].permissions, false));
@@ -592,25 +596,42 @@ test("opencode 2's agent denies everything but ODM's tools, with ODM's MCP serve
   assert.ok(!opencodeLockdownHolds([], false), "no rule at all allows everything");
 });
 
-test("opencode carries over only the providers from the admin's global config, JSON or JSONC", () => {
+test("opencode carries over only the providers and default models from the admin's global config, JSON or JSONC", () => {
   const llama = { package: "@opencode/ai/providers/openai-compatible", settings: { baseURL: "http://127.0.0.1:8080/v1" } };
   assert.deepEqual(
-    adminOpencodeProviders(JSON.stringify({ providers: { llama }, plugins: ["x"], mcp: { servers: { gh: {} } }, permissions: [] })),
-    { llama },
+    adminOpencodeConfig(JSON.stringify({ providers: { llama }, plugins: ["x"], mcp: { servers: { gh: {} } }, permissions: [], agents: { title: {} } })),
+    { provider: {}, providers: { llama } },
   );
   const jsonc = `{
     // the admin's own notes
     "plugins": ["opencode-wakatime"],
     /* a block comment with "quotes" */
+    "model": "llama/qwen",
+    "small_model": "llama/tiny",
     "provider": { "old": { "options": { "baseURL": "http://a//b" } }, },
     "providers": { "llama": ${JSON.stringify(llama)}, },
   }`;
-  assert.deepEqual(adminOpencodeProviders(jsonc), { old: { options: { baseURL: "http://a//b" } }, llama });
-  assert.deepEqual(adminOpencodeProviders("{}"), {});
-  assert.throws(() => adminOpencodeProviders("{ nope"));
-  const config = opencodeConfig({ system: "S", mcp: null, providers: { llama } });
+  // opencode 2 converts a 1.x entry (npm, options) only under `provider`;
+  // under `providers` it is taken as 2.x's shape and every request fails.
+  const admin = adminOpencodeConfig(jsonc);
+  assert.deepEqual(admin, {
+    provider: { old: { options: { baseURL: "http://a//b" } } },
+    providers: { llama },
+    model: "llama/qwen",
+    small_model: "llama/tiny",
+  });
+  assert.deepEqual(adminOpencodeConfig("{}"), { provider: {}, providers: {} });
+  assert.throws(() => adminOpencodeConfig("{ nope"));
+  const config = opencodeConfig({ system: "S", mcp: null, admin });
+  assert.deepEqual(config.provider, { old: { options: { baseURL: "http://a//b" } } });
   assert.deepEqual(config.providers, { llama });
+  assert.equal(config.providers.old, undefined, "a 1.x entry is not put under providers");
+  assert.equal(config.model, "llama/qwen");
+  assert.equal(config.small_model, "llama/tiny");
   assert.equal(config.plugins, undefined);
+  const legacyOnly = opencodeConfig({ system: "S", mcp: null, admin: adminOpencodeConfig(JSON.stringify({ provider: { old: {} } })) });
+  assert.equal(legacyOnly.providers, undefined, "each key only when it holds something");
+  assert.deepEqual(legacyOnly.provider, { old: {} });
 });
 
 // GET /api/model on 2.0.27, trimmed.
@@ -636,6 +657,16 @@ test("opencode's models come with the efforts they offer, and Effort is sent as 
   assert.equal(opencodeVariant(OPENCODE_MODELS, "openrouter/qwen/qwen3.8-flash", "medium"), undefined, "an effort the model lacks is not sent");
   assert.equal(opencodeVariant(OPENCODE_MODELS, "anthropic/claude-sonnet-5-5", ""), undefined, "the program's default sends none");
   assert.equal(opencodeVariant(OPENCODE_MODELS, "llama/unlisted", "high"), undefined);
+});
+
+test("with no model chosen, opencode runs its default only when a run can use it, else the first usable model", () => {
+  const sonnet = OPENCODE_MODELS[0];
+  const exo = OPENCODE_MODELS[3];
+  assert.equal(opencodeDefaultModel(OPENCODE_MODELS, OPENCODE_MODELS[2]), "openrouter/qwen/qwen3.8-flash", "the admin's own model");
+  assert.equal(opencodeDefaultModel(OPENCODE_MODELS, exo), "anthropic/claude-sonnet-5-5", "never opencode's own free model");
+  assert.equal(opencodeDefaultModel(OPENCODE_MODELS, null), "anthropic/claude-sonnet-5-5");
+  assert.equal(opencodeDefaultModel(OPENCODE_MODELS, { ...sonnet, providerID: "gone" }), "anthropic/claude-sonnet-5-5", "a default it does not list");
+  assert.equal(opencodeDefaultModel([exo], exo), null);
 });
 
 test("opencode 2's events become ODM's: narration only, usage summed over the turn's steps with cached prompt and reasoning counted, errors by kind", () => {
