@@ -135,7 +135,7 @@ export const VIEWPORTS = {
   phone: { width: 412, height: 892, touch: true },
 };
 
-export async function newContext(browser, viewport, { app }) {
+export async function newContext(browser, viewport, { app, toursSeen = true }) {
   const size = VIEWPORTS[viewport];
   const context = await browser.newContext({
     viewport: { width: size.width, height: size.height },
@@ -148,8 +148,11 @@ export async function newContext(browser, viewport, { app }) {
   // whatever a scenario is about to press. On a slow load (the app's screens
   // on a busy machine) the tour came after settle()'s Escapes and took the
   // click: offer-settled's Accept and board-enlarged's figure failed that
-  // way. Every tour (src/lib/tours, tourKey) counts as seen before any page
-  // loads; no scenario is about the tour itself.
+  // way. Every tour counts as seen before any page loads: the browser's old
+  // per-tour flag (legacyKey in src/lib/tours/account-logic.ts), which the
+  // first account to load carries to its record. Only tours-account is about
+  // the tour itself, and it asks for contexts without the flags.
+  if (!toursSeen) return context;
   await context.addInitScript((keys) => {
     try {
       for (const key of keys) localStorage.setItem(key, "done");

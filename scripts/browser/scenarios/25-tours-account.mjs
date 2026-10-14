@@ -38,7 +38,7 @@ export default {
     const table = `${base}/campaigns/${ids.tourTableId}`;
     const contexts = [];
     const browserFor = async (username) => {
-      const context = await newContext(browser, "desktop", { app: false });
+      const context = await newContext(browser, "desktop", { app: false, toursSeen: false });
       contexts.push(context);
       if (username) await signIn(context, base, username, ids.password);
       return context;
@@ -93,7 +93,7 @@ export default {
       } else {
         // The app's own screens, signed in as the walker: the tour the browser
         // finished stays closed there.
-        const appContext = await newContext(browser, "phone", { app: true });
+        const appContext = await newContext(browser, "phone", { app: true, toursSeen: false });
         contexts.push(appContext);
         const phone = await appContext.newPage();
         await enterApp(phone, new URL(page.url()).origin, base, { ...ids, lead: ids.walker }, true);
