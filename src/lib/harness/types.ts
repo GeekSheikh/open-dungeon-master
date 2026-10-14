@@ -10,6 +10,12 @@ export function isHarnessId(value: unknown): value is HarnessId {
   return typeof value === "string" && (HARNESS_IDS as readonly string[]).includes(value);
 }
 
+// No run of a program lives longer than this: the bridge closes every
+// session and every completion by then (src/lib/harness/bridge.ts). opencode
+// keeps its sessions in a store of its own, and one older than this cannot
+// belong to a live run (src/lib/harness/adapters/opencode.ts).
+export const HARNESS_MAX_RUN_MS = 20 * 60_000;
+
 // How far the program's own tools were taken away. "removed" means the
 // program was started with none of its built-in tools at all (proven by the
 // tool list it reports). "contained" means some remain but are boxed in: a

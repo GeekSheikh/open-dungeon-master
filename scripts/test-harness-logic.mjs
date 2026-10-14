@@ -755,20 +755,49 @@ test("the sweep deletes only sessions a killed ODM run left behind", () => {
   const tmpdir = "/tmp";
   const tag = { openDungeonMaster: "run" };
   const live = new Set(["/tmp/odm-harness-live"]);
+  const now = Date.now();
   const sessions = [
-    { id: "gone", metadata: tag, location: { directory: "/tmp/odm-harness-gone" } },
-    { id: "live-run", metadata: tag, location: { directory: "/tmp/odm-harness-live" } },
+    { id: "gone", metadata: tag, location: { directory: "/tmp/odm-harness-gone" }, time: { updated: now } },
+    { id: "live-run", metadata: tag, location: { directory: "/tmp/odm-harness-live" }, time: { updated: now - 60_000 } },
     { id: "admin-own", location: { directory: "/home/dm/projects/site" } },
     { id: "same-title-no-tag", location: { directory: "/tmp/odm-harness-old" } },
     { id: "tag-outside-tmp", metadata: tag, location: { directory: "/home/dm/odm-harness-x" } },
     { id: "tag-nested", metadata: tag, location: { directory: "/tmp/sub/odm-harness-y" } },
     { id: "tag-other-folder", metadata: tag, location: { directory: "/tmp/project" } },
+    { id: "tag-no-folder", metadata: tag },
     { id: "other-tag", metadata: { openDungeonMaster: "something else" }, location: { directory: "/tmp/odm-harness-z" } },
   ];
-  assert.deepEqual(staleOdmSessions(sessions, { tmpdir, ignoreCase: false, exists: (dir) => live.has(dir) }), ["gone"]);
-  const otherCase = [{ id: "other-case", metadata: tag, location: { directory: "/TMP/odm-harness-gone" } }];
-  assert.deepEqual(staleOdmSessions(otherCase, { tmpdir, ignoreCase: true, exists: () => false }), ["other-case"], "Windows: case does not count");
-  assert.deepEqual(staleOdmSessions(otherCase, { tmpdir, ignoreCase: false, exists: () => false }), [], "elsewhere it does");
+  const options = { tmpdir, now, exists: (dir) => live.has(dir), canonical: (dir) => dir };
+  assert.deepEqual(staleOdmSessions(sessions, options), ["gone"]);
+  // ODM itself was killed (the desktop app quit mid-turn): the run folder
+  // stays, but no run lives 20 minutes, so a session half an hour old is
+  // left behind; one a few minutes old may be a live table's.
+  const kept = { id: "folder-kept", metadata: tag, location: { directory: "/tmp/odm-harness-live" } };
+  assert.deepEqual(staleOdmSessions([{ ...kept, time: { updated: now - 31 * 60_000 } }], options), ["folder-kept"]);
+  assert.deepEqual(staleOdmSessions([{ ...kept, time: { updated: now - 19 * 60_000 } }], options), []);
+  assert.deepEqual(staleOdmSessions([{ ...sessions[2], time: { updated: 0 } }, { ...sessions[4], time: { updated: 0 } }], options), [], "age alone never makes an admin session ODM's");
+});
+
+test("the sweep finds the temp dir however opencode spells it: through a symlink, or not resolvable at all", () => {
+  const realTmp = fs.mkdtempSync(path.join(dir, "real-tmp-"));
+  const linkTmp = path.join(dir, "link-tmp");
+  fs.symlinkSync(realTmp, linkTmp, process.platform === "win32" ? "junction" : "dir");
+  const canonical = (folder) => {
+    try {
+      return fs.realpathSync.native(folder);
+    } catch {
+      return null;
+    }
+  };
+  const tag = { openDungeonMaster: "run" };
+  const tmpdir = fs.realpathSync.native(realTmp);
+  const sessions = [
+    { id: "via-link", metadata: tag, location: { directory: path.join(linkTmp, "odm-harness-a") } },
+    { id: "real", metadata: tag, location: { directory: `${realTmp}${path.sep}odm-harness-b` } },
+    { id: "slashes-and-dot", metadata: tag, location: { directory: `${realTmp.replaceAll(path.sep, "/")}/./odm-harness-c` } },
+    { id: "parent-gone", metadata: tag, location: { directory: path.join(dir, "no-such-tmp", "odm-harness-d") } },
+  ];
+  assert.deepEqual(staleOdmSessions(sessions, { tmpdir, now: Date.now(), exists: () => false, canonical }), ["via-link", "real", "slashes-and-dot"]);
 });
 
 test("Grok Build runs in dontAsk with an agent profile naming only ODM's tools", () => {

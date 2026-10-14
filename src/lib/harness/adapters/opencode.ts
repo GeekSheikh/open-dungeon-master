@@ -9,9 +9,10 @@
 // Each run gets an empty config folder of its own (OPENCODE_CONFIG_DIR), so
 // the admin's plugins, MCP servers and global AGENTS.md never join it; only
 // the providers and default models from their global config are carried
-// over, so a model they set up there still runs. opencode keeps every session, transcript included,
-// in its own store: the run deletes its session when it closes, and the next
-// run deletes any a killed server left behind.
+// over, so a model they set up there still runs. opencode keeps every
+// session, transcript included, in its own store: the run deletes its
+// session when it closes, and the next run deletes any that a killed server,
+// or a killed ODM, left behind.
 //
 // The server speaks HTTP with basic auth and streams events over SSE. Each
 // run gets its own server on a free loopback port and a random password, and
@@ -22,7 +23,6 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync 
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { onWindows } from "../../host-platform.ts";
 import { runProgram, spawnProgram } from "../process.ts";
 import type {
   HarnessAdapter,
@@ -32,6 +32,7 @@ import type {
   HarnessModel,
   HarnessStartOptions,
 } from "../types.ts";
+import { HARNESS_MAX_RUN_MS } from "../types.ts";
 
 const AGENT = "odm-dm";
 const TITLE = "Open Dungeon Master";
@@ -42,6 +43,10 @@ const SESSION_TAG = { openDungeonMaster: "run" };
 const RUN_DIR_PREFIX = "odm-harness-";
 const LOAD_TIMEOUT_MS = 30_000;
 const TOOLS_SETTLE_MS = 1_000;
+// A session this long past its last change is left behind even when its
+// run folder is still there: no run lives longer than HARNESS_MAX_RUN_MS,
+// and the margin covers a clock that is a little off.
+const STALE_AFTER_MS = HARNESS_MAX_RUN_MS + 10 * 60_000;
 const NO_MODEL_MESSAGE = "opencode has no model it can use outside its own app. Connect a provider with `opencode auth login`.";
 
 type Effect = "allow" | "ask" | "deny";
@@ -388,29 +393,45 @@ type OpencodeSession = {
   id: string;
   metadata?: Record<string, unknown>;
   location?: { directory?: string };
+  time?: { updated?: number };
 };
 
-// Sessions a run left behind when ODM never closed it: ODM's tag, in a run
-// folder of this server's temp dir, and that folder gone. A live run's folder
-// exists until it closes, so no running table is touched. `tmpdir` is the
-// temp dir's real path, the form opencode reports (macOS's is a symlink,
-// Windows' may be a short name), compared without case on Windows.
+// Sessions a run left behind: ODM's tag, in a run folder directly in this
+// server's temp dir, and either that folder gone (the server was killed
+// before it could delete its session) or the session older than any run
+// can be (ODM itself was killed, the desktop app quit mid-turn, and the
+// folder stayed). A live run's folder exists until it closes, and its
+// session is younger than that, so no running table is touched. `tmpdir` is
+// the temp dir's real path and `canonical` gives a folder's (or null), so
+// the two compare whatever form opencode reports: macOS's temp dir is a
+// symlink, and Windows' may be a short name, in either slash or case.
 export function staleOdmSessions(
   sessions: readonly OpencodeSession[],
-  options: { tmpdir: string; ignoreCase: boolean; exists: (dir: string) => boolean },
+  options: { tmpdir: string; now: number; exists: (dir: string) => boolean; canonical: (dir: string) => string | null },
 ): string[] {
-  const same = (a: string, b: string) => (options.ignoreCase ? a.toLowerCase() === b.toLowerCase() : a === b);
   return sessions
     .filter((session) => {
       const directory = session.location?.directory ?? "";
-      return (
-        session.metadata?.openDungeonMaster === SESSION_TAG.openDungeonMaster &&
-        same(path.dirname(directory), options.tmpdir) &&
-        path.basename(directory).startsWith(RUN_DIR_PREFIX) &&
-        !options.exists(directory)
-      );
+      if (
+        session.metadata?.openDungeonMaster !== SESSION_TAG.openDungeonMaster ||
+        !directory ||
+        !path.basename(directory).startsWith(RUN_DIR_PREFIX) ||
+        options.canonical(path.dirname(path.resolve(directory))) !== options.tmpdir
+      ) {
+        return false;
+      }
+      const updated = session.time?.updated;
+      return !options.exists(directory) || (typeof updated === "number" && options.now - updated > STALE_AFTER_MS);
     })
     .map((session) => session.id);
+}
+
+function canonicalDir(dir: string): string | null {
+  try {
+    return realpathSync.native(dir);
+  } catch {
+    return null;
+  }
 }
 
 export type OpencodeTurn = { text: string; inputTokens: number; outputTokens: number };
@@ -495,6 +516,8 @@ function unsupportedMessage(version: string | undefined) {
   return `${version ? `opencode ${version} is installed` : "This opencode is older than 2.x"}; Open Dungeon Master drives opencode 2.x. Update it with \`opencode upgrade\`.`;
 }
 
+type OpencodeApi = <T>(method: string, route: string, body?: unknown, missing?: T) => Promise<T>;
+
 // A server on the run's own config folder. Resolves once it listens.
 async function startServer(options: {
   binary: string;
@@ -541,7 +564,7 @@ async function startServer(options: {
   // `missing` is the answer to a 404 where one is expected: the directory's
   // config loads after the server starts, and until then the agent is not
   // there.
-  const api = async <T>(method: string, route: string, body?: unknown, missing?: T): Promise<T> => {
+  const api: OpencodeApi = async <T>(method: string, route: string, body?: unknown, missing?: T): Promise<T> => {
     const response = await fetch(`${base}${route}`, {
       method,
       headers: { authorization: authHeader, "content-type": "application/json" },
@@ -564,20 +587,31 @@ async function startServer(options: {
   return { program, base, authHeader, api };
 }
 
-async function sweepStaleSessions(api: <T>(method: string, route: string) => Promise<T>) {
+async function sweepStaleSessions(api: OpencodeApi) {
   const tmpdir = realpathSync.native(os.tmpdir());
   const stale: string[] = [];
   let cursor: string | null = null;
+  // The listing itself stays strict, so an opencode that answers it with
+  // its web app's page (1.x) is refused here.
   do {
     const page: { data: OpencodeSession[]; cursor: { next: string | null } } = await api(
       "GET",
       `/api/session?search=${encodeURIComponent(TITLE)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
     );
-    stale.push(...staleOdmSessions(page.data, { tmpdir, ignoreCase: onWindows(), exists: existsSync }));
+    stale.push(...staleOdmSessions(page.data, { tmpdir, now: Date.now(), exists: existsSync, canonical: canonicalDir }));
     cursor = page.data.length ? page.cursor.next : null;
   } while (cursor);
-  for (const id of stale) {
-    await api("DELETE", `/api/session/${id}`);
+  // Clearing up never fails a run. A run starting at the same moment may
+  // have deleted the same session already (404, which counts as done), and
+  // a session that cannot be deleted now is tried again at the next start.
+  try {
+    for (const id of stale) {
+      await api("DELETE", `/api/session/${id}`, undefined, null);
+    }
+  } catch (error) {
+    console.warn(
+      `[harness] opencode kept a session an earlier run left behind; the next run tries again: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 

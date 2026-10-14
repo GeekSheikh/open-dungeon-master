@@ -169,5 +169,28 @@ await test("an admin config saved with a byte order mark is read", async () => {
   assert.equal(logged().find((entry) => entry.start).start.config.model, "zeta/m1");
 });
 
+await test("leftover sessions are deleted at the start, and one already gone, or that cannot be deleted, never fails the run", async () => {
+  const tag = { openDungeonMaster: "run" };
+  const tmp = fs.realpathSync.native(os.tmpdir());
+  // A folder that is still there: ODM was killed, and nothing removed it.
+  const kept = fs.mkdtempSync(path.join(os.tmpdir(), "odm-harness-"));
+  const sessions = [
+    { id: "ses_gone", title: "Open Dungeon Master", metadata: tag, location: { directory: path.join(tmp, "odm-harness-gone0") }, time: { created: 1, updated: Date.now() } },
+    { id: "ses_old", title: "Open Dungeon Master", metadata: tag, location: { directory: kept }, time: { created: 1, updated: Date.now() - 45 * 60_000 } },
+    { id: "ses_live", title: "Open Dungeon Master", metadata: tag, location: { directory: kept }, time: { created: 1, updated: Date.now() - 60_000 } },
+    { id: "ses_admin", title: "Open Dungeon Master", location: { directory: path.join(tmp, "odm-harness-gone1") }, time: { created: 1, updated: 1 } },
+  ];
+  const deleted = () => requests().filter((entry) => entry.method === "DELETE").map((entry) => entry.url);
+  for (const deleteStatus of [200, 404, 500]) {
+    const { error, heard } = await run({ scenario: { sessions, deleteStatus, models: [ALPHA] } });
+    assert.equal(error, null, `DELETE answering ${deleteStatus}`);
+    assert.deepEqual(heard.map((event) => event.type), ["ready"]);
+    assert.ok(sessionCreated(), "the run went on to its own session");
+    const swept = deleteStatus === 500 ? ["/api/session/ses_gone"] : ["/api/session/ses_gone", "/api/session/ses_old"];
+    assert.deepEqual(deleted().slice(0, swept.length), swept, `DELETE answering ${deleteStatus}`);
+  }
+  fs.rmSync(kept, { recursive: true, force: true });
+});
+
 removeTempDir(dir);
 console.log(`opencode run: ${passed} checks passed`);

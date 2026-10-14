@@ -35,7 +35,7 @@ import { adapterFor, harnessConfig, probeHarness, resolveHarnessBinary } from ".
 import { harnessOfferFor } from "./policy.ts";
 import { getCampaignById } from "@/lib/db/campaigns";
 import type { HarnessErrorKind, HarnessEvent, HarnessSession, McpToolDefinition } from "./types.ts";
-import { isHarnessId } from "./types.ts";
+import { HARNESS_MAX_RUN_MS, isHarnessId } from "./types.ts";
 
 // A burst of parallel calls from one model reply arrives as separate HTTP
 // requests a few milliseconds apart; they are gathered into one round, as a
@@ -45,7 +45,6 @@ const ROUND_GATHER_MS = 180;
 // anything else it started gets this long between calls before it is reaped.
 const IDLE_MS_TURN = 10 * 60_000;
 const IDLE_MS_OTHER = 90_000;
-const MAX_LIFETIME_MS = 20 * 60_000;
 
 const NO_MORE_TOOLS =
   "No more tools are available this turn. Stop calling tools and write the narration for the players now.";
@@ -125,7 +124,7 @@ export class BridgeSession {
     this.catalogue = options.catalogue;
     this.allowed = options.allowed;
     this.isTurn = options.isTurn;
-    this.lifeTimer = setTimeout(() => this.close(), MAX_LIFETIME_MS);
+    this.lifeTimer = setTimeout(() => this.close(), HARNESS_MAX_RUN_MS);
     this.lifeTimer.unref?.();
   }
 
@@ -714,9 +713,12 @@ async function completeWithHarness(
         resolve(result);
       }
     };
+    // A summary may be given up to ARC_TEXT_TIMEOUT_MS (30 minutes at most),
+    // but no run outlives HARNESS_MAX_RUN_MS, the bound opencode's sweep
+    // relies on.
     const timer = setTimeout(
       () => settle({ error: harnessError("The agent program took too long to answer.", "timeout") }),
-      timeoutMs,
+      Math.min(timeoutMs, HARNESS_MAX_RUN_MS),
     );
     adapter
       .start({
