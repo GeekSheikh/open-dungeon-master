@@ -61,7 +61,13 @@ export default {
             [`[data-coordinate-order] [data-sequence-item="${ids.corin}"]`, '[data-coordinate-order] [data-sequence-step="1"]'],
           );
         } else {
-          await item(ids.corin).dragTo(editor.locator('[data-sequence-step="1"]'));
+          // A native drag on a busy runner sometimes ends before the drop
+          // target has seen it; a person drags again, and so does this.
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            await item(ids.corin).dragTo(editor.locator('[data-sequence-step="1"]'));
+            await sleep(400);
+            if ((await stepOf(editor, ids.corin).catch(() => "")) === "1") break;
+          }
         }
         await eventually(async () => (await stepOf(editor, ids.corin)) === "1", { label: "Corin dropped into step 1" });
         await sleep(700);

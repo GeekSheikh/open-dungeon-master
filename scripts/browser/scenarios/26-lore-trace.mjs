@@ -35,10 +35,15 @@ export default {
       const state = pick.included ? "kept" : pick.weak ? "near" : "held";
       check((await row.getAttribute("data-lore-pick")) === state, `row ${index + 1} reads as ${state}`);
     }
-    // The seeded moment asked for every crossing: the pinned guild and the
-    // four crossings the lead tagged as a set are kept in any trace of it.
-    check(lore.picks.some((pick) => pick.title === "The Ferry Guild" && pick.pinned && pick.included), "the pinned guild is kept");
-    check(!lore.picks.some((pick) => /Harvest Festival|Lich of the Fens/.test(pick.title) && pick.included), "unrelated lore is never kept");
+    // The seeded moment asked for every crossing: the pinned guild is kept
+    // and the festival and the lich are not. Only that turn's trace is held
+    // to it; a turn another scenario ran here since asked something else,
+    // and what its moment matches is its own business (the rows above are
+    // still checked against it).
+    if (answer.turnId === ids.quietLoreTurnId) {
+      check(lore.picks.some((pick) => pick.title === "The Ferry Guild" && pick.pinned && pick.included), "the pinned guild is kept");
+      check(!lore.picks.some((pick) => /Harvest Festival|Lich of the Fens/.test(pick.title) && pick.included), "unrelated lore is never kept");
+    }
     await t.shot("lore-trace");
   },
 };

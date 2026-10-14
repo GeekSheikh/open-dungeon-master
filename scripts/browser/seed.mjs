@@ -240,6 +240,9 @@ messages.insertCampaignMessage({
   content: "The ford is quiet. Across the water a lantern swings on the ferryman's hut, and the rope bridge creaks in the wind.",
 });
 
+// The seeded turn below, so lore-trace can tell its trace from one a later
+// scenario's turn on the quiet table left.
+let quietLoreTurnId = "";
 // The quiet table's world lore and the record a turn left of it (issue
 // 305): four crossings the lead tagged as a set, one of them secret, a
 // pinned entry, and lore about other things. The trace is the one turn
@@ -267,6 +270,7 @@ messages.insertCampaignMessage({
     throw new Error("the quiet table's lore left no trace");
   }
   const turn = createDmTurn(quiet.id, []);
+  quietLoreTurnId = turn.id;
   saveDmTurn({
     ...turn,
     status: "done",
@@ -410,6 +414,7 @@ const ids = {
   offerSummary: offer.summary,
   quietId: quiet.id,
   quietTitle: QUIET_TITLE,
+  quietLoreTurnId,
   tourTableId: tourTable.id,
   tourTableTitle: TOUR_TITLE,
   ama: ama.id,
