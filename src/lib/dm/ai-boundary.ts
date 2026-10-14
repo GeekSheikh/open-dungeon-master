@@ -56,7 +56,7 @@ export const AI_BIND_REFUSAL = (who: string, condition: string) =>
   `${who} cannot be made ${condition} by narration alone: it is a save the server rolls. Give saveAbility and saveDc (and rounds if it has a set length) and the server rolls ${who}'s save first, laying ${condition} only on a failure; a spell is cast_at_enemy or cast_at_player, an attack's rider is its attack, a trap is apply_hazard.`;
 
 export const AI_CLEAR_REFUSAL = (who: string, condition: string) =>
-  `${who}'s ${condition} is held by the engine (a save, a duration or a spell decides when it ends): it ends by itself, or through a cure cast with cast_buff (Lesser Restoration, Greater Restoration, Remove Curse). It was not cleared.`;
+  `${who}'s ${condition} is held by the engine (a save, a duration or a spell decides when it ends): it ends by itself, through the creature's own escape (take_action escape: a grapple, a net or another trap's hold, a spell's hold), or through a cure cast with cast_buff (Lesser Restoration, Greater Restoration, Remove Curse). It was not cleared.`;
 
 // Damage or healing the model sends as a bare number. It must have been
 // rolled by the server this turn (a request_roll of kind damage, not yet

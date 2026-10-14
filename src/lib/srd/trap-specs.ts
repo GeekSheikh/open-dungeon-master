@@ -29,6 +29,9 @@ export type TrapSpec = {
   conditionsAlways?: string[];
   // How long a condition lasts, in rounds (10 a minute); absent, until removed.
   rounds?: number;
+  // How a creature breaks a conditionsAlways hold with its action
+  // (src/lib/dm/trap-escape.ts); absent, Strength against the save DC.
+  escape?: { ability: "str" | "dex"; dc: number };
   summary: string;
 };
 
@@ -45,6 +48,7 @@ export const SAMPLE_TRAPS: SampleTrap[] = [
   {
     id: "falling_net", name: "Falling Net", kind: "mechanical", trigger: "a trip wire between two columns or trees", ...TRIP_WIRE,
     conditionsAlways: ["restrained"], save: { ability: "str", dc: 10, halfOnSave: false }, condition: "prone",
+    escape: { ability: "str", dc: 10 },
     summary: "A net drops over a 10-foot square: everyone under it is restrained, and a DC 10 Strength save keeps them standing. A DC 10 Strength check frees one; the net has AC 10 and 20 hit points.",
   },
   {

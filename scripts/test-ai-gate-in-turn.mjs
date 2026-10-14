@@ -93,6 +93,34 @@ await test("A call past the turn's mutation cap is refused before the gate rolls
   assert.equal(world.sheet(kara.id).currentHp, 1 + MUTATION_CAP_PER_TURN);
 });
 
+// Found playing Quick Start with Codex: a falling net restrains, the model
+// rolls Athletics and lifts the net with clear_condition, and the gate
+// refuses (the trap is the hold's source) while naming only the cures. The
+// net is broken the way its rule says, through the escape action.
+await test("A falling net's restraint is not lifted by hand; take_action escape makes the net's DC 10 Strength check and frees her on a success.", async () => {
+  const conditions = () => world.sheet(kara.id).conditions.map((entry) => entry.toLowerCase());
+  world.patch(kara.id, { conditions: [], conditionMeta: {} });
+  world.dice(15);
+  const net = await turnWith(call("apply_hazard", { type: "trap", trap: "Falling Net", characterIds: [kara.id], reason: "the crypt stair" }));
+  assert.ok(!net.error, net.error);
+  assert.ok(conditions().includes("restrained"), "the net did not restrain her");
+
+  const lifted = await turnWith(call("clear_condition", { characterId: kara.id, condition: "restrained", reason: "she heaves it off" }));
+  assert.match(lifted.error ?? "", /take_action escape/);
+  assert.ok(conditions().includes("restrained"));
+
+  world.dice(4);
+  const stuck = await turnWith(call("take_action", { characterId: kara.id, action: "escape" }), "I heave at the net.");
+  assert.equal(stuck.success, false, JSON.stringify(stuck));
+  assert.ok(conditions().includes("restrained"), "a failed check freed her");
+
+  world.dice(9);
+  const free = await turnWith(call("take_action", { characterId: kara.id, action: "escape" }), "I heave again.");
+  assert.equal(free.success, true, JSON.stringify(free));
+  assert.match(free.check ?? "", /vs DC 10/);
+  assert.ok(!conditions().includes("restrained"), "a successful check left her restrained");
+});
+
 await test("Damage to an enemy the model writes as its own number is refused, and the enemy is untouched.", async () => {
   world.patch(kara.id, { conditions: [], conditionMeta: {} });
   await world.beginFight([{ monster: "goblin", count: 1 }], { heroFaces: { [kara.id]: 19 }, enemyFace: 1 });
