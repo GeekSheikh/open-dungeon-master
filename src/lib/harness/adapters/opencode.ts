@@ -6,10 +6,11 @@
 // model ODM's tools and nothing else. The rules opencode actually resolved
 // are read back and checked before any prompt is sent.
 //
-// Each run gets an empty config folder of its own (OPENCODE_CONFIG_DIR), so
-// the admin's plugins, MCP servers and global AGENTS.md never join it; only
-// the providers and default models from their global config are carried
-// over, so a model they set up there still runs. opencode keeps every
+// Each run gets an empty config folder of its own (OPENCODE_CONFIG_DIR),
+// holding only the config ODM writes there, so the admin's plugins, MCP
+// servers and global AGENTS.md never join it; only the providers and default
+// models from their global config are carried over, so a model they set up
+// there still runs. opencode keeps every
 // session, transcript included, in its own store: the run deletes its
 // session when it closes, and the next run deletes any that a killed server,
 // or a killed ODM, left behind.
@@ -19,7 +20,7 @@
 // the server dies with the run. opencode 1.x had another API and is refused.
 
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -558,6 +559,13 @@ async function startServer(options: {
   const base = `http://127.0.0.1:${port}`;
   const configDir = path.join(options.cwd, "opencode-config");
   mkdirSync(configDir, { recursive: true });
+  // The run's whole config, in the folder opencode reads as its global one,
+  // readable by this user alone. Not in an environment variable: a
+  // campaign's system prompt runs to tens of kilobytes, more than one
+  // reliably carries (Linux refuses 128 KiB, Windows caps a variable at
+  // 32 K characters), and every program opencode starts inherits its
+  // environment, provider keys carried over from the admin's config with it.
+  writeFileSync(path.join(configDir, "opencode.json"), JSON.stringify(options.config), { mode: 0o600 });
   let settle: (listening: boolean) => void = () => undefined;
   const ready = new Promise<boolean>((resolve) => {
     settle = resolve;
@@ -569,7 +577,6 @@ async function startServer(options: {
       OPENCODE_CONFIG_DIR: configDir,
       OPENCODE_DISABLE_PROJECT_CONFIG: "1",
       OPENCODE_SERVER_PASSWORD: password,
-      OPENCODE_CONFIG_CONTENT: JSON.stringify(options.config),
       OPENCODE_DISABLE_AUTOUPDATE: "1",
     },
     onLine: (line) => {

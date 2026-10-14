@@ -11,14 +11,23 @@
 //   events         sent on the event stream once a prompt arrives: objects
 //                  as JSON, strings as they are
 //
-// ODM's agent and its rules come from the run's config, as opencode reads it.
+// ODM's agent and its rules come from the run's config, read from
+// opencode.json in OPENCODE_CONFIG_DIR alone.
 import fs from "node:fs";
 import http from "node:http";
+import path from "node:path";
 
 const log = (entry) => fs.appendFileSync(process.env.ODM_FAKE_OPENCODE_LOG, `${JSON.stringify(entry)}\n`);
 const scenario = JSON.parse(fs.readFileSync(process.env.ODM_FAKE_OPENCODE, "utf8"));
-const config = JSON.parse(process.env.OPENCODE_CONFIG_CONTENT || "{}");
-log({ start: { config } });
+const configFile = path.join(process.env.OPENCODE_CONFIG_DIR ?? "", "opencode.json");
+const config = fs.existsSync(configFile) ? JSON.parse(fs.readFileSync(configFile, "utf8")) : {};
+log({
+  start: {
+    config,
+    mode: fs.existsSync(configFile) ? fs.statSync(configFile).mode & 0o777 : null,
+    configInEnvironment: "OPENCODE_CONFIG_CONTENT" in process.env,
+  },
+});
 
 const port = Number(process.argv[process.argv.indexOf("--port") + 1]);
 const streams = [];

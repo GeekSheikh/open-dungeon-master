@@ -149,6 +149,12 @@ test("the child environment is an allowlist: no server secret ever reaches a pro
   assert.equal(codex.OPENAI_API_KEY, "sk-openai-admin");
   assert.equal(codex.ANTHROPIC_API_KEY, undefined);
   assert.equal(leaksServerSecret({ ...claude, SNEAKY: `prefix-${parent.DB_ENCRYPTION_KEY}` }, parent), "SNEAKY");
+  // opencode 2 keeps its sign-ins in its store, which OPENCODE_DB can move.
+  const opencodeHome = { ...parent, OPENCODE_CONFIG_DIR: "/home/dm/oc", OPENCODE_DB: "/home/dm/oc.db" };
+  const opencode = buildChildEnv(opencodeHome, "opencode", "/usr/bin");
+  assert.equal(opencode.OPENCODE_DB, "/home/dm/oc.db");
+  assert.equal(opencode.OPENCODE_CONFIG_DIR, "/home/dm/oc");
+  assert.equal(buildChildEnv(opencodeHome, "claude", "/usr/bin").OPENCODE_DB, undefined);
 });
 
 test("Claude Code is started with no built-in tools and only ODM's MCP server", () => {
@@ -459,7 +465,7 @@ test("Claude Code reads the older transcript in whole chunks of twenty in its sy
   assert.notEqual(blockTwo(state(), lines(61)), block, "a chunk closed: block 2 is written again");
 });
 
-test("every other program gets the whole transcript in its opening message, as before: opencode takes its system prompt through an environment variable, which Linux caps at 128 KiB", () => {
+test("every other program gets the whole transcript in its opening message, as before: none of them caches its system prompt in blocks", () => {
   const lines = (count) =>
     Array.from({ length: count }, (_, at) => ({
       id: `m${at + 1}`,

@@ -124,6 +124,24 @@ await test("a run carries the admin's providers, 1.x's and 2.x's under their own
   assert.equal(config.agents["odm-dm"].system, "ODM-SYSTEM");
 });
 
+await test("a run's config, a campaign-sized system prompt included, is a file only this user can read in the run's own config folder", async () => {
+  // Linux refuses an environment string of 128 KiB, and Windows caps one
+  // variable at 32 K characters.
+  const system = `ODM-SYSTEM ${"The rules engine decides. ".repeat(8_000)}`;
+  fs.rmSync(log, { force: true });
+  fs.writeFileSync(scenarioFile, JSON.stringify({ models: [ALPHA] }));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "odm-harness-"));
+  const session = await opencodeAdapter.start({ binary: program, system, model: "", effort: "", mcp: null, cwd, env, onEvent: () => undefined });
+  session.close();
+  await sleep(300);
+  fs.rmSync(cwd, { recursive: true, force: true });
+  const { start } = logged().find((entry) => entry.start);
+  assert.equal(start.configInEnvironment, false, "keys carried over stay out of the environment opencode's children inherit");
+  assert.equal(start.mode, 0o600);
+  assert.equal(start.config.agents["odm-dm"].system, system);
+  assert.ok(system.length > 128 * 1024);
+});
+
 await test("with no model chosen, a run asks for opencode's default, which is the admin's own model", async () => {
   await run({ admin: JSON.stringify(adminConfig), scenario: { models: [EXO, ALPHA, ZETA], defaultModel: ZETA } });
   assert.deepEqual(sessionCreated().body.model, { providerID: "zeta", id: "m1" });
