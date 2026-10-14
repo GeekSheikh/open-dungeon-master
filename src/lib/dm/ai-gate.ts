@@ -23,6 +23,7 @@ import { rollAgainst } from "@/lib/roll-labels";
 import { rollCard } from "@/lib/dm/roll-card";
 import { rollCharacterSave } from "@/lib/dm/forced-save";
 import { canonicalCondition } from "@/lib/dm/set-condition";
+import { trapHoldOn } from "@/lib/dm/trap-escape";
 import { instancesOf, type ConditionMetaMap } from "@/lib/dm/condition-logic";
 import { AI_BIND_REFUSAL, AI_CLEAR_REFUSAL, AI_NUMBER_REFUSAL, bindsCreature, engineKept } from "@/lib/dm/ai-boundary";
 import type { SaveAbility } from "@/lib/bestiary/statblock";
@@ -149,5 +150,37 @@ function lift(ctx: GateContext, args: Record<string, unknown>, rawArguments: str
   }
   const held = sheet.conditions.find((entry) => canonicalCondition(entry) === wanted);
   const kept = held && instancesOf((sheet.conditionMeta as ConditionMetaMap)[held]).some(engineKept);
+  if (kept && escapeRolled(ctx, sheet, wanted)) {
+    return { args: rawArguments };
+  }
   return kept ? { result: { error: AI_CLEAR_REFUSAL(sheet.name, wanted) } } : { args: rawArguments };
+}
+
+// A trap's hold (a falling net) the server has already seen broken: this
+// turn rolled the character a check the trap's escape takes (Strength or
+// Athletics for a net) that reached its DC, and nothing has spent it. The
+// model that rolls the check and then lifts the condition is doing what the
+// trap's rule says, as take_action escape does in one call.
+function escapeRolled(ctx: GateContext, sheet: CharacterSheet, condition: string): boolean {
+  const hold = trapHoldOn(ctx.campaign, sheet);
+  if (!hold || canonicalCondition(hold.condition) !== condition) {
+    return false;
+  }
+  const fits = hold.ability === "str" ? /\b(?:athletics|str|strength)\b/i : /\b(?:acrobatics|dex|dexterity)\b/i;
+  const roll = ctx.turn.rollIds
+    .map((rollId) => getRoll(rollId))
+    .find(
+      (entry) =>
+        entry &&
+        !entry.applied &&
+        entry.characterId === sheet.id &&
+        (entry.kind === "skill_check" || entry.kind === "ability_check") &&
+        fits.test(entry.detail) &&
+        entry.total >= hold.dc,
+    );
+  if (!roll) {
+    return false;
+  }
+  markRollApplied(roll.id, `escape:${hold.trap}`.slice(0, 80));
+  return true;
 }

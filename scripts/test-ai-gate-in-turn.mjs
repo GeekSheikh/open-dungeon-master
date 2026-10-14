@@ -33,11 +33,16 @@ const maxHp = world.sheet(kara.id).maxHp;
 // One DM turn: the model's call, then its narration. Returns what the tool
 // answered.
 async function turnWith(toolCall, line = "I press on.") {
-  model.script([reply({ calls: [toolCall] }), reply({ text: "The moment passes. What do you do?" })]);
+  return (await turnWithAll([toolCall], line)).at(-1);
+}
+
+// The same, with several calls in the one reply; returns every answer.
+async function turnWithAll(toolCalls, line = "I press on.") {
+  model.script([reply({ calls: toolCalls }), reply({ text: "The moment passes. What do you do?" })]);
   await model.turn(world, line, kara.id, userId);
   assert.equal(world.clearDice(), 0, "a forced die went unrolled");
-  const answer = model.requests[1].messages.filter((message) => message.role === "tool").at(-1);
-  return JSON.parse(answer.content);
+  const answers = model.requests[1].messages.filter((message) => message.role === "tool");
+  return answers.slice(-toolCalls.length).map((answer) => JSON.parse(answer.content));
 }
 
 await test("Healing sent as dice, as the heal tool offers, is rolled by the server and lands.", async () => {
@@ -119,6 +124,36 @@ await test("A falling net's restraint is not lifted by hand; take_action escape 
   assert.equal(free.success, true, JSON.stringify(free));
   assert.match(free.check ?? "", /vs DC 10/);
   assert.ok(!conditions().includes("restrained"), "a successful check left her restrained");
+});
+
+// What Codex did, twice: the check through request_roll, then
+// clear_condition in the same reply. The server's own roll, reaching the
+// net's DC, is the escape; a failed one, or a check of another kind, is not.
+await test("The net's hold lifts after a server-rolled Athletics check that reaches DC 10, and not after a failed one or a Perception check.", async () => {
+  const conditions = () => world.sheet(kara.id).conditions.map((entry) => entry.toLowerCase());
+  const athletics = call("request_roll", { characterId: kara.id, kind: "skill_check", skill: "athletics", dc: 10, reason: "heaving the net off" });
+  const lift = call("clear_condition", { characterId: kara.id, condition: "restrained", reason: "the net comes off" });
+  world.patch(kara.id, { conditions: [], conditionMeta: {} });
+  world.dice(15);
+  await turnWith(call("apply_hazard", { type: "trap", trap: "Falling Net", characterIds: [kara.id], reason: "the crypt stair" }));
+  assert.ok(conditions().includes("restrained"));
+
+  world.dice(3);
+  const [, failed] = await turnWithAll([athletics, lift], "I heave at it.");
+  assert.match(failed.error ?? "", /take_action escape/, "a failed check lifted the net");
+  assert.ok(conditions().includes("restrained"));
+
+  world.dice(18);
+  const [, looked] = await turnWithAll(
+    [call("request_roll", { characterId: kara.id, kind: "skill_check", skill: "perception", dc: 10, reason: "looking for the net's edge" }), lift],
+    "I look for the edge.",
+  );
+  assert.match(looked.error ?? "", /take_action escape/, "a Perception check lifted the net");
+
+  world.dice(9);
+  const [, lifted] = await turnWithAll([athletics, lift], "I heave again.");
+  assert.ok(!lifted.error, `a successful check did not lift the net: ${lifted.error}`);
+  assert.ok(!conditions().includes("restrained"));
 });
 
 await test("Damage to an enemy the model writes as its own number is refused, and the enemy is untouched.", async () => {
