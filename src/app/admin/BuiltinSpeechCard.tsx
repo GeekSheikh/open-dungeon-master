@@ -21,7 +21,9 @@ const ACTIVE_LABEL: Record<Status["active"], string> = {
   whisper: "the Whisper service",
   builtin: "the built-in engine",
   openai: "OpenAI, on this server's key",
-  none: "nothing yet, so the mic buttons are hidden",
+  // The Android app's game screens still dictate with the phone's own
+  // recognizer (useDictation's native engine), so their mics stay.
+  none: "nothing yet, so the mic buttons are hidden (the Android app uses the phone's own recognizer)",
 };
 
 // The engine's state, or a sentence saying why it could not be read.

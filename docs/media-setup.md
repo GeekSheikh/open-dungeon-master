@@ -142,8 +142,9 @@ one); when it answers, it is used ahead of the built-in engine. With no model
 it is skipped.
 
 With neither, a saved OpenAI key is used once a **Transcription model** is
-picked for it, and after that the browser's or the phone's own speech
-recognition.
+picked for it. After that only the Android app can still listen, with the
+phone's own speech recognition; a browser has none, so there the mic buttons
+are hidden.
 
 ## In Docker
 
@@ -165,8 +166,8 @@ points every service at `host.docker.internal` instead. Two things follow:
 - **A passage is not read aloud.** The table shows the reason on the message
   and above the composer. **Test narration** in **Admin > Speech** repeats the same call
   on demand.
-- **The dictation button is missing.** No engine is available: install the
-  built-in one.
+- **The mic buttons are missing** (dictation and the composer's push-to-talk).
+  No engine is available: install the built-in one.
 
 Every setting here also has an environment variable, listed in
 [configuration.md](configuration.md). A value saved in Admin wins over the

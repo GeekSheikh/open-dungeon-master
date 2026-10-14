@@ -211,6 +211,9 @@ test("both mic buttons hide when there is no engine", () => {
   const pushToTalk = read("src/app/campaigns/[campaignId]/PushToTalk.tsx");
   assert.match(pushToTalk, /\bavailable \} = useDictation\(/);
   assert.match(pushToTalk, /if \(!available\) \{\s*return null;\s*\}/);
+  // Admin > Speech says so, without promising it of the Android app, whose
+  // native engine keeps the mics on the phone's recognizer.
+  assert.match(read("src/app/admin/BuiltinSpeechCard.tsx"), /none: "nothing yet, so the mic buttons are hidden \(the Android app uses the phone's own recognizer\)"/);
 });
 
 // A take still live when the engine goes (a capabilities refresh that finds
