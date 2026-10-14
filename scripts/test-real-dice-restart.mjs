@@ -7,9 +7,13 @@
 // has to finish the turn, once, from the conversation the database kept.
 //
 // The restart closes the database handle (the file stays) and wipes the
-// DM's in-memory state, the queue, the status and the turn bookkeeping, as
-// a new process starts without them. The scripted fake model stands in for
-// the backend, which a server restart does not touch.
+// DM's per-campaign state a process keeps on globalThis: the queue, the
+// status, the turn requests, the narration slots, compaction. State a module
+// holds in its own scope (chapter pacing, model-client's learned routes)
+// survives this in-process restart, so the test shows the database is
+// enough to resume a parked turn, not that nothing else outlives a real
+// one. The scripted fake model stands in for the backend, which a server
+// restart does not touch.
 import assert from "node:assert/strict";
 import { openWorld } from "./lib/enforce-world.mjs";
 import { suite } from "./lib/enforce-harness.mjs";
@@ -22,11 +26,14 @@ const { getDatabase } = await import("../src/lib/db/core.ts");
 const { setMemberRealDice } = await import("../src/lib/db/campaigns.ts");
 const { getDmTurn, getLatestDmTurnId, listOpenPendingRolls } = await import("../src/lib/db/dm-turns.ts");
 const { listRecentMessages } = await import("../src/lib/db/messages.ts");
+const { listRecentRolls } = await import("../src/lib/db/rolls.ts");
 const { getDmStatus } = await import("../src/lib/dm/status.ts");
 
 // What a restart takes: the database handle (the file stays, and the next
-// query reopens it and runs the boot migrations) and every bit of DM state
-// a process holds in memory.
+// query reopens it and runs the boot migrations) and the DM's maps on
+// globalThis, which every caller reads afresh. Chapter pacing is not wiped
+// here: chapter-close.ts keeps its own reference to the map from load time,
+// so clearing the global would change nothing.
 const IN_MEMORY = [
   "__odmDmQueues",
   "__odmDmDepths",
@@ -35,7 +42,6 @@ const IN_MEMORY = [
   "__odmDmStatus",
   "__odmTurnRequested",
   "__odmNarrationSlots",
-  "__odmChapterPacing",
   "__odmCompaction",
 ];
 function restart() {
@@ -57,8 +63,13 @@ await test("A roll parked for a player's own dice survives a restart, and the ro
   model.pointAt(world);
   setMemberRealDice(world.campaignId, userId, true);
 
+  // The DM narrates the setup and asks for the roll in one reply, as real
+  // models usually do: that prose is already on the turn when it parks.
   model.script([
-    reply({ calls: [call("request_roll", { characterId: kara.id, kind: "saving_throw", ability: "str", dc: 12, reason: "the rusted gate swings at her" })] }),
+    reply({
+      text: "The rusted gate groans and swings for Kara.",
+      calls: [call("request_roll", { characterId: kara.id, kind: "saving_throw", ability: "str", dc: 12, reason: "the rusted gate swings at her" })],
+    }),
     reply({ text: "Kara braces, and the gate slams against her shield instead of her ribs." }),
   ]);
   const before = await model.turn(world, "I put my shoulder to the crypt gate.", kara.id, userId);
@@ -86,6 +97,7 @@ await test("A roll parked for a player's own dice survives a restart, and the ro
   assert.deepEqual(listOpenPendingRolls(world.campaignId), []);
   const said = listRecentMessages(world.campaignId, 50).filter((message) => message.authorType === "dm");
   assert.equal(said.length, 1, `expected one narration, found ${said.length}`);
+  assert.match(said[0].content, /rusted gate groans/, "the prose written before the park was lost");
   assert.match(said[0].content, /slams against her shield/);
 
   // It resumed rather than ran again: one more call, carrying the player's roll.
@@ -100,9 +112,12 @@ await test("A roll parked for a player's own dice survives a restart, and the ro
   assert.equal(roll.total, 18, "the player's 15 plus Strength 16's +3 did not reach the model");
   assert.equal(roll.success, true);
 
-  // The same roll entered twice changes nothing.
+  // The same roll entered twice changes nothing: it is refused as already
+  // resolved, and refused before a second roll row reaches the roll log.
+  const rollsBefore = listRecentRolls(world.campaignId, 50).length;
   const twice = await callRoute(submitRoute, "POST", { dice: [15] }, { campaignId: world.campaignId, pendingRollId: pending.id });
-  assert.notEqual(twice.status, 200, "a roll already answered was taken again");
+  assert.equal(twice.status, 409, JSON.stringify(twice.json));
+  assert.equal(listRecentRolls(world.campaignId, 50).length, rollsBefore, "the second submit recorded a roll");
   await settleQueue(world.campaignId);
   assert.equal(listRecentMessages(world.campaignId, 50).filter((message) => message.authorType === "dm").length, 1);
   assert.equal(model.served(), 2);
