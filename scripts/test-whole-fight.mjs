@@ -131,6 +131,9 @@ await test("Three rounds against two goblins: hits stay on the sheet, the dead s
   const answers = model.requests.flatMap((request) => request.messages).filter((message) => message.role === "tool");
   const refusal = answers.map((message) => JSON.parse(message.content)).find((result) => result.error?.includes(first.displayName));
   assert.equal(refusal?.refused, "rules", "the dead goblin's attack was not refused on the rules");
+  // Refused for being dead: "its turn has not come yet" would tell the model
+  // the corpse acts later.
+  assert.match(refusal.error, /is dead/, "the dead goblin was refused for something other than being dead");
   assert.equal(world.encounter().round, 3);
   assert.equal(world.sheet(kara.id).currentHp, maxHp - damageTaken(), "the hits do not add up on Kara's sheet");
 
