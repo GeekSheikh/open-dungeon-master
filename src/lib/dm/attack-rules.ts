@@ -69,6 +69,16 @@ export function handsRuling(input: {
   return { twoHanded: input.twoHandedAsked, note: null };
 }
 
+// A thrown weapon is a ranged attack once it leaves the hand, and a melee
+// one inside its reach (SRD 5.1, Thrown). `apart` is how many tiles lie
+// between attacker and target, null when the board does not know.
+export function thrownAtRange(
+  profile: Pick<AttackProfile, "thrown" | "reachTiles">,
+  apart: number | null,
+): boolean {
+  return profile.thrown && apart !== null && apart > profile.reachTiles;
+}
+
 // ---- two-weapon fighting ----
 
 // Whether the pack holds a second weapon for the other hand: two of the

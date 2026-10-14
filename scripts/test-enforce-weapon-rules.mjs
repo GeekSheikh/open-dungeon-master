@@ -53,6 +53,35 @@ await test("a versatile weapon rolls the bigger die in two hands and the smaller
   assert.deepEqual(swing.damageDice, [8]);
 });
 
+// SRD 5.1 Versatile: the bracketed die is the damage "when the weapon is
+// used with two hands to make a melee attack". A spear thrown past its
+// reach makes a ranged attack (Thrown), so it rolls the one-handed die, and
+// Great Weapon Fighting, written for a melee weapon wielded in two hands,
+// rerolls nothing.
+await test("A versatile weapon thrown at range rolls its one-handed die, however it was held; in melee it rolls the bigger one.", async () => {
+  arm(hero.id, {
+    str: 14,
+    equipment: [{ name: "Spear", qty: 2 }],
+    features: [...world.sheet(hero.id).features, { name: "Fighting Style: Great Weapon Fighting", source: "choice" }],
+  });
+  try {
+    kit.stand(hero.id, 1);
+    const melee = await kit.swing(hero.id, { weapon: "Spear", twoHanded: true }, 10, 1, 6);
+    assert.equal(melee.ok, true, melee.error);
+    assert.deepEqual(melee.damageDice, [8, 8], "in melee the two-handed d8, its 1 rerolled");
+    assert.equal(melee.result.damage, 6 + 2);
+    kit.stand(hero.id, 3);
+    const thrown = await kit.swing(hero.id, { weapon: "Spear", twoHanded: true }, 10, 1, 6);
+    assert.equal(thrown.ok, true, thrown.error);
+    assert.deepEqual(thrown.damageDice, [6], `the thrown spear rolled ${thrown.damageDice.map((sides) => `d${sides}`).join(", ")}`);
+    assert.equal(thrown.result.damage, 1 + 2);
+    assert.ok(thrown.result.conditionEffects.includes("Spear is thrown: one-handed die"), thrown.result.conditionEffects.join("; "));
+  } finally {
+    kit.stand(hero.id, 1);
+    world.patch(hero.id, { features: world.sheet(hero.id).features.filter((feature) => !feature.name.startsWith("Fighting Style")) });
+  }
+});
+
 await test("holding a weapon that is not versatile in two hands changes nothing", async () => {
   arm(hero.id, { str: 14, equipment: [{ name: "Mace", qty: 1 }] });
   const swing = await kit.swing(hero.id, { weapon: "Mace", twoHanded: true }, 10, 6);

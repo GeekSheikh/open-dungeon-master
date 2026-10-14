@@ -21,7 +21,7 @@ import {
   weaponAttackProfile,
   type AttackProfile,
 } from "@/lib/dm/attack-logic";
-import { handsRuling, otherHandArmed } from "@/lib/dm/attack-rules";
+import { handsRuling, otherHandArmed, thrownAtRange } from "@/lib/dm/attack-rules";
 import { martialArtsApplies } from "@/lib/dm/pc-attack-options";
 import { shillelaghSwing } from "@/lib/dm/attack-features";
 import { combatRiders, type CombatRiders } from "@/lib/srd/feature-effects";
@@ -63,6 +63,9 @@ export function buildAttackProfile(
     twoHanded?: boolean;
     offHand?: boolean;
   },
+  // How many tiles lie between the attacker and the target, when the board
+  // knows (a thrown weapon past its reach is a ranged attack).
+  target: { apart: number | null } = { apart: null },
 ): BuiltAttack | { error: string } {
   const derived = computeSheetDerived(sheet);
   const riders = combatRiders(sheet);
@@ -294,20 +297,34 @@ export function buildAttackProfile(
     // Shillelagh: a club or quarterstaff swings with the spellcasting
     // ability and a d8, and is magical (src/lib/dm/attack-features.ts).
     const shillelagh = shillelaghSwing(sheet, resolved, derived);
-    profile = weaponAttackProfile(shillelagh?.derived ?? derived, sheet.proficiencies.weapons, shillelagh?.resolved ?? resolved, {
-      riders,
-      martialArts: martialArtsApplies(sheet),
-      brawler: brawlerUnarmed(sheet),
-      twoHanded: hands.twoHanded,
-      offHand: args.offHand,
-      otherWeaponInHand: otherHandArmed({
-        equipment: sheet.equipment,
-        weapon: resolved.displayName,
-        shieldName,
-      }),
-    });
-    if (hands.note) {
-      profile = { ...profile, riderNotes: [...profile.riderNotes, hands.note] };
+    const swing = (twoHanded: boolean) =>
+      weaponAttackProfile(shillelagh?.derived ?? derived, sheet.proficiencies.weapons, shillelagh?.resolved ?? resolved, {
+        riders,
+        martialArts: martialArtsApplies(sheet),
+        brawler: brawlerUnarmed(sheet),
+        twoHanded,
+        offHand: args.offHand,
+        otherWeaponInHand: otherHandArmed({
+          equipment: sheet.equipment,
+          weapon: resolved.displayName,
+          shieldName,
+        }),
+      });
+    profile = swing(hands.twoHanded);
+    let handsNote = hands.note;
+    // SRD 5.1 Versatile: the bigger die is for a melee attack. A spear thrown
+    // past its reach (counting the reach Demiurgic Colossus adds below) is a
+    // ranged attack, as attackGeometry will find, so it rolls the one-handed
+    // die and gives Great Weapon Fighting nothing to reroll.
+    if (profile.twoHanded && profile.thrown && !profile.ranged && !properties.includes("two-handed")) {
+      const reachTiles = profile.reachTiles + (authoredReachBonus(sheet)?.tiles ?? 0);
+      if (thrownAtRange({ thrown: true, reachTiles }, target.apart)) {
+        profile = swing(false);
+        handsNote = `${resolved.displayName} is thrown: one-handed die`;
+      }
+    }
+    if (handsNote) {
+      profile = { ...profile, riderNotes: [...profile.riderNotes, handsNote] };
     }
     if (shillelagh) {
       profile = { ...profile, magicWeapon: true, riderNotes: [...profile.riderNotes, shillelagh.note] };

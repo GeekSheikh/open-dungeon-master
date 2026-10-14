@@ -18,6 +18,7 @@ const {
   resourceLeft,
   slotFree,
   smiteDice,
+  thrownAtRange,
   withLoadingFired,
 } = await import("../src/lib/dm/attack-rules.ts");
 const { ragingMeleeBonus, resolveAttackWeapon, weaponAttackProfile } = await import("../src/lib/dm/attack-logic.ts");
@@ -106,6 +107,15 @@ test("the off-hand swing of a versatile weapon is one-handed whatever was asked"
   assert.equal(swing.twoHanded, false);
   assert.deepEqual(hands("Longsword", { offHand: true }), { twoHanded: false, note: null });
   assert.deepEqual(hands("Longsword", { offHand: false, twoHandedAsked: true }), { twoHanded: true, note: null });
+});
+
+test("a thrown weapon is a ranged attack only past its reach, and only where the board says so", () => {
+  const spear = profileOf("Spear");
+  assert.equal(thrownAtRange(spear, 1), false);
+  assert.equal(thrownAtRange(spear, 2), true);
+  assert.equal(thrownAtRange(spear, null), false);
+  assert.equal(thrownAtRange({ ...spear, reachTiles: 2 }, 2), false);
+  assert.equal(thrownAtRange(profileOf("Longsword"), 3), false);
 });
 
 test("a lance needs both hands on foot and one in the saddle", () => {

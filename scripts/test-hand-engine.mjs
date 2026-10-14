@@ -470,6 +470,16 @@ test("a versatile weapon offers two hands only when no shield is worn", () => {
   assert.equal(shielded.dice, free.dice);
 });
 
+// The bigger die is for a melee attack (SRD 5.1, Versatile), so a weapon
+// that can be thrown offers two hands in melee.
+test("a thrown versatile weapon offers two hands in melee", () => {
+  const spear = byId(deriveHand(sheet({ equipment: [item("Spear", { equipped: true })] }), mine()), "attack:spear");
+  assert.equal(spear.range, "5 ft / 20 ft");
+  assert.match(spear.rules, /Versatile: say two hands in melee for the bigger die\./);
+  const sword = byId(deriveHand(sheet({ equipment: [item("Longsword", { equipped: true })] }), mine()), "attack:longsword");
+  assert.doesNotMatch(sword.rules, /in melee/);
+});
+
 // The off-hand swing of two-weapon fighting has a weapon in each hand, so a
 // Dual Wielder's second longsword is never offered the two-handed grip.
 test("the off-hand card of a versatile weapon does not offer two hands", () => {

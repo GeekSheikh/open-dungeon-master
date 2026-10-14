@@ -154,7 +154,11 @@ function attackCards(sheet: CharacterSheet, turn: HandTurn, riders: CombatRiders
     notes.push(...onHit.notes.map((note) => `${note}.`));
     notes.push(...profile.riderNotes.map((note) => `${note}.`));
     if (!profile.proficient) notes.push("Not proficient.");
-    if (srd?.properties?.includes("versatile") && !profile.twoHanded && !shieldName && !offHand) notes.push("Versatile: say two hands for the bigger die.");
+    // The bigger die is for a melee attack (SRD 5.1), so a weapon that can
+    // also be thrown says where it counts.
+    if (srd?.properties?.includes("versatile") && !profile.twoHanded && !shieldName && !offHand) {
+      notes.push(profile.thrown ? "Versatile: say two hands in melee for the bigger die." : "Versatile: say two hands for the bigger die.");
+    }
     const ammoKind = srd?.properties?.includes("ammunition") ? ammoKindForWeapon(name) ?? ammoKindForWeapon(srd.name) : null;
     const ammo = ammoKind ? findAmmo(sheet.equipment, ammoKind) : null;
     const empty = ammoKind !== null && ammo === null;
