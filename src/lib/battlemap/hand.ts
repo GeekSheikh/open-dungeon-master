@@ -11,6 +11,7 @@ import { optionCards } from "@/lib/battlemap/hand-options";
 import { maneuverDieFor, maneuverUse, type ManeuverUse } from "@/lib/dm/maneuver-rules";
 import { ragingMeleeBonus, weaponAttackProfile, weaponOf } from "@/lib/dm/attack-logic";
 import { dualWields, handsRuling, offHandProblem } from "@/lib/dm/attack-rules";
+import { shillelaghSwing } from "@/lib/dm/attack-features";
 import { magicWeaponOfRow, type WeaponGear } from "@/lib/dm/gear-attack";
 import { bonusRouteFor, kiLeft, usesLeft, type BonusRoute, type MoveAction } from "@/lib/dm/bonus-routes";
 import { effectiveSpeed, exhaustionSpeed } from "@/lib/dm/condition-logic";
@@ -136,11 +137,17 @@ function attackCards(sheet: CharacterSheet, turn: HandTurn, riders: CombatRiders
 
   const carried = carriedWeapons(sheet);
   const build = (name: string, srd: SrdWeapon | null, offHand: boolean, gear: WeaponGear | null = null, natural = false): HandCard => {
+    const resolved = { displayName: name, srd, unarmed: srd === null, ...(gear ? { gear } : {}) };
+    // Shillelagh, as pc_attack swings it: a club or quarterstaff deals a d8
+    // with the spellcasting ability when that is better, and is no longer
+    // versatile (shillelaghSwing in src/lib/dm/attack-features.ts).
+    const shillelagh = shillelaghSwing(sheet, resolved, derived);
+    const held = shillelagh?.resolved.srd ?? srd;
     const profile = weaponAttackProfile(
-      derived,
+      shillelagh?.derived ?? derived,
       // A natural weapon is always proficient, as the engine swings it.
       natural ? [...profs, "simple", name.toLowerCase()] : profs,
-      { displayName: name, srd, unarmed: srd === null, ...(gear ? { gear } : {}) },
+      shillelagh?.resolved ?? resolved,
       { riders, offHand, martialArts },
     );
     const rage = ragingMeleeBonus(sheet, profile);
@@ -152,11 +159,12 @@ function attackCards(sheet: CharacterSheet, turn: HandTurn, riders: CombatRiders
     }
     if (rage) notes.push(`Rage +${rage}.`);
     notes.push(...onHit.notes.map((note) => `${note}.`));
+    if (shillelagh) notes.push(`${shillelagh.note}.`);
     notes.push(...profile.riderNotes.map((note) => `${note}.`));
     if (!profile.proficient) notes.push("Not proficient.");
     // The bigger die is for a melee attack (SRD 5.1), so a weapon that can
     // also be thrown says where it counts.
-    if (srd?.properties?.includes("versatile") && !profile.twoHanded && !shieldName && !offHand) {
+    if (held?.properties?.includes("versatile") && !profile.twoHanded && !shieldName && !offHand) {
       notes.push(profile.thrown ? "Versatile: say two hands in melee for the bigger die." : "Versatile: say two hands for the bigger die.");
     }
     const ammoKind = srd?.properties?.includes("ammunition") ? ammoKindForWeapon(name) ?? ammoKindForWeapon(srd.name) : null;
@@ -185,8 +193,8 @@ function attackCards(sheet: CharacterSheet, turn: HandTurn, riders: CombatRiders
     // A two-handed weapon is not swung at all with a shield on the arm, in
     // handsRuling's own words. A lance is left to the engine: the Hand does
     // not know whether its rider is mounted.
-    const hands = srd
-      ? handsRuling({ who: sheet.name, weapon: name, properties: srd.properties ?? [], lance: false, mounted: false, twoHandedAsked: false, shieldName })
+    const hands = held
+      ? handsRuling({ who: sheet.name, weapon: name, properties: held.properties ?? [], lance: false, mounted: false, twoHandedAsked: false, shieldName })
       : null;
     const handsGate: Gate = hands && "error" in hands ? { reason: hands.error, spent: false } : null;
     if (offHand) {

@@ -480,6 +480,30 @@ test("a thrown versatile weapon offers two hands in melee", () => {
   assert.doesNotMatch(sword.rules, /in melee/);
 });
 
+// Shillelagh as pc_attack applies it (shillelaghSwing): the quarterstaff
+// deals a d8 with WIS instead of STR, and two hands add nothing.
+test("a quarterstaff under Shillelagh shows the d8, the casting ability and no versatile hint", () => {
+  const druid = (conditions) =>
+    sheet({
+      name: "Bryn", class: "druid", conditions,
+      abilities: { str: 8, dex: 12, con: 14, int: 10, wis: 18, cha: 10 },
+      proficiencies: { saves: ["int", "wis"], skills: [], expertise: [], languages: [], tools: [], armor: ["light"], weapons: ["clubs", "quarterstaffs"] },
+      spellcasting: { ability: "wis", slots: { 1: { max: 4, used: 0 } }, prepared: [], known: [], cantrips: ["Shillelagh"] },
+      equipment: [item("Quarterstaff", { equipped: true })],
+    });
+  const plain = byId(deriveHand(druid([]), mine()), "attack:quarterstaff");
+  assert.equal(plain.damage, "1d6-1");
+  assert.match(plain.rules, /two hands/);
+  const staff = byId(deriveHand(druid(["shillelagh"]), mine()), "attack:quarterstaff");
+  assert.equal(staff.damage, "1d8+4");
+  assert.equal(staff.toHit, 4 + 2);
+  assert.match(staff.rules, /^Shillelagh: Quarterstaff deals 1d8 with the spellcasting ability/);
+  assert.doesNotMatch(staff.rules, /two hands/);
+  // A weapon the spell does not touch swings as ever.
+  const dagger = byId(deriveHand({ ...druid(["shillelagh"]), equipment: [item("Dagger")] }, mine()), "attack:dagger");
+  assert.equal(dagger.damage, "1d4+1");
+});
+
 // The off-hand swing of two-weapon fighting has a weapon in each hand, so a
 // Dual Wielder's second longsword is never offered the two-handed grip.
 test("the off-hand card of a versatile weapon does not offer two hands", () => {
