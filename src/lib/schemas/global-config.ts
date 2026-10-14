@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { HARNESS_EFFORTS } from "@/lib/harness/types";
 import { CHECKPOINT_PRESET, isComfyPreset } from "@/lib/image-models/catalog";
 import { REROLL_LOW_DEFAULT } from "@/lib/srd/ability-rerolls";
 
@@ -199,7 +200,7 @@ export const globalConfigSchema = z.object({
       // The model for mechanical work (summaries, compaction, Ask). Blank =
       // the story model.
       utilityModel: z.string().trim().max(200).default(""),
-      effort: z.enum(["", "low", "medium", "high", "xhigh", "max"]).default(""),
+      effort: z.enum(["", ...HARNESS_EFFORTS]).default(""),
       // Processing speed for the story and bookkeeping models (issue 255).
       speed: z.enum(["", "fast"]).default(""),
       utilitySpeed: z.enum(["", "fast"]).default(""),

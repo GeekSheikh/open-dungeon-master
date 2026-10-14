@@ -7,6 +7,7 @@ import { isComfyPreset } from "@/lib/image-models/catalog";
 import { resolveSignupMode, type GlobalConfig } from "@/lib/schemas/global-config";
 import { announcedAddressFor, isUnroutableAddress, voiceConfig } from "@/lib/voice/config";
 import { forgetHarnessStatus } from "@/lib/harness/status";
+import { HARNESS_EFFORTS } from "@/lib/harness/types";
 import { rescueStrandedCampaigns, type RescueMove } from "@/lib/image-backend-rescue";
 
 export const runtime = "nodejs";
@@ -215,7 +216,7 @@ const patchSchema = z.object({
       binaryPath: z.string().trim().max(500).optional(),
       model: z.string().trim().max(200).optional(),
       utilityModel: z.string().trim().max(200).optional(),
-      effort: z.enum(["", "low", "medium", "high", "xhigh", "max"]).optional(),
+      effort: z.enum(["", ...HARNESS_EFFORTS]).optional(),
       speed: z.enum(["", "fast"]).optional(),
       utilitySpeed: z.enum(["", "fast"]).optional(),
       images: z.enum(["off", "native"]).optional(),
