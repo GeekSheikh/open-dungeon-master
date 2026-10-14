@@ -145,4 +145,67 @@ await test("A level 1 build joining a level 5 table arrives as a level 5 fighter
   world.close();
 });
 
+const owed = await import("../src/lib/srd/owed-choices.ts");
+
+// The same join, seen for the subclass. A fighter picks one at 3, so a level
+// 1 build seated at 5 arrives without one; the sheet lists it as owed, and
+// the level-up dialog asks for it with the next level and sends it, as it
+// does at the subclass level itself. It asked only at the exact level once,
+// and such a fighter never had a Martial Archetype. The level earned at the
+// table, the archetype with it, then goes home to the library (issue 36).
+await test("A level 1 fighter seated at a level 5 table takes the subclass it missed with its first level-up, and the library keeps level 6 and the subclass when the campaign ends.", async () => {
+  const table = await openCreation({ campaign: { startingLevel: 5 } });
+  const { world, campaignId, player, call, throughLibrary, sheetRoute } = table;
+  const built = builder.build({
+    race: "human",
+    class: "fighter",
+    background: "soldier",
+    name: "Corin",
+    chosenSkills: ["history", "insight"],
+    bonusLanguages: ["Dwarvish"],
+    stylePicks: ["defense"],
+    portrait: { url: "/uploads/corin.png" },
+  });
+  assert.equal(built.blocker, null, `the builder refused: ${built.blocker?.message}`);
+  const seated = await throughLibrary(built.sheet, 1);
+  assert.ok(seated.status < 300, seated.error ?? "");
+  const joined = seated.sheet;
+  assert.equal(joined.level, 5);
+  assert.equal(joined.subclass, "", "the join chose a subclass for the player");
+  assert.ok(owed.owedChoices(joined).some((line) => /subclass for fighter/.test(line)), owed.owedChoices(joined).join("; "));
+
+  campaigns.setCampaignStatus(campaignId, "active");
+  const awarded = await world.invoke("award_xp", { characterIds: [joined.id], amount: 7500, reason: "the siege" });
+  assert.equal(awarded.ok, true, awarded.error);
+  assert.equal(table.sheets.getSheetForUser(campaignId, player.id).xp, 14000);
+
+  // What LevelUpDialog's apply() sends for fighter 6 when the player picks
+  // Champion and leaves the improvement open: the subclass goes in when the
+  // dialog's own check (subclassOwed, for the class level after this one)
+  // says the step was shown.
+  const needsSubclass = owed.subclassOwed({ id: "fighter", subclass: joined.subclass }, 6);
+  world.signIn(player);
+  const levelled = await call(sheetRoute, "PATCH", {
+    level: 6,
+    levelUpClass: "fighter",
+    ...(needsSubclass ? { subclass: "Champion" } : {}),
+  }, { campaignId });
+  assert.equal(levelled.status, 200, JSON.stringify(levelled.json));
+  const after = table.sheets.getSheetForUser(campaignId, player.id);
+  assert.equal(after.level, 6);
+  assert.equal(after.subclass, "Champion", "the dialog did not offer the subclass the join missed");
+  assert.ok(after.features.some((feature) => feature.name === "Improved Critical"), "Champion's 3rd-level feature did not arrive");
+  assert.ok(!owed.owedChoices(after).some((line) => /subclass/.test(line)), "the subclass is still listed as owed");
+
+  world.signIn(world.owner);
+  const campaignRoute = await world.route("campaigns/[campaignId]");
+  const ended = await call(campaignRoute, "PATCH", { status: "ended" }, { campaignId });
+  assert.equal(ended.status, 200, JSON.stringify(ended.json));
+  const kept = table.characters.getCharacter(seated.character.id);
+  assert.equal(kept.level, 6, "a level earned above the library's is the one it keeps");
+  assert.equal(kept.xp, 14000);
+  assert.equal(kept.subclass, "Champion", "the library forgot the subclass taken at the table");
+  world.close();
+});
+
 finish();
