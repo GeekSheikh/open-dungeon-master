@@ -139,6 +139,8 @@ export type CampaignLocation = {
   visited: boolean;
   isCurrent: boolean;
   mapImage: { url: string } | null;
+  // Why its last map render failed, while it has none (src/lib/db/locations.ts).
+  mapFailed?: string | null;
   // The place's ambience bed and music, which name its kind of scene.
   ambience: { bed: string; music: string } | null;
   updatedAt: string;
@@ -673,7 +675,7 @@ export function campaignReducer(state: CampaignState, action: Action): CampaignS
         case "location_map_ready":
           next.locations = state.locations.map((location) =>
             location.id === payload.locationId
-              ? { ...location, mapImage: payload.image as CampaignLocation["mapImage"] }
+              ? { ...location, mapImage: payload.image as CampaignLocation["mapImage"], mapFailed: null }
               : location,
           );
           next.mediaStatus = withoutKey(state.mediaStatus, String(payload.locationId ?? ""));
