@@ -51,10 +51,9 @@ await test("Built in the builder, through the library to a table, 300 XP from th
   assert.ok(atTable, "nothing was seated");
   assert.equal(atTable.libraryCharacterId, seated.character.id);
   assert.equal(atTable.maxHp, built.sheet.maxHp, "the table changed what the builder made");
-  assert.deepEqual(atTable.spellcasting.spellbook, ILSE.spells);
+  assert.deepEqual([...atTable.spellcasting.spellbook].sort(), [...ILSE.spells].sort());
 
   // The table starts, and the DM awards the level's experience.
-  campaigns.setMemberReady(campaignId, player.id, true);
   campaigns.setCampaignStatus(campaignId, "active");
   const awarded = await world.invoke("award_xp", { characterIds: [atTable.id], amount: 300, reason: "the crypt cleared" });
   assert.equal(awarded.ok, true, awarded.error);
@@ -92,6 +91,8 @@ await test("Built in the builder, through the library to a table, 300 XP from th
   assert.equal(kept.xp, 300, "the library forgot the experience");
   assert.equal(kept.subclass, "School of Evocation", "the library forgot the school");
   assert.ok(kept.sheet.spellcasting.spellbook.includes("Thunderwave"), "the library forgot the new spells");
+  const keptFeatures = kept.sheet.features.map((feature) => feature.name);
+  assert.ok(keptFeatures.includes("Sculpt Spells"), `the library forgot the school's features: ${keptFeatures.join(", ")}`);
   world.close();
 });
 
@@ -118,7 +119,13 @@ await test("A level 1 build joining a level 5 table arrives as a level 5 fighter
   assert.equal(joined.level, 5);
   assert.equal(joined.hitDice.total, 5);
   assert.equal(joined.hitDice.spent, 0);
-  assert.ok(joined.maxHp > built.sheet.maxHp, "the table level brought no hit points");
+  // Average hit points for a fighter 5: the d10's 10 at first level and its
+  // fixed 6 at each of the four after, with Constitution at every level.
+  const conMod = abilityMod(joined.abilities.con);
+  assert.equal(joined.maxHp, 10 + conMod + 4 * (6 + conMod), "a level 5 fighter's average hit points");
+  // The join brings level 5's floor of experience, so the DM's 14000 below
+  // takes the sheet to 20500: past level 6's 14000, short of level 7's 23000.
+  assert.equal(joined.xp, 6500, "the join did not bring the level's experience");
   assert.equal(combatRiders(joined).extraAttacks, 1, "a level 5 fighter attacks twice");
   assert.equal(seated.character.level, 1, "joining a higher table changed the library's own level");
 
