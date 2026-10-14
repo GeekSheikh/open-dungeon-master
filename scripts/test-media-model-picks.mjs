@@ -70,6 +70,7 @@ async function test(name, fn) {
 // A ComfyUI that answers its liveness check, and a speech server whose model
 // list the test sets.
 let speechModels = ["only-voice"];
+let storyModels = ["my-story-model"];
 const prompts = [];
 const server = http.createServer((request, response) => {
   let body = "";
@@ -86,6 +87,7 @@ const server = http.createServer((request, response) => {
       return send(500, { error: "stand-in" });
     }
     if (request.url === "/speech/v1/models") return send(200, { data: speechModels.map((id) => ({ id })) });
+    if (request.url === "/story/v1/models") return send(200, { data: storyModels.map((id) => ({ id })) });
     send(404, {});
   });
 });
@@ -222,6 +224,23 @@ try {
     saveGlobalConfig({ speech: { ttsModel: "voice-a" } });
     assert.equal((await capabilitiesSnapshot()).tts.configured, true);
     saveGlobalConfig({ speech: { ttsProvider: "off", ttsModel: "" } });
+  });
+
+  await test("a storyteller with an address and no model is ready when its server lists exactly one", async () => {
+    // The shipped Docker file names no model any more: a llama-server that
+    // serves one runs it, so the creator must not call it missing.
+    forgetSoleModelsForTests();
+    saveGlobalConfig({ text: { provider: "custom", customBaseUrl: `${base}/story/v1`, customModel: "" } });
+    let story = (await capabilitiesSnapshot()).story;
+    assert.deepEqual(story, { configured: true, reachable: true, model: "my-story-model" });
+    forgetSoleModelsForTests();
+    storyModels = ["model-a", "model-b"];
+    story = (await capabilitiesSnapshot()).story;
+    assert.equal(story.configured, false, "several models and none picked: somebody has to choose");
+    assert.equal(story.model, "");
+    saveGlobalConfig({ text: { customModel: "model-b" } });
+    assert.deepEqual((await capabilitiesSnapshot()).story, { configured: true, reachable: true, model: "model-b" });
+    saveGlobalConfig({ text: { provider: "none", customBaseUrl: "", customModel: "" } });
   });
 
   await test("Admin > Speech hears that an OpenAI key would take dictation but has no model picked", async () => {

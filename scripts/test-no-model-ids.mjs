@@ -3,8 +3,10 @@
 // into the code is one that will retire and keep being sent. This reads the
 // catalog snapshot ODM ships (src/lib/model-registry/snapshot.json) and fails
 // on any name in the app's code (src/, and the scripts/lib modules src/
-// imports) that is a model, as a string literal or as a word anywhere on a
-// line (a hint's "e.g. ...", a page's text, a command shown to copy):
+// imports) or in the configuration it ships (docker-compose*.yml and the
+// .env*.example files, whose values a copy or a `docker compose up` sends)
+// that is a model, as a string literal or as a word anywhere on a line (a
+// hint's "e.g. ...", a page's text, a command shown to copy):
 //   - a model ID from the snapshot;
 //   - a name shaped like a model the snapshot does not list:
 //     a family it knows (gpt, qwen, gemma, grok...) or a speech or picture
@@ -23,7 +25,9 @@
 // Comment lines are skipped on purpose: a comment sends nothing, and the
 // names in them are mostly records of where something was measured or
 // examples of a format, true as written. A comment claiming what an alias
-// points to today goes stale like a default does; that is for review.
+// points to today goes stale like a default does; that is for review. In the
+// configuration files a comment is a "#" line, so an example left commented
+// out (#OPENROUTER_MODEL=...) is not sent either.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -122,13 +126,18 @@ function versionedInPattern(pattern, families) {
 const LITERAL = /(["'`])((?:(?!\1)[^\\\n$]){2,100})\1/g;
 const WORD_GAP = /[^\w.:/@+-]+/;
 const PATTERN = /(?<![\w)\]$])\/((?:\\.|[^/\n\\*])(?:\\.|[^/\n\\])*)\/[dgimsuyv]*/g;
+const codeComment = (trimmed) => trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*");
+const configComment = (trimmed) => trimmed.startsWith("#");
 function namedModels(files, ids, families) {
   const pinned = new Set([...PINNED.keys(), ...LEFTOVERS.keys()].map((id) => id.toLowerCase()));
   const found = [];
   for (const file of files) {
-    file.text.split("\n").forEach((line, index) => {
-      const trimmed = line.trim();
-      if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) return;
+    const comment = file.config ? configComment : codeComment;
+    file.text.split("\n").forEach((raw, index) => {
+      const trimmed = raw.trim();
+      if (comment(trimmed)) return;
+      // A compose default, ${NAME:-value}, is its own word.
+      const line = file.config ? raw.replace(/:-/g, " ") : raw;
       const named = new Set();
       const words = line.split(WORD_GAP).map((word) => word.replace(/^[.:/]+|[.:/]+$/g, ""));
       for (const text of [...[...line.matchAll(LITERAL)].map((match) => match[2].trim()), ...words]) {
@@ -171,6 +180,15 @@ function appFiles() {
   return files;
 }
 
+// The configuration the repository ships beside the code: the compose files
+// a Docker install starts from, and the example env files people copy.
+function configFiles() {
+  return fs
+    .readdirSync(root)
+    .filter((name) => /^docker-compose.*\.ya?ml$/.test(name) || /^\.env.*\.example$/.test(name))
+    .map((name) => ({ path: name, text: fs.readFileSync(path.join(root, name), "utf8"), config: true }));
+}
+
 let passed = 0;
 function test(name, fn) {
   fn();
@@ -202,6 +220,20 @@ test("the matcher finds catalog IDs in code and leaves words and comments alone"
   assert.deepEqual(found.map((hit) => `${hit.line}:${hit.id}`), ["1:gpt-9", "2:qwen9-35b", "3:qwen/qwen9-35b", "6:gpt-9"]);
 });
 
+test("in a configuration file a value is read and a # comment is not", () => {
+  const found = namedModels([{
+    path: "docker-compose.yml",
+    config: true,
+    text: [
+      "      OPENAI_COMPAT_MODEL: ${OPENAI_COMPAT_MODEL:-gpt-9}",
+      "OPENROUTER_MODEL=gpt-9",
+      "#OPENROUTER_MODEL=gpt-9",
+      "  # the old default was gpt-9",
+    ].join("\n"),
+  }], catalogIds({ providers: { openai: { models: { "gpt-9": {} } } } }), new Set());
+  assert.deepEqual(found.map((hit) => hit.line), [1, 2]);
+});
+
 test("names the catalog does not list are found by their shape, and words, styles and the SRD source are not", () => {
   const found = namedModels([{
     path: "src/b.ts",
@@ -231,13 +263,16 @@ test("the snapshot is the catalog, not an empty or broken file", () => {
   for (const family of ["gpt", "qwen", "gemma", "grok", "claude"]) assert.ok(families.has(family), family);
 });
 
-const files = appFiles();
+const files = [...appFiles(), ...configFiles()];
 const found = namedModels(files, ids, families);
 const leftover = (hit) => Boolean(LEFTOVERS.get(hit.path)?.ids.includes(hit.id));
 const pinnedHere = (hit) => PINNED.has(hit.id) || [...PINNED.keys()].some((id) => id.toLowerCase() === hit.id) || [...PINNED_PATHS.keys()].some((prefix) => hit.path.startsWith(prefix));
 
-test("the scripts/lib modules the server imports are read too", () => {
+test("the scripts/lib modules the server imports are read too, and the shipped configuration", () => {
   assert.ok(files.some((file) => file.path === "scripts/lib/openai-tool-route.mjs"));
+  for (const name of ["docker-compose.yml", ".env.example", ".env.docker.example"]) {
+    assert.ok(files.some((file) => file.path === name), name);
+  }
 });
 
 test("the app's code names no model outside the pinned and leftover lists", () => {
@@ -245,7 +280,7 @@ test("the app's code names no model outside the pinned and leftover lists", () =
   assert.deepEqual(
     unexpected.map((hit) => `${hit.path}:${hit.line} names ${hit.id}`),
     [],
-    "Read the model from the backend or the catalog instead (src/lib/model-registry), or, for a model ODM downloads and runs itself, add it to PINNED.",
+    "Read the model from the backend or the catalog instead (src/lib/model-registry), or, for a model ODM downloads and runs itself, add it to PINNED. In a shipped configuration file, leave the value blank or comment the example out.",
   );
 });
 

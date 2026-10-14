@@ -10,6 +10,7 @@ import { voiceConfig, type VoiceMode } from "@/lib/voice/config";
 import { harnessConfig, probeHarness } from "@/lib/harness/status";
 import { isHarnessId } from "@/lib/harness/types";
 import { harnessImagesReady } from "@/lib/harness/images";
+import { soleListedModel } from "@/lib/model-registry/discovery";
 import type { StorySettings } from "@/lib/types";
 import { isOpenAiHost, narrationModel, ttsBackend, type TtsBackend, type TtsProvider } from "@/lib/tts-backend";
 
@@ -360,6 +361,18 @@ export async function capabilitiesSnapshot(): Promise<Capabilities> {
   const settings = configuredDefaultStorySettings();
   const cfg = getGlobalConfig();
   const configured = storyConfigured(settings);
+  // A storyteller with its address and no model runs the one chat model its
+  // server lists (soleListedModel, src/lib/model-registry/discovery.ts), so
+  // it is probed as well, and counts as configured once that server answers
+  // with exactly one.
+  const blankModel =
+    !configured &&
+    ((settings.textProvider === "custom" && settings.customBaseUrl.trim() !== "") || settings.textProvider === "local");
+  const storyHeaders = storyProbeHeaders(settings, {
+    configured: cfg.text.customApiKey,
+    openaiCompat: serverEnv("OPENAI_COMPAT_API_KEY"),
+    openRouter: serverEnv("OPENROUTER_API_KEY"),
+  });
   const ollamaBase = serverEnv("OLLAMA_BASE_URL", "http://127.0.0.1:11434");
   const speech = ttsBackend();
   const comfyBase = configValue(cfg.images.comfyUrl, "COMFYUI_URL", "http://127.0.0.1:8188");
@@ -368,21 +381,22 @@ export async function capabilitiesSnapshot(): Promise<Capabilities> {
   const [storyReachable, ttsReachable, imagesReachable, sttReachable] = await Promise.all([
     settings.textProvider === "harness"
       ? harnessReady()
-      : configured
-      ? probeReachable(
-          storyProbeUrl(settings, ollamaBase),
-          Date.now(),
-          storyProbeHeaders(settings, {
-            configured: cfg.text.customApiKey,
-            openaiCompat: serverEnv("OPENAI_COMPAT_API_KEY"),
-            openRouter: serverEnv("OPENROUTER_API_KEY"),
-          }),
-        )
+      : configured || blankModel
+      ? probeReachable(storyProbeUrl(settings, ollamaBase), Date.now(), storyHeaders)
       : Promise.resolve(false),
     probeReachable(speechProbeUrl(speech), Date.now(), speech.apiKey ? { Authorization: `Bearer ${speech.apiKey}` } : {}),
     probeReachable(imagesProbeUrl(settings.imageBackend, comfyBase, fluxBase)),
     whisperSwitchedOff(sttBase) ? Promise.resolve(false) : probeReachable(sttProbeUrl(sttBase)),
   ]);
+  const soleStoryModel =
+    blankModel && storyReachable
+      ? await soleListedModel(
+          settings.textProvider === "local"
+            ? { provider: "local", baseUrl: ollamaBase }
+            : { provider: "custom", baseUrl: settings.customBaseUrl.trim(), apiKey: (storyHeaders.Authorization ?? "").replace(/^Bearer /, "") },
+        )
+      : "";
+  const storyReady = configured || Boolean(soleStoryModel);
   const voice = voiceConfig();
   // Asked of the backend's own resolver rather than re-listed here, so the
   // key a table lends from its OpenAI text model counts the same way at the
@@ -404,7 +418,11 @@ export async function capabilitiesSnapshot(): Promise<Capabilities> {
     speech.provider === "openai" && !speechModel && (isOpenAiHost(speech.v1) ? speech.apiKey !== "" : ttsReachable);
 
   return {
-    story: { configured, reachable: storyReachable, model: configured ? storyModelName(settings) : "" },
+    story: {
+      configured: storyReady,
+      reachable: storyReachable,
+      model: storyReady ? storyModelName(configured ? settings : { ...settings, customModel: soleStoryModel, localTextModel: soleStoryModel }) : "",
+    },
     utility: { configured: utilityConfigured(settings) },
     images: {
       configured: imagesConfigured(

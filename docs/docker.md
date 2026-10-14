@@ -63,7 +63,9 @@ the host as `host.docker.internal`, so a model server on the host must listen on
 The container reaches the host through `host.docker.internal`, so llama.cpp on
 `127.0.0.1:8001` becomes `http://host.docker.internal:8001/v1`. Every URL is
 overridable in `.env`; copy [.env.docker.example](../.env.docker.example) for the full
-list.
+list. No model is named by default: a server that lists one model runs it, and
+one that lists several has its model picked in the guided setup or the admin
+panel (or named as `OPENAI_COMPAT_MODEL` in `.env`).
 
 ```bash
 cp .env.docker.example .env    # then edit, then: docker compose up -d
