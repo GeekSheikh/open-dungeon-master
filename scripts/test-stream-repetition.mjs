@@ -108,8 +108,17 @@ try {
   assert.equal(local.message, undefined);
   console.log("ok: Ollama NDJSON also aborts a repeated passage");
 
+  // OpenAI's own host starts every model on Chat Completions and learns the
+  // Responses route from the 400 that names it, so the stub refuses Chat
+  // with that answer and streams the repeated passage on the retry.
+  const tool = { type: "function", function: { name: "request_roll", description: "Roll", parameters: { type: "object", properties: {} } } };
+  const urls = [];
   let responsesSignal;
-  globalThis.fetch = async (_url, init) => {
+  globalThis.fetch = async (url, init) => {
+    urls.push(String(url));
+    if (String(url).endsWith("/chat/completions")) {
+      return Response.json({ error: { message: "Function tools with reasoning_effort are not supported for test-reasoner in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.", type: "invalid_request_error", param: "reasoning_effort", code: null } }, { status: 400 });
+    }
     responsesSignal = init.signal;
     const content = (paragraph + "\n\n").repeat(4);
     const events = [...content.match(/.{1,43}/gs)]
@@ -117,7 +126,8 @@ try {
       .join("");
     return new Response(events + "data: [DONE]\n\n", { headers: { "Content-Type": "text/event-stream" } });
   };
-  const responses = await requestCustomMessage("https://api.openai.com/v1", "gpt-6.1-sol", "sk-test", [{ role: "user", content: "Continue." }], { onDelta: () => {} });
+  const responses = await requestCustomMessage("https://api.openai.com/v1", "test-reasoner", "sk-test", [{ role: "user", content: "Continue." }], { tools: [tool], onDelta: () => {} });
+  assert.ok(urls.some((url) => url.endsWith("/responses")), `the case reached /v1/responses: ${urls.join(", ")}`);
   assert.ok(responses.error, "Responses API streamed narration also halts");
   assert.match((await responses.error.json()).error, /repeat/i);
   assert.equal(responsesSignal.aborted, true);
