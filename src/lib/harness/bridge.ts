@@ -128,8 +128,21 @@ export class BridgeSession {
     this.lifeTimer.unref?.();
   }
 
-  attach(program: HarnessSession) {
+  // A program that finishes starting after its session was closed (the
+  // turn timed out while it started) is closed at once and never sent the
+  // prompt: close() ran while there was no program to close, and nothing
+  // would ever close it later.
+  attach(program: HarnessSession): boolean {
+    if (this.closed) {
+      try {
+        program.close();
+      } catch {
+        // Already gone.
+      }
+      return false;
+    }
     this.program = program;
+    return true;
   }
 
   send(text: string) {
@@ -670,8 +683,9 @@ async function startSession(
       env,
       onEvent: session.onEvent,
     });
-    session.attach(program);
-    session.send(rendered.prompt);
+    if (session.attach(program)) {
+      session.send(rendered.prompt);
+    }
   } catch (error) {
     session.onEvent({
       type: "error",
