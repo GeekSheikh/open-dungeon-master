@@ -41,7 +41,8 @@ export type HarnessModel = {
   // runs): what the catalog is asked about it.
   catalogId?: string;
   // The efforts this model offers, where the program lists them (opencode's
-  // variants); one it lacks runs at the model's own default.
+  // variants); one it lacks runs at the model's own default. An empty list
+  // means it has none, and no list at all that the program does not say.
   efforts?: string[];
 };
 

@@ -134,9 +134,19 @@ export function opencodeConfig(options: {
   };
 }
 
+// opencode's own wildcard match (2.0.27): `*` is any run of characters and
+// `?` any one, a trailing " *" may also match nothing, and a backslash counts
+// as a slash.
 function globMatches(pattern: string, value: string): boolean {
-  const source = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-  return new RegExp(`^${source}$`).test(value);
+  let source = pattern
+    .replaceAll("\\", "/")
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".");
+  if (source.endsWith(" .*")) {
+    source = `${source.slice(0, -3)}( .*)?`;
+  }
+  return new RegExp(`^${source}$`, "s").test(value.replaceAll("\\", "/"));
 }
 
 // What an action may do under opencode's rules: the last rule matching it on
@@ -174,7 +184,9 @@ type OpencodeModelInfo = {
 const EFFORTS: ReadonlySet<string> = new Set(["low", "medium", "high", "xhigh", "max"]);
 
 // Free models opencode's own service offers refuse to answer anything that
-// is not opencode's own app, so they are not offered.
+// is not opencode's own app, so they are not offered. Every model says which
+// efforts it has, an empty list included: the admin card warns when the
+// chosen one is not among them.
 export function opencodeModels(models: readonly OpencodeModelInfo[]): HarnessModel[] {
   return models
     .filter((model) => model.providerID !== "opencode")
@@ -187,7 +199,7 @@ export function opencodeModels(models: readonly OpencodeModelInfo[]): HarnessMod
         id,
         label: id,
         ...(model.limit.context > 0 ? { contextTokens: model.limit.context } : {}),
-        ...(efforts.length ? { efforts } : {}),
+        efforts,
       };
     });
 }

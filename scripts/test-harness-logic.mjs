@@ -600,6 +600,14 @@ test("opencode 2's agent denies everything but ODM's tools, with ODM's MCP serve
   assert.ok(!opencodeLockdownHolds([{ action: "*", resource: "*", effect: "deny" }], true), "ODM's tools must be allowed on a turn");
   assert.ok(!opencodeLockdownHolds(rules, false), "a completion gets no ODM tool either");
   assert.ok(!opencodeLockdownHolds([], false), "no rule at all allows everything");
+  // opencode's own matcher: `?` is any one character, a trailing " *" may
+  // match nothing, a backslash is a slash.
+  assert.ok(!opencodeLockdownHolds([...rules, { action: "?*", resource: "*", effect: "allow" }], true), "a ?* allow opens every tool");
+  assert.equal(opencodeEffect([{ action: "rea?", resource: "*", effect: "allow" }, { action: "*", resource: "*", effect: "deny" }], "read"), "deny");
+  assert.equal(opencodeEffect([{ action: "*", resource: "*", effect: "deny" }, { action: "rea?", resource: "*", effect: "allow" }], "read"), "allow");
+  assert.equal(opencodeEffect([{ action: "*", resource: "*", effect: "deny" }, { action: "web *", resource: "*", effect: "allow" }], "web"), "allow");
+  assert.equal(opencodeEffect([{ action: "*", resource: "*", effect: "deny" }, { action: "a.b", resource: "*", effect: "allow" }], "axb"), "deny", "a dot is a dot");
+  assert.equal(opencodeEffect([{ action: "*", resource: "*", effect: "deny" }, { action: "x\\y", resource: "*", effect: "allow" }], "x/y"), "allow");
 });
 
 test("opencode carries over only the providers and default models from the admin's global config, JSON or JSONC", () => {
@@ -695,6 +703,9 @@ test("opencode's models come with the efforts they offer, and Effort is sent as 
   );
   assert.deepEqual(models[0].efforts, ["low", "medium", "high", "xhigh", "max"]);
   assert.deepEqual(models[2].efforts, ["high", "max"], "none and minimal are not efforts ODM offers");
+  // An empty list says "no effort setting", so the admin card's hint shows.
+  assert.deepEqual(opencodeModels([{ id: "m1", providerID: "llama", variants: [], limit: { context: 0 } }]), [{ id: "llama/m1", label: "llama/m1", efforts: [] }]);
+  assert.deepEqual(opencodeModels([{ id: "m1", providerID: "llama", variants: [{ id: "none" }], limit: { context: 0 } }])[0].efforts, []);
   assert.equal(models[0].contextTokens, 1000000);
   assert.equal(opencodeVariant(OPENCODE_MODELS, "anthropic/claude-sonnet-5-5", "low"), "low");
   assert.equal(opencodeVariant(OPENCODE_MODELS, "openrouter/qwen/qwen3.8-flash", "max"), "max");
