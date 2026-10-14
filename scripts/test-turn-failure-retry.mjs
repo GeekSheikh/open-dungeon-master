@@ -55,10 +55,8 @@ async function table() {
 await test("A backend error after the turn granted gold parks it as failed with a notice the lead can retry; Retry narrates once and never grants the gold again.", async () => {
   const { world, kara, model } = await table();
   const goldBefore = world.sheet(kara.id).gold;
-  model.script([
-    reply({ calls: [call("modify_gold", { characterId: kara.id, delta: 10, reason: "the council's advance" })] }),
-    failure(500),
-  ]);
+  const grant = call("modify_gold", { characterId: kara.id, delta: 10, reason: "the council's advance" });
+  model.script([reply({ calls: [grant] }), failure(500)]);
   const halted = await model.turn(world, "I take the council's job.", kara.id);
   assert.equal(halted, null, "a halted turn posted narration");
 
@@ -74,6 +72,7 @@ await test("A backend error after the turn granted gold parks it as failed with 
   const retried = await retry(world, world.owner, turnId);
   assert.equal(retried.status, 200, JSON.stringify(retried.json));
   assert.equal(getDmTurn(turnId).status, "done");
+  assert.equal(getDmStatus(world.campaignId), "idle", "the retried turn left the table waiting on the DM");
   const said = narrations(world);
   assert.equal(said.length, 1, `expected one narration, found ${said.length}`);
   assert.match(said[0].content, /counts ten gold/);
@@ -83,11 +82,23 @@ await test("A backend error after the turn granted gold parks it as failed with 
   assert.ok(!notices(world)[0].dmTurnId, "the notice still offers a Retry for a finished turn");
   assert.equal(findMessageForDmTurn(turnId)?.id, said[0].id);
 
-  // The retry re-entered the saved conversation: the gold's result is in it,
-  // and the model is told an attempt was interrupted.
-  const sent = JSON.stringify(model.requests.at(-1).messages);
+  // The retry re-entered the saved conversation: the player's line, the
+  // gold's call and its result are all in it, so the model can see the gold
+  // was granted and has no reason to grant it again, and the model is told
+  // an attempt was interrupted. script() cleared the requests, so the first
+  // one is the re-entered call.
+  const resumed = model.requests[0];
+  const sent = JSON.stringify(resumed.messages);
   assert.match(sent, RETRY_NOTE);
-  assert.match(sent, /modify_gold|"tool"/);
+  assert.match(sent, /I take the council's job/, "the retry lost the player's action");
+  assert.ok(
+    resumed.messages.some((message) => message.role === "assistant" && message.tool_calls?.some((toolCall) => toolCall.id === grant.id)),
+    "the retry lost the gold's call",
+  );
+  assert.ok(
+    model.results(resumed).some((entry) => entry.id === grant.id && entry.result.ok),
+    "the retry lost the gold's result, so the model would grant it again",
+  );
 
   const again = await retry(world, world.owner, turnId);
   assert.equal(again.status, 409);
@@ -122,6 +133,7 @@ await test("A retry that fails again leaves a fresh notice with the link, and a 
   const first = await retry(world, world.owner, turnId);
   assert.equal(first.status, 200, JSON.stringify(first.json));
   assert.equal(getDmTurn(turnId).status, "failed", "the second failure did not park the turn");
+  assert.equal(getDmStatus(world.campaignId), "idle", "a retry that failed left the table waiting on the DM");
   assert.equal(notices(world).length, 2, "the second failure was not reported");
   assert.equal(findMessageForDmTurn(turnId)?.id, notices(world).at(-1).id, "the fresh notice does not carry the link");
 
@@ -130,7 +142,7 @@ await test("A retry that fails again leaves a fresh notice with the link, and a 
   assert.equal(second.status, 200, JSON.stringify(second.json));
   assert.equal(getDmTurn(turnId).status, "done");
   assert.equal(narrations(world).length, 1);
-  const sent = JSON.stringify(model.requests.at(-1).messages);
+  const sent = JSON.stringify(model.requests[0].messages);
   assert.equal(sent.match(new RegExp(RETRY_NOTE.source, "g"))?.length, 1, "the retry note was stacked twice");
   model.close();
   world.close();

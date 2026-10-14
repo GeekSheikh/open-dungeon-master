@@ -18,6 +18,10 @@
 //   await settleQueue(world.campaignId);   // after a route that queues work
 //   model.close();
 //
+// failure(status, message) in a script fails that call with an HTTP error
+// instead of answering it: model.script([reply({ calls }), failure(500)])
+// is a backend that falls over partway through a turn.
+//
 // The claims reader (src/lib/dm/claims.ts) is answered apart from the
 // script: each of its calls takes the next entry of model.claims([...]) (a
 // list of claims, as the reader would reply), or none once those run out, so
@@ -56,7 +60,12 @@ export function reply({ text = "", calls = [] } = {}) {
 }
 
 // A call the backend fails instead of answering, as a server that falls over
-// mid-turn does: an HTTP error with an OpenAI-style error body.
+// mid-turn does: an HTTP error with an OpenAI-style error body. The message
+// reaches model-client's refusal heuristics at any status
+// (src/lib/model-client.ts): one that mentions tools or functions, names an
+// unsupported parameter, or asks for another route is retried by the client
+// and spends the next scripted entry, as a real backend's refusal would. The
+// default message matches none of them, so the turn sees the error.
 export function failure(status = 500, message = "The backend fell over.") {
   return { text: "", calls: [], fail: { status, message } };
 }
