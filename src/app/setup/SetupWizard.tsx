@@ -6,7 +6,7 @@ import { Wizard, type WizardStep } from "@/components/ui/Wizard";
 import { GoldTitle } from "@/components/ui/GoldTitle";
 import { navigateTo } from "@/lib/navigation";
 import type { EnvDefaults, MaskedConfig } from "@/app/admin/AdminSettingsFields";
-import { draftFromConfig, draftStoryIsOpenAi, draftWithScan, type Draft } from "@/app/setup/draft";
+import { draftFromConfig, draftStoryIsOpenAi, draftWithScan, picturesBlocker as picturesStepBlocker, type Draft } from "@/app/setup/draft";
 import { PicturesStep, VoiceStep } from "@/app/setup/MediaSteps";
 import { PlayersStep } from "@/app/setup/PlayersStep";
 import { ReadyStep } from "@/app/setup/ReadyStep";
@@ -67,6 +67,9 @@ export function SetupWizard({ config: initialConfig, env, info }: { config: Mask
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [made, setMade] = useState<MadeConnection | null>(null);
+  // The ComfyUI at the draft's address offered models or checkpoints to
+  // pick from (PicturesStep reports it).
+  const [comfyOffers, setComfyOffers] = useState(false);
   // Bumped on each arrival at the last step, which asks the server afresh.
   const [readyVisit, setReadyVisit] = useState(0);
   const update = (change: (current: Draft) => Draft) => {
@@ -216,16 +219,13 @@ export function SetupWizard({ config: initialConfig, env, info }: { config: Mask
             ? "Choose a program."
             : null;
   const agentPaints = draft.story === "agent" && draft.agent.id !== "" && PAINTING_AGENTS.includes(draft.agent.id);
-  const picturesBlocker =
-    draft.pictures === "agent" && !config.harness.imagesVerifiedAt
-      ? "Paint a test map first: the tables only get a painter that works."
-      : draft.pictures === "comfyui" && !draft.comfy.url.trim()
-      ? "Type where ComfyUI runs, or choose another answer."
-      : draft.pictures === "openai" && !storyIsOpenAi && !draft.picturesKey.trim() && !config.images.hasOpenaiApiKey
-        ? "Paste an OpenAI key, or choose another answer."
-        : draft.pictures === "openai" && !draft.picturesModel.trim() && !env.openaiImageModel
-          ? "Pick the picture model, or choose another answer."
-          : null;
+  const picturesBlocker = picturesStepBlocker(draft, {
+    agentVerified: Boolean(config.harness.imagesVerifiedAt),
+    storyIsOpenAi,
+    openaiKeySaved: config.images.hasOpenaiApiKey,
+    envImageModel: env.openaiImageModel,
+    comfyOffers,
+  });
   const voiceBlocker =
     draft.narration === "kokoro" && !draft.kokoro.url.trim()
       ? "Type where Kokoro runs, or choose another answer."
@@ -296,6 +296,7 @@ export function SetupWizard({ config: initialConfig, env, info }: { config: Mask
           onAgentVerified={() => void refreshConfig()}
           openaiKeySaved={config.images.hasOpenaiApiKey}
           env={env}
+          onComfyOffers={setComfyOffers}
         />
       ),
       blocker: picturesBlocker,

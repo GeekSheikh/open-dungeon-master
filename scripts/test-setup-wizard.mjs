@@ -21,7 +21,7 @@ register("./lib/register-alias.mjs", import.meta.url);
 const logic = await import("../src/lib/setup/discovery-logic.ts");
 const patches = await import("../src/lib/setup/patches.ts");
 const { listModels } = await import("../src/lib/setup/discovery.ts");
-const { comfyFromScan } = await import("../src/app/setup/draft.ts");
+const { comfyFromScan, picturesBlocker } = await import("../src/app/setup/draft.ts");
 const { getSetupState, markSetup, setupNudgeWanted } = await import("../src/lib/setup/state.ts");
 
 let passed = 0;
@@ -184,6 +184,32 @@ try {
       comfyFromScan({ ...blank, checkpoint: "mine.safetensors" }, found(["sdxl.safetensors"], [report("qwen_image_21_turbo", { verdict: "recommended" })])).preset,
       "checkpoint",
     );
+  });
+
+  await test("the pictures step holds Continue until a model is picked, for ComfyUI as for OpenAI", () => {
+    const draft = (pictures, patch = {}) => ({
+      pictures,
+      comfy: { url: "http://127.0.0.1:8188", checkpoint: "", preset: "checkpoint" },
+      picturesKey: "",
+      picturesModel: "",
+      ...patch,
+    });
+    const input = { agentVerified: false, storyIsOpenAi: false, openaiKeySaved: true, envImageModel: "", comfyOffers: true };
+    const pickComfy = "Pick the image model, or choose another answer.";
+    // Two checkpoints found and none picked (comfyFromScan takes neither):
+    // nothing would be painted, so the step says so.
+    assert.equal(picturesBlocker(draft("comfyui"), input), pickComfy);
+    assert.equal(picturesBlocker(draft("comfyui", { comfy: { url: "http://127.0.0.1:8188", checkpoint: "a.safetensors", preset: "checkpoint" } }), input), null);
+    assert.equal(picturesBlocker(draft("comfyui", { comfy: { url: "http://127.0.0.1:8188", checkpoint: "", preset: "z_turbo" } }), input), null, "a catalog model needs no checkpoint");
+    // A ComfyUI that offers nothing to pick, or has not answered, is left to the admin panel.
+    assert.equal(picturesBlocker(draft("comfyui"), { ...input, comfyOffers: false }), null);
+    assert.equal(picturesBlocker(draft("comfyui", { comfy: { url: " ", checkpoint: "", preset: "checkpoint" } }), input), "Type where ComfyUI runs, or choose another answer.");
+    // OpenAI's blockers, unchanged.
+    assert.equal(picturesBlocker(draft("openai"), input), "Pick the picture model, or choose another answer.");
+    assert.equal(picturesBlocker(draft("openai"), { ...input, envImageModel: "env-painter" }), null);
+    assert.equal(picturesBlocker(draft("openai", { picturesModel: "my-painter" }), { ...input, openaiKeySaved: false }), "Paste an OpenAI key, or choose another answer.");
+    assert.equal(picturesBlocker(draft("agent"), input), "Paint a test map first: the tables only get a painter that works.");
+    assert.equal(picturesBlocker(draft("none"), input), null);
   });
 
   await test("each storyteller answer writes the admin panel's own fields", () => {

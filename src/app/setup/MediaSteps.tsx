@@ -89,6 +89,7 @@ export function PicturesStep({
   onAgentVerified,
   openaiKeySaved,
   env,
+  onComfyOffers,
 }: {
   draft: Draft;
   update: Update;
@@ -103,6 +104,9 @@ export function PicturesStep({
   onAgentVerified: () => void;
   openaiKeySaved: boolean;
   env: EnvDefaults;
+  // Told whether the ComfyUI at the draft's address offers a model or a
+  // checkpoint to pick, which holds Continue until one is picked.
+  onComfyOffers?: (offers: boolean) => void;
 }) {
   const scannedComfy = scan?.comfyui ?? null;
   const address = draft.comfy.url.trim();
@@ -137,6 +141,11 @@ export function PicturesStep({
   // file for, measured ones first, then its checkpoints.
   const options = comfyModelOptions(draft.comfy, comfy && { ...comfy, device: null });
   const chosenModel = draft.comfy.preset !== CHECKPOINT_PRESET ? comfyModel(draft.comfy.preset) : undefined;
+  // The same test that shows the picker below.
+  const comfyOffers = Boolean(comfy && !comfy.error && (comfy.checkpoints.length || options.length > 1));
+  useEffect(() => {
+    onComfyOffers?.(comfyOffers);
+  }, [comfyOffers, onComfyOffers]);
   const pick = (pictures: Draft["pictures"]) =>
     update((current) => ({
       ...current,

@@ -10,6 +10,7 @@ import {
   type KeyProviderId,
   type ListedModel,
 } from "@/lib/setup/discovery-logic";
+import { CHECKPOINT_PRESET } from "@/lib/image-models/catalog";
 import { obviousComfyChoice } from "@/lib/image-models/curate";
 import type { ScanResult } from "@/lib/setup/discovery";
 import type { MaskedConfig } from "@/app/admin/AdminSettingsFields";
@@ -147,6 +148,32 @@ export function comfyFromScan(current: Draft["comfy"], found: NonNullable<ScanRe
   const fresh = !current.checkpoint && current.preset === "checkpoint";
   const obvious = fresh ? obviousComfyChoice(found) : null;
   return obvious ? { url: found.url, ...obvious } : { url: found.url, checkpoint: current.checkpoint, preset: "checkpoint" };
+}
+
+// Why Continue is held on the pictures step, said beside the button, or
+// null. A model left blank paints nothing (none is named in code), so
+// OpenAI needs its picture model, and ComfyUI in checkpoint mode needs a
+// checkpoint whenever the one at the draft's address offered something to
+// pick (`comfyOffers`, from PicturesStep); one that offers nothing, or has
+// not answered, is left to the admin panel later.
+export function picturesBlocker(
+  draft: Draft,
+  input: { agentVerified: boolean; storyIsOpenAi: boolean; openaiKeySaved: boolean; envImageModel: string; comfyOffers: boolean },
+): string | null {
+  if (draft.pictures === "agent" && !input.agentVerified) {
+    return "Paint a test map first: the tables only get a painter that works.";
+  }
+  if (draft.pictures === "comfyui") {
+    if (!draft.comfy.url.trim()) return "Type where ComfyUI runs, or choose another answer.";
+    if (draft.comfy.preset === CHECKPOINT_PRESET && !draft.comfy.checkpoint.trim() && input.comfyOffers) {
+      return "Pick the image model, or choose another answer.";
+    }
+  }
+  if (draft.pictures === "openai") {
+    if (!input.storyIsOpenAi && !draft.picturesKey.trim() && !input.openaiKeySaved) return "Paste an OpenAI key, or choose another answer.";
+    if (!draft.picturesModel.trim() && !input.envImageModel) return "Pick the picture model, or choose another answer.";
+  }
+  return null;
 }
 
 export function draftWithScan(draft: Draft, scan: ScanResult, storyIsOpenAi: boolean): Draft {
