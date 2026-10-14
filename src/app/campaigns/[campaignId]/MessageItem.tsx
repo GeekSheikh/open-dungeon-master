@@ -22,6 +22,7 @@ import { cn } from "@/lib/cn";
 import { encodeImageForUpload } from "@/lib/image-encode";
 import { ui } from "@/lib/ui";
 import { DM_HALTED_PREFIX, type CampaignMember } from "@/lib/campaign-types";
+import { isOocAnswer } from "@/lib/dm/ooc-question";
 import type { CastMember } from "@/lib/dm/cast";
 import type { CampaignMessage } from "@/lib/db/messages";
 import type { StoredRoll } from "@/lib/db/rolls";
@@ -199,6 +200,26 @@ export const MessageItem = memo(function MessageItem({
       );
     }
     return <SystemMessage content={message.content} glyph={message.glyph} />;
+  }
+  if (message.authorType === "dm" && isOocAnswer(message.content)) {
+    // The DM's out-of-character answer to table talk put to it
+    // (src/lib/dm/ooc-question.ts): an aside, not a passage, so none of a
+    // passage's actions and none of its type.
+    const asideActions: MessageAction[] = [copyAction(message)];
+    if (onReport) {
+      asideActions.push(reportAction(message, onReport, true));
+    }
+    return (
+      <ContextMenu items={toContextItems(asideActions)} label="Dungeon Master" className="session-dm-aside group max-w-[92%] animate-fade-up sm:max-w-2xl">
+        <p className="mb-1 flex items-center gap-1.5">
+          <span className="session-speaker truncate">Dungeon Master, out of character</span>
+          <MessageActions actions={asideActions} menuLabel="Dungeon Master: message actions" quiet />
+        </p>
+        <div className="session-bubble session-bubble-ooc session-bubble-dm">
+          <p className="whitespace-pre-wrap text-pretty">{message.content}</p>
+        </div>
+      </ContextMenu>
+    );
   }
   if (message.authorType === "dm") {
     const actions: MessageAction[] = [];
