@@ -261,6 +261,55 @@ campaigns.setStoryArc(
   }),
 );
 
+// Tables in play the Setup tab ends, one per viewport so the second run
+// does not open a table the first already closed, and an earlier, finished
+// campaign with prep to bring into them mid-campaign. A campaign rather than
+// a workshop because the lead's workshop shelf stays empty for
+// empty-states; both are the same copy (src/lib/db/import-sources.ts).
+const { insertRollTable } = await import("../../src/lib/db/roll-tables.ts");
+const PREP_SOURCE_TITLE = "Old Harbour";
+const prepSource = campaigns.createCampaign(world.owner.id, {
+  title: PREP_SOURCE_TITLE,
+  description: "A finished campaign with prep worth reusing.",
+  theme: "high-fantasy",
+  maxPlayers: 6,
+  startingLevel: 1,
+  difficulty: "normal",
+  gameSettings: { ttsEnabled: false },
+});
+campaigns.setCampaignStatus(prepSource.id, "ended");
+insertRollTable({
+  campaignId: prepSource.id,
+  name: "Ferry Rumours",
+  entries: [
+    { min: 1, max: 1, text: "The ferryman owes the river hag a debt." },
+    { min: 2, max: 2, text: "A lantern on the far bank never goes out." },
+  ],
+  createdByUserId: world.owner.id,
+});
+const closing = {};
+for (const viewport of ["desktop", "laptop", "phone"]) {
+  const table = campaigns.createCampaign(world.owner.id, {
+    title: `Closing Table (${viewport})`,
+    description: "A table near the end of its story.",
+    theme: "high-fantasy",
+    maxPlayers: 6,
+    startingLevel: 3,
+    difficulty: "normal",
+    gameSettings: { ttsEnabled: false },
+  });
+  campaigns.setCampaignStatus(table.id, "active");
+  sheets.createSheet(table.id, world.owner.id, 3, heroInput({ name: "Wynn Ashdown", class: "fighter", level: 3 }));
+  messages.insertCampaignMessage({
+    campaignId: table.id,
+    seq: campaigns.allocateSeq(table.id),
+    authorType: "dm",
+    speech: [],
+    content: "The last bell rings over the harbour. The road home is open.",
+  });
+  closing[viewport] = table.id;
+}
+
 for (const user of [world.owner, player]) {
   setUserPassword(user.id, await hashPassword(PASSWORD), false);
 }
@@ -290,8 +339,18 @@ const ids = {
   corin: corin.id,
   preparedId: prepared.id,
   preparedTitle: PREP_TITLE,
+  prepSourceId: prepSource.id,
+  prepSourceTitle: PREP_SOURCE_TITLE,
+  closing,
   // Every campaign a scenario opens, by id, for the app's home tiles.
-  titles: { [world.campaignId]: TITLE, [lobby.id]: LOBBY_TITLE, [quiet.id]: QUIET_TITLE, [prepared.id]: PREP_TITLE },
+  titles: {
+    [world.campaignId]: TITLE,
+    [lobby.id]: LOBBY_TITLE,
+    [quiet.id]: QUIET_TITLE,
+    [prepared.id]: PREP_TITLE,
+    [prepSource.id]: PREP_SOURCE_TITLE,
+    ...Object.fromEntries(Object.entries(closing).map(([viewport, id]) => [id, `Closing Table (${viewport})`])),
+  },
   systemLine,
   paragraphs: paragraphs.map((text) => text.replace(/[*_]/g, "")),
 };

@@ -1052,6 +1052,7 @@ export function SessionView({
                     <SessionBanner
                       glyph="tab-campaigns"
                       tone="quiet"
+                      className="campaign-ended-banner"
                       title="The campaign has ended"
                       actions={
                         <Link href="/" className={bannerButtonClass(true)}>

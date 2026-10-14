@@ -87,7 +87,7 @@ export function SessionSettings({
       {/* Every seat at the table reloads when this lands (the import
           route's prep_imported ping), so nothing here needs refreshing. */}
       {steersStory && !ended ? (
-        <div className="reveal mb-3 rounded-lg border border-stone-800 bg-stone-950/40 p-3">
+        <div data-setup-prep className="reveal mb-3 rounded-lg border border-stone-800 bg-stone-950/40 p-3">
           <p className="mb-1 text-xs font-medium text-stone-400">Bring in prep</p>
           <p className="mb-2 text-xs text-stone-500">
             Copy maps, NPCs, lore, encounters and more from a workshop or another campaign. The
@@ -141,7 +141,7 @@ function EndCampaign({ campaignId, title, ended }: { campaignId: string; title: 
 
   if (ended) {
     return (
-      <div className="reveal mt-3 rounded-lg border border-stone-800 bg-stone-950/40 p-3">
+      <div data-campaign-ended className="reveal mt-3 rounded-lg border border-stone-800 bg-stone-950/40 p-3">
         <p className="flex items-center gap-1.5 text-xs font-medium text-stone-400">
           <Flag className="size-3.5" /> This campaign has ended
         </p>
@@ -192,6 +192,7 @@ function EndCampaign({ campaignId, title, ended }: { campaignId: string; title: 
           type="button"
           onClick={() => void end()}
           disabled={busy}
+          data-end-campaign
           className={cn(ui.btnSmall, "text-red-300")}
         >
           {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Flag className="size-3.5" />}
