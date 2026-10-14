@@ -12,7 +12,7 @@ process.env.DB_ENCRYPTION_KEY = randomBytes(32).toString("hex");
 register("./lib/register-alias.mjs", import.meta.url);
 
 const { requestCustomMessage, requestLocalMessage } = await import("../src/lib/model-client.ts");
-const { createStreamRepetitionGuard } = await import("../src/lib/stream-repetition.ts");
+const { createStreamRepetitionGuard, cutRepetition } = await import("../src/lib/stream-repetition.ts");
 const { extractStoryText } = await import("../src/lib/story-prompt.ts");
 const realFetch = globalThis.fetch;
 const paragraph = `The Archmage's eyes flare, a spark of humor dancing in the blue light. "It is a place of many doors. Choose yours wisely, Master Flamefinger. Even a scholar must know when to put down the book and pick up a glass of wine."`;
@@ -52,6 +52,8 @@ function firstCopyEnd(text) {
     const end = firstCopyEnd(text);
     assert.ok(end > 0, `${name} is a loop`);
     assert.equal(text.slice(0, end).trim(), kept, `${name} keeps its first copy`);
+    assert.equal(cutRepetition(text)?.trim(), kept);
+    assert.equal(cutRepetition(`<think>The player wants a scene.</think>${text}`)?.trim(), `<think>The player wants a scene.</think>${kept}`);
   }
 
   // A sentence looping with no newline at all.
@@ -62,11 +64,15 @@ function firstCopyEnd(text) {
   assert.equal(looped.slice(0, end), sentence.repeat(Math.ceil(160 / sentence.length)), "and cut after whole copies");
 
   // Narration wrapped in the JSON story object carries its breaks as a
-  // literal \n.
+  // literal \n; the cut closes the object so its text still reads.
   const wrapped = `{"storyText":"${(paragraph.replace(/"/g, '\\"') + "\\n\\n").repeat(8)}"}`;
-  const wrappedEnd = firstCopyEnd(wrapped);
-  assert.ok(wrappedEnd > 0, "a loop inside a JSON story object is caught");
-  assert.equal(JSON.parse(`${wrapped.slice(0, wrappedEnd)}"}`).storyText, paragraph, "its first copy ends where the first paragraph does");
+  assert.ok(firstCopyEnd(wrapped) > 0, "a loop inside a JSON story object is caught");
+  assert.equal(extractStoryText(cutRepetition(wrapped)), paragraph, "the cut story object reads as the first copy");
+  const wrappedSentence = `{"storyText":"${sentence.repeat(40)}"}`;
+  assert.equal(extractStoryText(cutRepetition(wrappedSentence)), sentence.repeat(2).trim());
+  // A loop inside a <think> block the server left in the reply is the
+  // model's reasoning: there is no story in its first copy to keep.
+  assert.equal(cutRepetition(`<think>\n${loops[0][1]}`), null);
   console.log("ok: two-paragraph cycles, a closing question, any separator, no newline and JSON-wrapped loops halt, and the guard finds where their first copy ends");
 }
 
@@ -88,6 +94,7 @@ function firstCopyEnd(text) {
   ];
   for (const [name, text] of fine) {
     assert.equal(firstCopyEnd(text), -1, `${name} is not a loop`);
+    assert.equal(cutRepetition(text), undefined);
   }
   console.log("ok: short repeated lines, a refrain between verses, varied narration, lists and rosters are left alone");
 }
@@ -244,6 +251,33 @@ try {
   const unclosed = await callWithDeltas(("<think>\n" + loop).match(/.{1,37}/gs), false, false, { toolChoice: "none" });
   assert.equal((await unclosed.result.error.json()).code, "stream_repetition", "a loop inside a <think> block in the reply is no narration to keep");
   console.log("ok: a narration-only call keeps the first copy of a loop as its reply; a tool-decision call still fails");
+
+  // A reply that arrives whole (a continue, a reroll, an expansion, the
+  // guard's rewrite, a recap) is cut the same way when it may only narrate;
+  // bookkeeping calls, which ask for JSON with no toolChoice, keep theirs.
+  globalThis.fetch = async () => Response.json({ choices: [{ message: { role: "assistant", content: loop }, finish_reason: "stop" }] });
+  const whole = await requestCustomMessage("http://127.0.0.1:8080/v1", "test-model", "", [{ role: "user", content: "Continue." }], { toolChoice: "none" });
+  assert.equal(whole.message?.content, paragraph, "a whole narration reply keeps only its first copy");
+  assert.equal(whole.finishReason, "repetition");
+  const bookkeeping = await requestCustomMessage("http://127.0.0.1:8080/v1", "test-model", "", [{ role: "user", content: "Summarise." }], {});
+  assert.equal(bookkeeping.message?.content, loop, "a call that is not narration is left as it came");
+  const varied = [paragraph, second, chant].join("\n\n");
+  globalThis.fetch = async () => Response.json({ choices: [{ message: { role: "assistant", content: varied }, finish_reason: "stop" }] });
+  const plain = await requestCustomMessage("http://127.0.0.1:8080/v1", "test-model", "", [{ role: "user", content: "Continue." }], { toolChoice: "none" });
+  assert.equal(plain.message?.content, varied);
+  assert.equal(plain.finishReason, "stop");
+  globalThis.fetch = async () => Response.json({ choices: [{ message: { role: "assistant", content: "<think>\n" + loop }, finish_reason: "length" }] });
+  const thoughtWhole = await requestCustomMessage("http://127.0.0.1:8080/v1", "test-model", "", [{ role: "user", content: "Continue." }], { toolChoice: "none" });
+  assert.equal((await thoughtWhole.error.json()).code, "stream_repetition", "a whole reply looping inside its <think> block keeps nothing");
+
+  globalThis.fetch = async () => Response.json({ message: { role: "assistant", content: loop } });
+  const localWhole = await requestLocalMessage("test-model", [{ role: "user", content: "Continue." }], { toolChoice: "none" });
+  assert.equal(localWhole.message?.content, paragraph, "Ollama's whole reply is cut too");
+
+  globalThis.fetch = async () => Response.json({ output: [{ type: "message", content: [{ type: "output_text", text: loop }] }] });
+  const responsesWhole = await requestCustomMessage("https://api.openai.com/v1", "test-reasoner", "sk-test", [{ role: "user", content: "Continue." }], { toolChoice: "none" });
+  assert.equal(responsesWhole.message?.content, paragraph, "and so is the Responses route's");
+  console.log("ok: a whole narration reply that loops keeps its first copy on every route; other calls are untouched");
 } finally {
   globalThis.fetch = realFetch;
   removeTempDir(dir);

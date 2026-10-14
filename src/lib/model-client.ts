@@ -40,6 +40,7 @@ import { harnessConfig, harnessContextTokens } from "@/lib/harness/status";
 import { onWindows } from "@/lib/host-platform";
 import {
   createStreamRepetitionGuard,
+  cutRepetition,
   firstCopyOf,
   streamRepetitionResponse,
 } from "@/lib/stream-repetition";
@@ -414,10 +415,11 @@ class StreamRepetitionError extends Error {
 }
 
 // A call that may only narrate (toolChoice "none": the turn's forced last
-// call, its tools-closed rescue) loses nothing a table needs when its reply
-// is cut after the loop's first copy, so that copy is the reply. A call that
-// could still choose tools fails instead: its prose without the calls the
-// stream never finished would narrate outcomes nothing resolved.
+// call, its tools-closed rescue, a continue, a reroll) loses nothing a table
+// needs when its reply is cut after the loop's first copy, so that copy is
+// the reply. A call that could still choose tools fails instead: its prose
+// without the calls the stream never finished would narrate outcomes nothing
+// resolved.
 function narratesOnly(options: ChatRequestOptions) {
   return options.toolChoice === "none";
 }
@@ -442,6 +444,27 @@ function guardStreamDelta(onDelta: StreamDeltaHandler | undefined, cancel: () =>
     }
     onDelta(text);
   };
+}
+
+// A reply that arrived whole cannot be stopped early, but one that may only
+// narrate is cut after a loop's first copy before a continue, a reroll, an
+// expansion, the guard's rewrite or a recap keeps it. A loop inside reasoning
+// the server left in the reply has no copy worth keeping and fails as a
+// streamed one does.
+function cutWholeReply(result: UpstreamResult, options: ChatRequestOptions): UpstreamResult {
+  const content = result.message?.content;
+  if (!narratesOnly(options) || typeof content !== "string") {
+    return result;
+  }
+  const cut = cutRepetition(content);
+  if (cut === undefined) {
+    return result;
+  }
+  if (cut === null) {
+    return { error: streamRepetitionResponse() };
+  }
+  console.warn("[model] the narration repeated one passage; its first copy is the reply");
+  return { ...result, message: { ...result.message, content: cut }, finishReason: "repetition" };
 }
 
 type OllamaChatMessage = {
@@ -934,11 +957,12 @@ export async function requestCustomMessage(
       if (speedWanted && !dropped.has("service_tier")) {
         noteSpeed(role, { model: resolvedModel, reported: reply.serviceTier ?? null });
       }
-      return {
+      const result: UpstreamResult = {
         message: reply.message,
         ...(reply.finishReason ? { finishReason: reply.finishReason } : {}),
         ...tagged(reply.usage ?? null),
       };
+      return onDelta ? result : cutWholeReply(result, options);
     } catch (error) {
       if (error instanceof StreamRepetitionError) return repeatedStreamResult(error, options);
       return readFailure(error);
@@ -1070,11 +1094,14 @@ export async function requestCustomMessage(
   if (speedWanted && !dropped.has("service_tier")) {
     noteSpeed(role, { model: resolvedModel, reported: typeof data?.service_tier === "string" ? data.service_tier : null });
   }
-  return {
-    message: data?.choices?.[0]?.message,
-    ...(typeof finishReason === "string" && finishReason ? { finishReason } : {}),
-    ...tagged(chatUsage(data)),
-  };
+  return cutWholeReply(
+    {
+      message: data?.choices?.[0]?.message,
+      ...(typeof finishReason === "string" && finishReason ? { finishReason } : {}),
+      ...tagged(chatUsage(data)),
+    },
+    options,
+  );
 }
 
 export async function requestLocalMessage(
@@ -1266,5 +1293,8 @@ export async function requestLocalMessage(
     };
   }
   const usage = ollamaUsage(data);
-  return { message: data?.message, ...(usage ? { usage: { ...usage, model, backend: "local" as const, keyed: false, paid: false } } : {}) };
+  return cutWholeReply(
+    { message: data?.message, ...(usage ? { usage: { ...usage, model, backend: "local" as const, keyed: false, paid: false } } : {}) },
+    options,
+  );
 }

@@ -215,6 +215,13 @@ export function firstCopyOf(text: string, end: number): string | null {
   return kept;
 }
 
+// A whole reply read at once: undefined when it does not loop, else what
+// firstCopyOf keeps of it.
+export function cutRepetition(text: string): string | null | undefined {
+  const guard = createStreamRepetitionGuard();
+  return guard.push(text) ? firstCopyOf(text, guard.firstCopyEnd) : undefined;
+}
+
 // How a model call stopped for repeating itself reports it, from every
 // backend, so the turn shows one halted notice.
 export function streamRepetitionResponse(): Response {
