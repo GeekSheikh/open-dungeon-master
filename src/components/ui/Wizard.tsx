@@ -204,7 +204,7 @@ export function Wizard({
             className="mt-3"
             steps={steps.map((s, i) => ({ key: s.key, label: labelOf(s, i) }))}
             current={step}
-            onSelect={(index) => go(index)}
+            onSelect={go}
           />
         ) : (
           <div
