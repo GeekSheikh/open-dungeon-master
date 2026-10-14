@@ -133,6 +133,10 @@ export type ChatRequestOptions = {
   // Set only by requestCustomMessage's own unsupported-parameter path; no
   // caller outside this module should populate it.
   dropParams?: readonly string[];
+  // The tool routes this call has already been refused on, so two refusals
+  // that each name the other route cannot send it back and forth. Set only
+  // by requestCustomMessage's own route switch, like dropParams.
+  refusedRoutes?: readonly OpenAiToolRoute[];
   // Which of the server's two models this call is for: the admin's Fast
   // setting is per role (issue 255). Unset reads as the story model.
   role?: "story" | "utility";
@@ -790,13 +794,17 @@ export async function requestCustomMessage(
     // tools at the bottom would otherwise match "Function tools ... not
     // supported" and hand the table a narrator with no request_roll and no
     // engines, in silence.
+    // Never back to a route this call was already refused on: there are
+    // three routes, so a backend whose refusals contradict each other costs
+    // at most two switches, and the last refusal is the answer.
     const askedRoute = toolRouteFromError(text);
-    if (tools?.length && askedRoute && askedRoute !== route) {
+    const refusedRoutes = [...(options.refusedRoutes ?? []), route];
+    if (tools?.length && askedRoute && askedRoute !== route && !refusedRoutes.includes(askedRoute)) {
       console.warn(
         `[model] ${endpoint} refused tools for ${resolvedModel}; switching to the "${askedRoute}" route`,
       );
       learnedToolRoutes.set(routeKey, askedRoute);
-      return requestCustomMessage(trimmedBase, resolvedModel, apiKey, messages, options);
+      return requestCustomMessage(trimmedBase, resolvedModel, apiKey, messages, { ...options, refusedRoutes });
     }
 
     // A strict backend rejected one named body field. Drop that field and

@@ -81,6 +81,13 @@ const fakeOpenAi = async (url, init) => {
   const model = String(body.model);
   const gpt6 = /^gpt-6/.test(model);
 
+  // A backend whose refusals contradict each other: Chat offers Responses,
+  // Responses asks for reasoning off on Chat, and reasoning off on Chat
+  // offers Responses again.
+  if (model.endsWith("-flip") && body.tools?.length) {
+    return Response.json(pathname.endsWith("/responses") ? NONE_ONLY_REFUSAL : GPT6_REFUSAL(model), { status: 400 });
+  }
+
   // In the order OpenAI answers (recorded 2026-10-13): on Chat Completions
   // the tools are refused before anything else; the story temperature is
   // refused on whichever route the call then takes.
@@ -335,6 +342,19 @@ try {
     assert.ok(seen.every((request) => request.path.endsWith("/chat/completions") ? request.body.tools?.length : true), "a tool-less chat request went out");
     assert.match(detail.error, /failed \(404\)/);
     ok("when no route works the turn fails loudly instead of running without tools");
+  }
+
+  // --- refusals that name each other's route end the call ---------------
+  {
+    seen.length = 0;
+    const result = await requestCustomMessage(OPENAI, "gpt-6-flip", "sk-test", ask, { tools: TOOLS });
+    assert.ok(result.error, "the contradictory refusals ended in a narration");
+    const routes = seen.map((request) => `${request.path} ${request.body.reasoning_effort ?? ""}`.trim());
+    assert.deepEqual(routes.slice(0, 3), ["/v1/chat/completions", "/v1/responses", "/v1/chat/completions none"]);
+    assert.ok(seen.length <= 4, `the call kept switching: ${routes.join(", ")}`);
+    assert.ok(!routes.slice(3).includes("/v1/responses"), "went back to a route this call was refused on");
+    assert.ok(seen.every((request) => request.path.endsWith("/responses") || request.body.tools?.length), "a tool-less request went out");
+    ok("two refusals that name each other's route are not switched between without end");
   }
 
   // --- a local server without a tool template still gets the fallback ----
