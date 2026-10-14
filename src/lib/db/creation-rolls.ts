@@ -59,7 +59,7 @@ export type AbilityPoolRoll = {
   throws: Array<{ dice: number[]; dropIndex: number; total: number }>;
   totals: number[];
   // Whether a fresh six may be asked for: only while the pool adds up to
-  // less than the server's threshold.
+  // less than the threshold where it was thrown (abilityRollPlace).
   canReroll: boolean;
   rerollBelow: number;
   // True when these six were already on record and are handed back again

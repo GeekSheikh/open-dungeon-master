@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CHECKPOINT_PRESET, isComfyPreset } from "@/lib/image-models/catalog";
+import { REROLL_LOW_DEFAULT } from "@/lib/srd/ability-rerolls";
 
 // App-wide settings editable from /admin, stored as one JSON blob under
 // app_settings.key = 'global_config'. Every string field treats "" as "no
@@ -23,9 +24,11 @@ export const globalConfigSchema = z.object({
   // The house rule for the builder's 4d6 method: a player may throw a fresh
   // six only while the kept six add up to less than this. 0 allows no
   // reroll at all; 108 (six 18s) rerolls anything. SRD 5.1 names no rule;
-  // 70 was ODM's (issue #128). The rule in the library, and at any table
-  // that sets none of its own (gameSettings.abilityRerollBelow).
-  abilityRerollBelow: z.number().int().min(0).max(108).default(70),
+  // 70 was ODM's (issue #128, src/lib/srd/ability-rerolls.ts). The rule in
+  // the library, and at any table that sets none of its own
+  // (gameSettings.abilityRerollBelow), where the player's library six are
+  // the ones handed back.
+  abilityRerollBelow: z.number().int().min(0).max(108).default(REROLL_LOW_DEFAULT),
   // The URL players actually reach the app on (e.g. https://dungeon.example.org).
   // Used for OAuth redirect URIs; blank = APP_PUBLIC_URL env, then forwarded
   // proxy headers, then the raw request origin.

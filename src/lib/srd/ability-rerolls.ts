@@ -11,7 +11,9 @@
 
 export const REROLL_NEVER = 0;
 export const REROLL_ALWAYS = 108;
-// ODM's own default for "reroll a poor roll" (global-config.ts).
+// ODM's own default for "reroll a poor roll", and so the server's rule until
+// an admin changes it: global-config.ts and the builder's bundled rule
+// (abilityDice.ts) take it from here.
 export const REROLL_LOW_DEFAULT = 70;
 
 export type RerollChoice = "keep" | "low" | "free";
