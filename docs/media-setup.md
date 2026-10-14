@@ -143,8 +143,8 @@ it is skipped.
 
 With neither, a saved OpenAI key is used once a **Transcription model** is
 picked for it. After that only the Android app can still listen, with the
-phone's own speech recognition; a browser has none, so there the mic buttons
-are hidden.
+phone's own speech recognition; a browser or the desktop app has none, so
+there the mic buttons are hidden.
 
 ## In Docker
 
