@@ -171,7 +171,7 @@ export async function generateOpenAiImage(
   const timer = setTimeout(() => controller.abort(), GENERATE_TIMEOUT_MS);
   let payload: {
     data?: Array<{ b64_json?: string; url?: string }>;
-    error?: { message?: string };
+    error?: { message?: string; param?: string };
   };
   const post = async (request: Record<string, unknown>) => {
     const response = await fetch(`${baseUrl}/images/generations`, {
@@ -186,29 +186,35 @@ export async function generateOpenAiImage(
     const answer = (await response.json().catch(() => ({}))) as typeof payload;
     return { ok: response.ok, status: response.status, answer, request };
   };
+  // Whether a refusal names a body field, in its words or its `param`.
+  const refused = (answer: typeof payload, field: RegExp) => field.test(answer.error?.message ?? "") || field.test(answer.error?.param ?? "");
   try {
     let result = await post(body);
-    if (!result.ok && "output_format" in body && /output_(format|compression)/i.test(result.answer.error?.message ?? "")) {
+    if (!result.ok && "output_format" in body && refused(result.answer, /output_(format|compression)/i)) {
       // The PNG path, for an endpoint that does not know the WebP fields.
       const plain = { ...body };
       delete plain.output_format;
       delete plain.output_compression;
       result = await post(plain);
     }
+    // A model that takes other quality tiers than these (a dall-e model
+    // behind a compatible proxy answers "standard" and "hd") is asked once
+    // more without the field, at its own default.
+    if (!result.ok && "quality" in result.request && refused(result.answer, /\bquality\b/i)) {
+      const plain = { ...result.request };
+      delete plain.quality;
+      result = await post(plain);
+    }
     // A refused size names the sizes the model takes: one is picked from
-    // that list for this shape, remembered, and asked for once more.
+    // that list for this shape, remembered, and asked for once more, without
+    // whatever the tries above dropped.
     const listed = result.ok ? null : readSupportedSizes(result.answer.error?.message ?? "");
     if (listed) {
       learnedSizes.set(sizesKey, listed);
       const picked = pickImageSize(options.aspect, listed);
       if (picked && picked.size !== chosen.size) {
         chosen = picked;
-        const request: Record<string, unknown> = { ...body, size: picked.size };
-        if (!("output_format" in result.request)) {
-          delete request.output_format;
-          delete request.output_compression;
-        }
-        result = await post(request);
+        result = await post({ ...result.request, size: picked.size });
       }
     }
     payload = result.answer;

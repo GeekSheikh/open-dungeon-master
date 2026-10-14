@@ -285,6 +285,44 @@ await asyncTest("a refused size is learnt from the answer, retried once, and ask
   assert.deepEqual(sizeRequests, ["1024x1792", "1792x1024"], "one refusal per model, not per picture");
 });
 
+// ---- quality: a tier the model does not take is dropped once ----
+
+// A dall-e model behind a compatible proxy, as OpenAI answered dall-e-3: it
+// takes "standard" and "hd", and portrait only at 1024x1792.
+const qualityRequests = [];
+globalThis.fetch = async (url, init) => {
+  const body = JSON.parse(init.body);
+  qualityRequests.push(body);
+  if ("quality" in body && !["standard", "hd"].includes(body.quality)) {
+    return Response.json(
+      { error: { message: `Invalid value: '${body.quality}'. Supported values are: 'standard' and 'hd'.`, type: "invalid_request_error", param: "quality", code: "invalid_value" } },
+      { status: 400 },
+    );
+  }
+  if (body.size !== "1024x1024" && body.size !== "1024x1792") {
+    return Response.json({ error: { message: `Invalid size '${body.size}'. Supported sizes are 1024x1024, 1024x1792, 1792x1024.`, param: "size" } }, { status: 400 });
+  }
+  return Response.json({ data: [{ b64_json: PIXEL.toString("base64") }] });
+};
+
+await asyncTest("a refused quality tier is dropped and the picture asked for once more, the size learnt after it", async () => {
+  saveGlobalConfig({ images: { openaiModel: "my-old-painter" } });
+  const picture = await draw("portrait");
+  assert.deepEqual(
+    qualityRequests.map((body) => [body.quality ?? null, body.size]),
+    [["medium", "1024x1536"], [null, "1024x1536"], [null, "1024x1792"]],
+  );
+  assert.deepEqual([picture.width, picture.height], [1024, 1792]);
+  // A refusal of the field that comes back again is the answer, not a loop.
+  qualityRequests.length = 0;
+  globalThis.fetch = async (url, init) => {
+    qualityRequests.push(JSON.parse(init.body));
+    return Response.json({ error: { message: "quality is not supported here", param: "quality" } }, { status: 400 });
+  };
+  await assert.rejects(draw, /quality is not supported here/);
+  assert.equal(qualityRequests.length, 2, "asked once with the field and once without");
+});
+
 globalThis.fetch = realFetch;
 await imageVariantsSettled();
 process.chdir(os.tmpdir());
