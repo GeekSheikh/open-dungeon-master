@@ -43,10 +43,12 @@ npm run start:lan    # 0.0.0.0:3005 so your party can reach it on the LAN
 ```
 
 `--depth 1` fetches only the newest commit of `main`, and `git pull` keeps it current
-(see [Updating](#updating)). To go back to an earlier release, fetch its tag first,
-`git fetch --depth 1 origin tag vX.Y.Z && git checkout vX.Y.Z`, then install and build
+(see [Updating](#updating)). To go back to an earlier release, take a
+[backup](backup-restore.md) first, since an older version re-derives every character
+sheet by its own rules when it starts. Then fetch the release's tag with
+`git fetch --depth 1 origin tag vX.Y.Z`, run `git checkout vX.Y.Z`, and install and build
 as for an update; `git checkout main` returns to the newest. For the full history and
-every branch: `git remote set-branches origin '*' && git fetch --unshallow`.
+every branch, run `git remote set-branches origin '*'`, then `git fetch --unshallow`.
 
 When it starts, the server prints a link with a one-time setup code. Open it in a
 browser on the same computer, create the admin account, and the **guided setup**
