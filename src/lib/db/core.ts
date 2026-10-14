@@ -657,6 +657,34 @@ function ensureSchema(db: SqliteDatabase) {
     CREATE INDEX IF NOT EXISTS idx_workshop_beats_campaign
       ON workshop_beats(campaign_id, created_at);
 
+    -- The prep cards a campaign keeps from every storyboard imported into it
+    -- (issue #301, #302; src/lib/db/prep-cards.ts): each card whole, under
+    -- the id it had on the board, with what it became. The arc's beats and
+    -- planned events carry only a line each and point back here by card_id,
+    -- so the storyteller can open the full text (read_card) and nothing an
+    -- author wrote is lost to a prompt cap. A second import of the same
+    -- board updates the card in place.
+    CREATE TABLE IF NOT EXISTS campaign_prep_cards (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      card_id TEXT NOT NULL,
+      source_id TEXT NOT NULL DEFAULT '',
+      source_title TEXT NOT NULL DEFAULT '',
+      kind TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL DEFAULT '',
+      -- Who and where the card picked, as the names they resolved to.
+      cues TEXT NOT NULL DEFAULT '',
+      -- The condition on the route into it, for a moment.
+      trigger TEXT NOT NULL DEFAULT '',
+      -- beat, moment, lore, quest, fight, secret, or unplaced (a scene the
+      -- arc had no room for; still searchable, still openable).
+      role TEXT NOT NULL DEFAULT 'unplaced',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (campaign_id, card_id)
+    );
+
     -- WorldForge's half of a world (src/lib/worldforge/model.ts): types and
     -- their fields, links, calendars, events, secrets, folders, the atlas,
     -- and what each Cast member, place, faction and lore entry carries that
