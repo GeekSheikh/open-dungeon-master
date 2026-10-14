@@ -795,27 +795,30 @@ test("opencode below 2 is installed but unsupported", () => {
 });
 
 test("the sweep deletes only sessions a killed ODM run left behind", () => {
-  const tmpdir = "/tmp";
+  // Folders as this platform spells them: on Windows "/tmp" resolves to a
+  // drive ("D:\\tmp"), and the sweep compares resolved folders.
+  const at = (...parts) => path.resolve(...parts);
+  const tmpdir = at("/tmp");
   const tag = { openDungeonMaster: "run" };
-  const live = new Set(["/tmp/odm-harness-live"]);
+  const live = new Set([at(tmpdir, "odm-harness-live")]);
   const now = Date.now();
   const sessions = [
-    { id: "gone", metadata: tag, location: { directory: "/tmp/odm-harness-gone" }, time: { updated: now } },
-    { id: "live-run", metadata: tag, location: { directory: "/tmp/odm-harness-live" }, time: { updated: now - 60_000 } },
-    { id: "admin-own", location: { directory: "/home/dm/projects/site" } },
-    { id: "same-title-no-tag", location: { directory: "/tmp/odm-harness-old" } },
-    { id: "tag-outside-tmp", metadata: tag, location: { directory: "/home/dm/odm-harness-x" } },
-    { id: "tag-nested", metadata: tag, location: { directory: "/tmp/sub/odm-harness-y" } },
-    { id: "tag-other-folder", metadata: tag, location: { directory: "/tmp/project" } },
+    { id: "gone", metadata: tag, location: { directory: at(tmpdir, "odm-harness-gone") }, time: { updated: now } },
+    { id: "live-run", metadata: tag, location: { directory: at(tmpdir, "odm-harness-live") }, time: { updated: now - 60_000 } },
+    { id: "admin-own", location: { directory: at("/home/dm/projects/site") } },
+    { id: "same-title-no-tag", location: { directory: at(tmpdir, "odm-harness-old") } },
+    { id: "tag-outside-tmp", metadata: tag, location: { directory: at("/home/dm/odm-harness-x") } },
+    { id: "tag-nested", metadata: tag, location: { directory: at(tmpdir, "sub", "odm-harness-y") } },
+    { id: "tag-other-folder", metadata: tag, location: { directory: at(tmpdir, "project") } },
     { id: "tag-no-folder", metadata: tag },
-    { id: "other-tag", metadata: { openDungeonMaster: "something else" }, location: { directory: "/tmp/odm-harness-z" } },
+    { id: "other-tag", metadata: { openDungeonMaster: "something else" }, location: { directory: at(tmpdir, "odm-harness-z") } },
   ];
   const options = { tmpdir, now, exists: (dir) => live.has(dir), canonical: (dir) => dir };
   assert.deepEqual(staleOdmSessions(sessions, options), ["gone"]);
   // ODM itself was killed (the desktop app quit mid-turn): the run folder
   // stays, but no run lives 20 minutes, so a session half an hour old is
   // left behind; one a few minutes old may be a live table's.
-  const kept = { id: "folder-kept", metadata: tag, location: { directory: "/tmp/odm-harness-live" } };
+  const kept = { id: "folder-kept", metadata: tag, location: { directory: at(tmpdir, "odm-harness-live") } };
   assert.deepEqual(staleOdmSessions([{ ...kept, time: { updated: now - 31 * 60_000 } }], options), ["folder-kept"]);
   assert.deepEqual(staleOdmSessions([{ ...kept, time: { updated: now - 19 * 60_000 } }], options), []);
   assert.deepEqual(staleOdmSessions([{ ...sessions[2], time: { updated: 0 } }, { ...sessions[4], time: { updated: 0 } }], options), [], "age alone never makes an admin session ODM's");
