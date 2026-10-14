@@ -2359,6 +2359,19 @@ function ensureSchema(db: SqliteDatabase) {
       created_at TEXT NOT NULL,
       PRIMARY KEY (user_id, kind, scope)
     );
+
+    -- The last attack against each character, for the reactions that answer
+    -- it (src/lib/dm/last-hit.ts). No foreign keys: deleteCampaign clears a
+    -- table's rows by hand. That module used to make the table on first use,
+    -- with this same definition, so a database that has it already is
+    -- unchanged.
+    CREATE TABLE IF NOT EXISTS last_hits (
+      campaign_id TEXT NOT NULL,
+      character_id TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (campaign_id, character_id)
+    );
   `);
   // Databases that created player_webhooks before receivers could carry
   // their own Authorization value or extra headers (docs/player-webhooks.md).

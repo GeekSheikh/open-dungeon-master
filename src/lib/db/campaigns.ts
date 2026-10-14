@@ -426,6 +426,9 @@ export function deleteCampaign(campaignId: string) {
   // the table's own ability six and its rolled starting wealth. Keyed by
   // scope, not by a foreign key, so no cascade takes them.
   db.prepare(`DELETE FROM creation_rolls WHERE scope = ? OR scope LIKE ?`).run(campaignId, `${campaignId}:%`);
+  // The last attack on each of its characters (src/lib/dm/last-hit.ts),
+  // keyed the same way.
+  db.prepare(`DELETE FROM last_hits WHERE campaign_id = ?`).run(campaignId);
   // Anyone still at the table stops hearing it now (src/lib/live-streams.ts),
   // and turns still waiting for it are not run against rows that are gone.
   closeStreamsForCampaign(campaignId);

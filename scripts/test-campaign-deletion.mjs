@@ -30,6 +30,7 @@ const { createCampaign, getCampaignById } = await import("../src/lib/db/campaign
 const { campaignFilePaths, filePathsIn } = await import("../src/lib/image-files.ts");
 const { deleteCampaignWithFiles } = await import("../src/lib/campaign-deletion.ts");
 const rolls = await import("../src/lib/db/creation-rolls.ts");
+const { writeLastHit, readLastHit } = await import("../src/lib/dm/last-hit.ts");
 
 let passed = 0;
 function test(name, fn) {
@@ -156,6 +157,16 @@ rolls.rollAbilityPool(alice.id);
 const creationRolls = (scope) =>
   db.prepare(`SELECT COUNT(*) AS n FROM creation_rolls WHERE scope = ? OR scope LIKE ?`).get(scope, `${scope}:%`).n;
 
+// The last attack on a character at each table (src/lib/dm/last-hit.ts),
+// which a reaction answers. The table that keeps them is part of the schema
+// too, so it is asked for before anyone has been hit.
+const lastHitsTableBeforeAnyHit = Boolean(
+  db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'last_hits'`).get(),
+);
+const hit = (characterId) => ({ characterId, at: now, swings: [] });
+writeLastHit(doomed.id, hit("doomed-sheet"));
+writeLastHit(kept.id, hit("kept-sheet"));
+
 test("only our own file shapes are picked out of stored text", () => {
   assert.deepEqual(
     filePathsIn(
@@ -205,6 +216,12 @@ test("the dice its players were owed go with it; the other table's and the libra
   assert.equal(creationRolls(kept.id), 2);
   assert.ok(rolls.openAbilityPool(alice.id), "the library six went with a table");
   assert.ok(rolls.openWealthRoll(alice.id, kept.id, "wizard"));
+});
+
+test("the last attack on each of its characters goes with it; the other table's stays", () => {
+  assert.ok(lastHitsTableBeforeAnyHit, "last_hits is made only on first use, so a delete before it would fail");
+  assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM last_hits WHERE campaign_id = ?`).get(doomed.id).n, 0);
+  assert.equal(readLastHit(kept.id, "kept-sheet")?.characterId, "kept-sheet");
 });
 
 test("a campaign is deleted on a server where nobody has rolled yet: the table of rolls is part of the schema", () => {
