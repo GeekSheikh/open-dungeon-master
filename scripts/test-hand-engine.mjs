@@ -260,6 +260,17 @@ test("Frenzy's bonus attack is refused while the barbarian is not raging", () =>
   const berserker = sheet({ class: "barbarian", features: [feature("Rage"), feature("Frenzy")], equipment: [item("Greataxe")] });
   assert.match(byId(deriveHand(berserker, mine()), "attack:greataxe:frenzy").disabled, /is not raging/);
   assert.equal(byId(deriveHand({ ...berserker, conditions: ["raging"] }, mine()), "attack:greataxe:frenzy").disabled, null);
+  // A shield on the arm leaves the greataxe out of use (handsRuling): the
+  // frenzy swings the one-handed weapon in the pack, and with none the card
+  // is shut in the engine's words.
+  const shielded = { ...berserker, conditions: ["raging"], equipment: [item("Greataxe"), item("Handaxe"), item("Shield", { equipped: true })] };
+  assert.equal(byId(deriveHand(shielded, mine()), "attack:greataxe:frenzy"), undefined);
+  assert.equal(byId(deriveHand(shielded, mine()), "attack:handaxe:frenzy").disabled, null);
+  const greataxeOnly = { ...shielded, equipment: [item("Greataxe"), item("Shield", { equipped: true })] };
+  assert.equal(
+    byId(deriveHand(greataxeOnly, mine()), "attack:greataxe:frenzy").disabled,
+    "Greataxe needs both hands, and Kael has Shield on one arm. They put the shield away first (unequip it on the sheet) or attack with a one-handed weapon.",
+  );
 });
 
 test("Reckless Attack is offered on the first Strength melee attack only; knock out on melee only", () => {
