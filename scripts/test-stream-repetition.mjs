@@ -13,6 +13,7 @@ register("./lib/register-alias.mjs", import.meta.url);
 
 const { requestCustomMessage, requestLocalMessage } = await import("../src/lib/model-client.ts");
 const { createStreamRepetitionGuard } = await import("../src/lib/stream-repetition.ts");
+const { extractStoryText } = await import("../src/lib/story-prompt.ts");
 const realFetch = globalThis.fetch;
 const paragraph = `The Archmage's eyes flare, a spark of humor dancing in the blue light. "It is a place of many doors. Choose yours wisely, Master Flamefinger. Even a scholar must know when to put down the book and pick up a glass of wine."`;
 assert.ok(paragraph.length >= 160);
@@ -94,7 +95,7 @@ function firstCopyEnd(text) {
 const event = (delta) => `data: ${JSON.stringify({ choices: [{ delta: { content: delta } }] })}\n\n`;
 const toolEvent = `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: "call_1", function: { name: "request_roll", arguments: "{}" } }] } }] })}\n\n`;
 
-async function callWithDeltas(deltas, holdOpen = false, toolFirst = false) {
+async function callWithDeltas(deltas, holdOpen = false, toolFirst = false, options = {}) {
   let signal;
   let cancelled = false;
   let closeTimer;
@@ -122,10 +123,13 @@ async function callWithDeltas(deltas, holdOpen = false, toolFirst = false) {
     "test-model",
     "",
     [{ role: "user", content: "Continue the scene." }],
-    { onDelta: (text) => { shown += text; } },
+    { ...options, onDelta: (text) => { shown += text; } },
   );
   return { result, shown, signal, cancelled };
 }
+
+const tool = { type: "function", function: { name: "request_roll", description: "Roll", parameters: { type: "object", properties: {} } } };
+const loop = (paragraph + "\n\n").repeat(5);
 
 try {
   const repeated = await callWithDeltas(
@@ -186,7 +190,6 @@ try {
   // OpenAI's own host starts every model on Chat Completions and learns the
   // Responses route from the 400 that names it, so the stub refuses Chat
   // with that answer and streams the repeated passage on the retry.
-  const tool = { type: "function", function: { name: "request_roll", description: "Roll", parameters: { type: "object", properties: {} } } };
   const urls = [];
   let responsesSignal;
   globalThis.fetch = async (url, init) => {
@@ -208,6 +211,39 @@ try {
   assert.equal(responsesSignal.aborted, true);
   assert.equal(responses.message, undefined);
   console.log("ok: Responses API also aborts a repeated passage");
+
+  // A call that may only narrate (the turn's forced last call, its
+  // tools-closed rescue) keeps the first copy as its reply instead of failing
+  // the turn. Its leaked tool call is dropped with the rest of the stream.
+  const closed = await callWithDeltas(loop.match(/.{1,37}/gs), true, true, { tools: [tool], toolChoice: "none" });
+  assert.equal(closed.result.error, undefined, "a narration-only loop does not fail the call");
+  assert.equal(closed.result.message?.content, paragraph, "its first copy is the reply");
+  assert.equal(closed.result.message?.tool_calls, undefined, "no tool call comes back from a cut stream");
+  assert.equal(closed.result.finishReason, "repetition");
+  assert.equal(closed.signal.aborted, true, "the backend is still stopped");
+  assert.equal(closed.cancelled, true);
+  const asked = await callWithDeltas(loop.match(/.{1,37}/gs), false, false, { tools: [tool], toolChoice: "auto" });
+  assert.match((await asked.result.error.json()).code, /stream_repetition/, "a call that could still choose tools fails instead");
+
+  globalThis.fetch = async () =>
+    new Response([...loop.match(/.{1,41}/gs)].map((piece) => JSON.stringify({ message: { content: piece } }) + "\n").join(""));
+  const localClosed = await requestLocalMessage("test-model", [{ role: "user", content: "Continue." }], { tools: [tool], toolChoice: "none", onDelta: () => {} });
+  assert.equal(localClosed.message?.content, paragraph, "Ollama keeps the first copy of a narration-only loop");
+
+  globalThis.fetch = async () =>
+    new Response(
+      [...loop.match(/.{1,43}/gs)].map((piece) => `data: ${JSON.stringify({ type: "response.output_text.delta", delta: piece })}\n\n`).join("") + "data: [DONE]\n\n",
+      { headers: { "Content-Type": "text/event-stream" } },
+    );
+  const responsesClosed = await requestCustomMessage("https://api.openai.com/v1", "test-reasoner", "sk-test", [{ role: "user", content: "Continue." }], { tools: [tool], toolChoice: "none", onDelta: () => {} });
+  assert.equal(responsesClosed.message?.content, paragraph, "the Responses route keeps the first copy too");
+
+  const wrapped = `{"storyText":"${(paragraph.replace(/"/g, '\\"') + "\\n\\n").repeat(5)}`;
+  const story = await callWithDeltas(wrapped.match(/.{1,29}/gs), false, false, { toolChoice: "none" });
+  assert.equal(extractStoryText(story.result.message?.content), paragraph, "a JSON story reply cut mid-loop still reads as its first copy");
+  const unclosed = await callWithDeltas(("<think>\n" + loop).match(/.{1,37}/gs), false, false, { toolChoice: "none" });
+  assert.equal((await unclosed.result.error.json()).code, "stream_repetition", "a loop inside a <think> block in the reply is no narration to keep");
+  console.log("ok: a narration-only call keeps the first copy of a loop as its reply; a tool-decision call still fails");
 } finally {
   globalThis.fetch = realFetch;
   removeTempDir(dir);

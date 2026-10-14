@@ -1,3 +1,5 @@
+import { endsInsideReasoning } from "@/lib/story-prompt";
+
 // A model stuck in a loop writes the same passage until its output cap,
 // which on a local server takes minutes. The guard reads a reply one
 // character at a time, so what it decides never depends on where the
@@ -189,4 +191,35 @@ function repeatsShorterCycle(lines: string[]) {
     }
   }
   return false;
+}
+
+// The reply a loop leaves: what was written up to the end of its first copy.
+// A reply in the structured story format ({"storyText": "..."}) was cut
+// inside its text, so the object is closed again for extractStoryText. Null
+// when the copy ends inside a <think> block the server left in the reply:
+// that loop is the model's reasoning, and there is no story to keep.
+export function firstCopyOf(text: string, end: number): string | null {
+  const kept = text.slice(0, end);
+  if (endsInsideReasoning(kept)) {
+    return null;
+  }
+  if (kept.trimStart().startsWith("{")) {
+    const closed = `${kept}"}`;
+    try {
+      JSON.parse(closed);
+      return closed;
+    } catch {
+      // Not a story object cut inside its text; kept as written.
+    }
+  }
+  return kept;
+}
+
+// How a model call stopped for repeating itself reports it, from every
+// backend, so the turn shows one halted notice.
+export function streamRepetitionResponse(): Response {
+  return Response.json(
+    { error: "The model began repeating the same long passage, so generation was stopped. Retry the turn.", code: "stream_repetition" },
+    { status: 502 },
+  );
 }

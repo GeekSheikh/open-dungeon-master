@@ -38,7 +38,11 @@ import { catalogContextWindow, hostedContextWindow } from "@/lib/model-registry/
 import { ollamaModelInfo, soleListedModel } from "@/lib/model-registry/discovery";
 import { harnessConfig, harnessContextTokens } from "@/lib/harness/status";
 import { onWindows } from "@/lib/host-platform";
-import { createStreamRepetitionGuard } from "@/lib/stream-repetition";
+import {
+  createStreamRepetitionGuard,
+  firstCopyOf,
+  streamRepetitionResponse,
+} from "@/lib/stream-repetition";
 
 // Shared chat-completion client for both providers:
 // - custom: any OpenAI-compatible /chat/completions (llama.cpp, LM Studio,
@@ -93,7 +97,9 @@ export type UpstreamResult = {
   // The backend's finish_reason for the first choice, when it sent one:
   // "stop", "tool_calls", or "length" for a reply cut at the output cap.
   // Read by the DM turn loop to tell a model that ran out of room from one
-  // that chose to say nothing (issue #120).
+  // that chose to say nothing (issue #120). "repetition" is this client's
+  // own: a narration-only reply that began looping, cut after its first copy
+  // (src/lib/stream-repetition.ts).
   finishReason?: string;
   // What the backend said the call cost, for the usage ledger
   // (src/lib/usage/ledger.ts); absent when it said nothing.
@@ -394,24 +400,45 @@ function createRequestTimeout(ms: number) {
   };
 }
 
-class StreamRepetitionError extends Error {}
+// Thrown from inside a stream reader to stop a reply that began repeating.
+// firstCopy is the reply up to the end of the loop's first copy, or null
+// when that copy ends inside reasoning the server left in the reply, which
+// leaves no reply to keep.
+class StreamRepetitionError extends Error {
+  readonly firstCopy: string | null;
 
-function repeatedStreamError(): UpstreamResult {
-  return {
-    error: Response.json(
-      { error: "The model began repeating the same long passage, so generation was stopped. Retry the turn.", code: "stream_repetition" },
-      { status: 502 },
-    ),
-  };
+  constructor(firstCopy: string | null) {
+    super("The model began repeating itself.");
+    this.firstCopy = firstCopy;
+  }
+}
+
+// A call that may only narrate (toolChoice "none": the turn's forced last
+// call, its tools-closed rescue) loses nothing a table needs when its reply
+// is cut after the loop's first copy, so that copy is the reply. A call that
+// could still choose tools fails instead: its prose without the calls the
+// stream never finished would narrate outcomes nothing resolved.
+function narratesOnly(options: ChatRequestOptions) {
+  return options.toolChoice === "none";
+}
+
+function repeatedStreamResult(error: StreamRepetitionError, options: ChatRequestOptions): UpstreamResult {
+  if (error.firstCopy !== null && narratesOnly(options)) {
+    console.warn("[model] the narration began repeating one passage; its first copy is the reply");
+    return { message: { content: error.firstCopy }, finishReason: "repetition" };
+  }
+  return { error: streamRepetitionResponse() };
 }
 
 function guardStreamDelta(onDelta: StreamDeltaHandler | undefined, cancel: () => void) {
   if (!onDelta) return undefined;
   const guard = createStreamRepetitionGuard();
+  let streamed = "";
   return (text: string) => {
+    streamed += text;
     if (guard.push(text)) {
       cancel();
-      throw new StreamRepetitionError();
+      throw new StreamRepetitionError(firstCopyOf(streamed, guard.firstCopyEnd));
     }
     onDelta(text);
   };
@@ -913,7 +940,7 @@ export async function requestCustomMessage(
         ...tagged(reply.usage ?? null),
       };
     } catch (error) {
-      if (error instanceof StreamRepetitionError) return repeatedStreamError();
+      if (error instanceof StreamRepetitionError) return repeatedStreamResult(error, options);
       return readFailure(error);
     }
   }
@@ -993,7 +1020,7 @@ export async function requestCustomMessage(
         }
       });
     } catch (error) {
-      if (error instanceof StreamRepetitionError) return repeatedStreamError();
+      if (error instanceof StreamRepetitionError) return repeatedStreamResult(error, options);
       return readFailure(error);
     }
 
@@ -1193,7 +1220,7 @@ export async function requestLocalMessage(
         localUsage = ollamaUsage(record) ?? localUsage;
       });
     } catch (error) {
-      if (error instanceof StreamRepetitionError) return repeatedStreamError();
+      if (error instanceof StreamRepetitionError) return repeatedStreamResult(error, options);
       return {
         error: Response.json(
           {

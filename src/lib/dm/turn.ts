@@ -1620,7 +1620,10 @@ async function narrateAfterToolLeak(context: TurnContext, turn: DmTurn) {
   saveDmTurn(turn);
   // Other rescue errors retain the existing empty-turn fallback. A stopped
   // repetition is different: the model produced a harmful partial stream,
-  // so finalize must leave this turn failed and available for retry.
+  // so finalize must leave this turn failed and available for retry. (A
+  // loop in the narration comes back as its first copy, since this call may
+  // only narrate; the error is a loop with nothing to keep, inside the
+  // model's reasoning.)
   return failure?.code === "stream_repetition"
     ? failure.error || "The model repeated its narration and this turn was stopped."
     : "";
