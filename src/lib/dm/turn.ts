@@ -563,6 +563,12 @@ export async function startDmTurn(campaignId: string) {
   const conversation = buildDmMessages(promptState, history);
 
   const turn = createDmTurn(campaignId, conversation);
+  // The narration holds its place from the start, not only once words are on
+  // screen: a move posted while the model is still thinking was not in this
+  // prompt, so it belongs after this turn's narration, and it is still the
+  // last message when the coalesced follow-up turn looks for something to
+  // answer (src/lib/dm/narration-slot.ts).
+  narrationShown(campaignId, turn.id);
   // buildDmMessages fills this in on the state object it was handed, so the
   // trace is carried onto the turn row rather than recomputed.
   turn.contextTrace = promptState.contextTrace ?? null;
@@ -1986,6 +1992,11 @@ function finalize(context: TurnContext, turn: DmTurn, failed: string, spoken: re
   // no rolls) writes nothing to the shared chat; the fallback line below
   // would leak that a secret exchange happened at all.
   if (turn.playerWhisperIds.length && !turn.narrationParts.join("").trim() && !turn.rollIds.length) {
+    if (claimed !== null) {
+      // Nothing takes the slot a player's message reserved; the draft
+      // bubble stops pointing at it.
+      publishEphemeral(campaignId, "dm_draft_seq", { seq: null });
+    }
     setDmStatus(campaignId, "idle");
     turn.status = "done";
     saveDmTurn(turn);
