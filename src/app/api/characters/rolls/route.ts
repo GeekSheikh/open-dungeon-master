@@ -21,8 +21,9 @@ export const dynamic = "force-dynamic";
 // rolled coin is held to what is on record here when it is saved.
 
 const rollSchema = z.discriminatedUnion("kind", [
-  // A table's id when the character is being made at it (its own reroll
-  // rule and its own kept six); none in the library.
+  // A table's id when the character is being made at it (its reroll rule,
+  // and its own kept six when it set a rule of its own); none in the
+  // library.
   z.object({ kind: z.literal("abilities"), campaignId: z.string().trim().max(80).optional() }),
   z.object({
     kind: z.literal("wealth"),
@@ -81,7 +82,8 @@ export async function GET(request: Request) {
 }
 
 // The library, or a table the player belongs to: where their ability roll is
-// kept and the reroll rule it answers to (abilityRollPlace).
+// kept and the reroll rule it answers to (abilityRollPlace). A table that
+// follows the server answers with the library's six, but only to a member.
 function abilityPlace(userId: string, campaignId: string): AbilityRollPlace | { error: Response } {
   if (!campaignId) {
     return abilityRollPlace();

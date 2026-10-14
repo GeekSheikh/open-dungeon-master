@@ -272,8 +272,8 @@ export function legalityAuthors(input: Pick<ContextInput, "userId" | "campaign">
 }
 
 // Where the maker's ability roll for this character is kept: the table's own
-// when the character is made at a table, the library's otherwise
-// (src/lib/db/creation-rolls.ts abilityRollPlace).
+// when the character is made at a table that set its own reroll rule, the
+// library's otherwise (src/lib/db/creation-rolls.ts abilityRollPlace).
 export function abilityPlaceFor(input: Pick<ContextInput, "door" | "campaign">): AbilityRollPlace {
   return abilityRollPlace(input.door === "table" ? input.campaign : null);
 }

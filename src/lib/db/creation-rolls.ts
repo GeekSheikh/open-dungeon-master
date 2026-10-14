@@ -24,20 +24,33 @@ export function abilityRerollBelow(): number {
   return getGlobalConfig().abilityRerollBelow;
 }
 
-// Where an ability roll is kept and the rule it is thrown under. A character
-// made at a table rolls there, under the table's own rule when it set one
-// (src/lib/srd/ability-rerolls.ts), and its six are that table's: a table
-// that rerolls freely cannot hand a fishing-trip's six to a stricter table
-// or to the library. The library's roll is the player's own, under the
-// server's rule, as it always was.
+// Where an ability roll is kept and the rule it is thrown under. The
+// library's roll is the player's own, under the server's rule, as it always
+// was. A table that sets no rule of its own follows the server's, pool and
+// all: it hands back the same six as the library, so joining or opening
+// another table is not a fresh throw. A table that set its own rule
+// (src/lib/srd/ability-rerolls.ts) keeps a six of its own for each player,
+// thrown under that rule, and only a character made at that table can spend
+// it; its six never reach a stricter table's builder or the library's.
+//
+// What that does not bound is the character made with them: it joins the
+// player's library like any other, and a library character or a file
+// entering play is checked against what dice could give, not against where
+// they were thrown (src/lib/srd/sheet-legality.ts policyFor).
+//
+// A lead who switches a table between the server's rule and its own while a
+// player is building moves that player's dice to the other pool, so they
+// throw again there.
 export type AbilityRollPlace = { scope: string; rerollBelow: number };
 
 export function abilityRollPlace(
   campaign?: { id: string; gameSettings: { abilityRerollBelow?: number | null } } | null,
 ): AbilityRollPlace {
-  return campaign
-    ? { scope: campaign.id, rerollBelow: tableRerollBelow(campaign.gameSettings.abilityRerollBelow, abilityRerollBelow()) }
-    : { scope: "", rerollBelow: abilityRerollBelow() };
+  const own = campaign?.gameSettings.abilityRerollBelow;
+  return {
+    scope: campaign && typeof own === "number" ? campaign.id : "",
+    rerollBelow: tableRerollBelow(own, abilityRerollBelow()),
+  };
 }
 
 // Keyed by the connection, so a process that opens a second database (a

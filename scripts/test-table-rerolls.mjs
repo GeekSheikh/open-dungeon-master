@@ -4,7 +4,9 @@
 // rule for the characters made at it (gameSettings.abilityRerollBelow), from
 // "the first roll stands" to "reroll freely", and the six rolled there are
 // that table's, so a table that rerolls freely cannot hand its six to a
-// stricter table or to the library.
+// stricter table's builder or to the library's. A table that sets no rule
+// follows the server's, pool and all: it hands back the player's library
+// six, so opening another table is not a fresh throw.
 //
 // Also the door no test walked: /api/characters/rolls was never called, and
 // the pool's spend at admission (admit.ts usedPool) was only seen in parts.
@@ -12,7 +14,7 @@
 // where it is made, admitted with them, and spends them.
 import assert from "node:assert/strict";
 import { suite } from "./lib/enforce-harness.mjs";
-import { LEGAL_FIGHTER, openCreation } from "./lib/enforce-creation.mjs";
+import { LEGAL_FIGHTER, PORTRAIT, openCreation } from "./lib/enforce-creation.mjs";
 
 const { test, finish } = suite("test-table-rerolls");
 const rerolls = await import("../src/lib/srd/ability-rerolls.ts");
@@ -27,6 +29,14 @@ const ROLLED_FIGHTER = {
   ...LEGAL_FIGHTER,
   abilities: { str: 19, dex: 18, con: 17, int: 16, wis: 15, cha: 14 },
   maxHp: 13,
+};
+// The same fighter on the low six: a 7 before the human's +1 is below what
+// point buy allows, so only the rolled six admit it.
+const WEAK_FIGHTER = {
+  ...LEGAL_FIGHTER,
+  abilities: { str: 11, dex: 10, con: 10, int: 9, wis: 9, cha: 8 },
+  maxHp: 10,
+  portrait: PORTRAIT,
 };
 
 await test("The words and the number agree: the first roll stands at 0, reroll freely at 108, a low roll in between; a table with no rule follows the server.", () => {
@@ -43,9 +53,11 @@ await test("The words and the number agree: the first roll stands at 0, reroll f
 });
 
 const table = await openCreation();
-const { world, campaignId, player, call, atTable, clearSeat } = table;
+const { world, campaignId, player, call, atTable, clearSeat, sheetRoute } = table;
 const rollsRoute = await world.route("characters/rolls");
 const settingsRoute = await world.route("campaigns/[campaignId]/settings");
+const campaignsRoute = await world.route("campaigns");
+const { saveGlobalConfig } = await import("../src/lib/db/app-settings.ts");
 
 async function roll(user, faces, at) {
   world.signIn(user);
@@ -126,6 +138,49 @@ await test("A table the player does not belong to has no dice for them.", async 
   assert.equal(out.status, 404);
   const response = await rollsRoute.GET(new Request(`http://test/?campaignId=${campaignId}`));
   assert.equal(response.status, 404);
+});
+
+await test("A table that follows the server's rule is not a fresh throw: where the first roll stands, the player's library six come back at every new table, and a character made at one spends them.", async () => {
+  saveGlobalConfig({ abilityRerollBelow: 0 });
+  const fisher = world.addUser("fisher");
+  const library = await roll(fisher, LOW);
+  assert.equal(library.json.abilities.kept, false);
+  assert.deepEqual(totals(library), [10, 9, 9, 8, 8, 7]);
+
+  // Three tables of the player's own, each left to follow the server.
+  const tables = [];
+  for (const title of ["First cast", "Second cast", "Third cast"]) {
+    world.signIn(fisher);
+    const made = await call(campaignsRoute, "POST", {
+      title,
+      description: "",
+      theme: "high-fantasy",
+      maxPlayers: 4,
+      startingLevel: 1,
+      difficulty: "normal",
+    });
+    assert.equal(made.status, 201, JSON.stringify(made.json));
+    assert.equal(made.json.campaign.gameSettings.abilityRerollBelow, null);
+    tables.push(made.json.campaign.id);
+  }
+  for (const at of tables) {
+    const open = await openPool(fisher, at);
+    assert.deepEqual(open.abilities?.totals, [10, 9, 9, 8, 8, 7], "the builder at a new table did not see the kept six");
+    assert.equal(open.rerollBelow, 0);
+    const again = await roll(fisher, HIGH, at);
+    assert.equal(again.status, 200, JSON.stringify(again.json));
+    assert.equal(again.json.abilities.kept, true, "a new table threw a fresh six where the first roll stands");
+    assert.deepEqual(totals(again), [10, 9, 9, 8, 8, 7]);
+  }
+
+  // The six were thrown in the library (as an app built before tables had
+  // rules still throws them) and the character is made at a table.
+  world.signIn(fisher);
+  const made = await call(sheetRoute, "POST", WEAK_FIGHTER, { campaignId: tables[0] });
+  assert.equal(made.status, 201, made.json.error ?? "");
+  assert.equal((await openPool(fisher)).abilities, null, "the library's six outlived the character made with them");
+  assert.equal((await openPool(fisher, tables[1])).abilities, null, "another table still holds the spent six");
+  saveGlobalConfig({ abilityRerollBelow: 70 });
 });
 
 world.close();
