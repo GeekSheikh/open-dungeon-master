@@ -240,6 +240,39 @@ messages.insertCampaignMessage({
   content: "The ford is quiet. Across the water a lantern swings on the ferryman's hut, and the rope bridge creaks in the wind.",
 });
 
+// A table of three accounts that have never met a tour, for the tours'
+// account record (issue 306): one finishes the table's tour in one browser
+// and must not meet it in another, one shares that browser, and one signs in
+// where an old per-browser flag is waiting. Its own table, so the other
+// scenarios' parties are unchanged.
+const TOUR_TITLE = "First Visit";
+const tourTable = campaigns.createCampaign(world.owner.id, {
+  title: TOUR_TITLE,
+  description: "A road inn, for meeting the table's tour.",
+  theme: "high-fantasy",
+  maxPlayers: 6,
+  startingLevel: 3,
+  difficulty: "normal",
+  gameSettings: { ttsEnabled: false },
+});
+const tourAccounts = ["walker", "sharer", "heir"].map((label, index) => {
+  const user = world.addUser(label);
+  const joined = campaigns.joinByInviteCode(user.id, campaigns.getCampaignById(tourTable.id).inviteCode);
+  if ("error" in joined) {
+    throw new Error(`could not seat ${label} at ${TOUR_TITLE}: ${joined.error}`);
+  }
+  sheets.createSheet(tourTable.id, user.id, 3, heroInput({ name: ["Wren Walker", "Sela Sharer", "Hob Heir"][index], class: "fighter", level: 3 }));
+  return user;
+});
+campaigns.setCampaignStatus(tourTable.id, "active");
+messages.insertCampaignMessage({
+  campaignId: tourTable.id,
+  seq: campaigns.allocateSeq(tourTable.id),
+  authorType: "dm",
+  speech: [],
+  content: "The inn's fire is low and the road outside is empty. Someone has left a map pinned to the door.",
+});
+
 // A lobby whose imported prep already wrote a story arc, so the lead is
 // told before AI Story Setup runs over it (issue 249).
 const PREP_TITLE = "Prepared Lobby";
@@ -261,7 +294,7 @@ campaigns.setStoryArc(
   }),
 );
 
-for (const user of [world.owner, player]) {
+for (const user of [world.owner, player, ...tourAccounts]) {
   setUserPassword(user.id, await hashPassword(PASSWORD), false);
 }
 // The lead runs the server too, for the admin settings (issue 255).
@@ -270,6 +303,9 @@ setUserAdmin(world.owner.id, true);
 const ids = {
   lead: world.owner.username,
   player: player.username,
+  walker: tourAccounts[0].username,
+  sharer: tourAccounts[1].username,
+  heir: tourAccounts[2].username,
   password: PASSWORD,
   title: TITLE,
   lobbyTitle: LOBBY_TITLE,
@@ -286,12 +322,14 @@ const ids = {
   offerSummary: offer.summary,
   quietId: quiet.id,
   quietTitle: QUIET_TITLE,
+  tourTableId: tourTable.id,
+  tourTableTitle: TOUR_TITLE,
   ama: ama.id,
   corin: corin.id,
   preparedId: prepared.id,
   preparedTitle: PREP_TITLE,
   // Every campaign a scenario opens, by id, for the app's home tiles.
-  titles: { [world.campaignId]: TITLE, [lobby.id]: LOBBY_TITLE, [quiet.id]: QUIET_TITLE, [prepared.id]: PREP_TITLE },
+  titles: { [world.campaignId]: TITLE, [lobby.id]: LOBBY_TITLE, [quiet.id]: QUIET_TITLE, [prepared.id]: PREP_TITLE, [tourTable.id]: TOUR_TITLE },
   systemLine,
   paragraphs: paragraphs.map((text) => text.replace(/[*_]/g, "")),
 };

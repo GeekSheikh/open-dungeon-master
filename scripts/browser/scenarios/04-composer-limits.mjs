@@ -10,6 +10,13 @@ export default {
     const { page, root, ids } = t;
     await t.open(`/campaigns/${ids.campaignId}`);
     await eventually(() => page.locator(`${root}.cine-stage`).count(), { label: "the table" });
+    // A phone opens a fight on the board and shows one view at a time: the
+    // composer is on the Table view. (The first-visit tour used to switch
+    // there; it now opens once per account, so this asks for the view.)
+    const tableView = page.locator(`${root}.cine-bottombar button`).filter({ hasText: /^\s*Table\s*$/ }).locator("visible=true").first();
+    if (await tableView.count()) {
+      await t.tap(tableView);
+    }
     // The desk under the chronicle on the stage, or the Hand's composer
     // elsewhere: whichever is on screen says "Up to N characters".
     const note = await eventually(
