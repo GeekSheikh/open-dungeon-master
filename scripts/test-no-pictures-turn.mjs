@@ -68,6 +68,16 @@ const mcp = http.createServer(async (req, res) => {
 await new Promise((resolve) => mcp.listen(0, "127.0.0.1", resolve));
 process.env.HARNESS_MCP_URL = `http://127.0.0.1:${mcp.address().port}/api/mcp`;
 
+// The shipped default address (127.0.0.1:8188) stands for "no ComfyUI
+// here" in the table made without pictures. A machine that runs ComfyUI
+// there (a developer's) would answer it and the test would be about that
+// machine; the default stays dark here as it is on CI's runner.
+const reachOut = globalThis.fetch;
+globalThis.fetch = (input, init) => {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  return url.startsWith("http://127.0.0.1:8188") ? Promise.reject(new TypeError("fetch failed")) : reachOut(input, init);
+};
+
 // An address where nothing answers: a port that was free a moment ago.
 async function deadAddress() {
   const probe = net.createServer();
