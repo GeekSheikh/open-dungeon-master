@@ -26,6 +26,7 @@ import { packIds } from "@/lib/worlds/reskin-logic";
 import { genreClassIds } from "@/lib/classes";
 import { renderArcPrompt } from "@/lib/dm/arc-logic";
 import type { ArcTrace } from "@/lib/dm/arc-relevance";
+import type { LoreTrace } from "@/lib/dm/world-lore-logic";
 import { renderWorldArcsForPrompt } from "@/lib/dm/world-arc-logic";
 import { renderFactsForPrompt, type FactLike } from "@/lib/dm/fact-logic";
 import { MOMENT_INSTRUCTION, splitAtMoment, THIS_MOMENT_HEADING, THIS_TURN_HEADING } from "@/lib/prompt-boundary";
@@ -278,6 +279,9 @@ export type DmGameState = {
   // Written by buildGameStateBlock when the arc renders: what it showed and
   // held back, copied onto contextTrace by buildDmMessages.
   arcTrace?: ArcTrace;
+  // What the world lore block kept and held back, and why (issue #305):
+  // built with the block by buildTurnRetrieval, copied onto contextTrace.
+  loreTrace?: LoreTrace;
   // Filled in by buildDmMessages: what each block cost and what was dropped.
   // Mutable on purpose, so the caller can persist it on the dm_turns row
   // without buildDmMessages changing its return type.
@@ -1493,6 +1497,7 @@ export function buildDmMessages(
   const toolTokens = state.toolTokens ?? 0;
   state.contextTrace = {
     ...(state.arcTrace ? { arc: state.arcTrace } : {}),
+    ...(state.loreTrace ? { lore: state.loreTrace } : {}),
     limitTokens: usableTokens(state.contextLimitTokens) + toolTokens,
     promptTokens:
       estimateTokens(systemParts.join("\n\n")) +

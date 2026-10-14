@@ -240,6 +240,45 @@ messages.insertCampaignMessage({
   content: "The ford is quiet. Across the water a lantern swings on the ferryman's hut, and the rope bridge creaks in the wind.",
 });
 
+// The quiet table's world lore and the record a turn left of it (issue
+// 305): four crossings the lead tagged as a set, one of them secret, a
+// pinned entry, and lore about other things. The trace is the one turn
+// retrieval builds for a player asking for every crossing, kept on a
+// finished DM turn so the lead's Context panel has something to show.
+{
+  const { insertLoreEntry, embedPendingLore } = await import("../../src/lib/db/lore.ts");
+  const { buildTurnRetrieval } = await import("../../src/lib/dm/context-retrieval.ts");
+  const { createDmTurn, saveDmTurn } = await import("../../src/lib/db/dm-turns.ts");
+  const fordLore = (title, body, extra = {}) =>
+    insertLoreEntry({ campaignId: quiet.id, category: "geography", title, body, tags: [], ...extra });
+  const guild = fordLore("The Ferry Guild", "The guild licenses every boat on the river and fines anyone who rows without a token.", { category: "factions" });
+  getDatabase().prepare(`UPDATE lore_entries SET pinned = 1 WHERE id = ?`).run(guild.id);
+  fordLore("The Ferry", "The ferryman takes a silver piece a head and more after dark.", { tags: ["crossing"] });
+  fordLore("The Rope Bridge", "Forty planks over the gorge, three of them rotten. It holds two at a time.", { tags: ["crossing"] });
+  fordLore("The Drowned Ford", "A sunken causeway a hand under the water at low tide; the smugglers mark it with reeds.", { tags: ["crossing"], visibility: "dm" });
+  fordLore("The Shallows", "Waist-deep in late summer, chest-deep after rain, and the current pulls downstream.", { tags: ["crossing"] });
+  fordLore("Harvest Festival", "At the end of summer the farmers burn a straw giant and dance until morning.");
+  fordLore("The Lich of the Fens", "A lich sleeps beneath the fens and dreams of the kingdom it lost.");
+  await embedPendingLore(quiet.id);
+  const retrieval = await buildTurnRetrieval(campaigns.getCampaignById(quiet.id), [
+    { authorType: "player", content: "How do we get over the river? Tell me every crossing." },
+  ]);
+  if (!retrieval.loreTrace) {
+    throw new Error("the quiet table's lore left no trace");
+  }
+  const turn = createDmTurn(quiet.id, []);
+  saveDmTurn({
+    ...turn,
+    status: "done",
+    contextTrace: {
+      limitTokens: 40_000,
+      promptTokens: 9_000,
+      blocks: [{ id: "game-state", kind: "state", tokens: 3_000, included: true, reason: "always included", position: 1 }],
+      lore: retrieval.loreTrace,
+    },
+  });
+}
+
 // A lobby whose imported prep already wrote a story arc, so the lead is
 // told before AI Story Setup runs over it (issue 249).
 const PREP_TITLE = "Prepared Lobby";
