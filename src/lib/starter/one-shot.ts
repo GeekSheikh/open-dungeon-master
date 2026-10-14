@@ -44,8 +44,10 @@ export function createStarterCampaign(userId: string, options: { solo: boolean }
       dmMode: "ai",
       genre: "high_fantasy",
       campaignLength: "short",
-      // The premise is written; the setup pass still fills the world's
-      // small print (places, faces) from it.
+      // The outline is written below, before anyone presses Begin, so the
+      // setup pass stands aside (src/lib/dm/setup.ts runs only for a table
+      // with no outline yet) and the arc planner builds from the outline.
+      // The setting stays at its default; it has nothing to do here.
       aiStorySetup: true,
     },
   });
