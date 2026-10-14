@@ -156,6 +156,8 @@ const server = http.createServer((req, res) => {
       sse(res, [toolCall("dance_wildly", { style: "jig" })]);
     } else if (reply === "repeat") {
       sse(res, [{ content: (PASSAGE + "\n\n").repeat(4) }]);
+    } else if (reply === "repeat-reasoning") {
+      sse(res, [{ reasoning_content: (PASSAGE + "\n\n").repeat(4) }, { content: NARRATION }]);
     } else {
       sse(res, [{ content: NARRATION }]);
     }
@@ -281,6 +283,16 @@ assert.equal(lastLoop.requests[MAX_MODEL_CALLS - 1].tool_choice, "none", "the lo
 assert.equal(lastLoop.text, PASSAGE, "the last call's first copy is the narration");
 assert.equal(haltNoticeOf(lastLoop), undefined);
 console.log("ok: a forced last call that loops keeps its first copy as the narration");
+
+// A loop in the rescue's hidden reasoning leaves nothing to keep, so the
+// turn must remain retryable.
+const thoughtLoop = await run("Repeating rescue reasoning", ["empty", "empty", "repeat-reasoning"]);
+const haltNotice = haltNoticeOf(thoughtLoop);
+assert.ok(haltNotice, "a rescue whose reasoning loops posts a clear halt notice");
+assert.equal(getDmTurn(haltNotice.dmTurnId)?.status, "failed", "the interrupted turn remains retryable");
+assert.equal(thoughtLoop.text, "", "nothing is persisted as successful narration");
+assert.equal(thoughtLoop.calls, 3, "a repeating rescue does not start another model call");
+console.log("ok: a reasoning loop in the tools-closed rescue halts the turn for retry");
 
 // A call to a tool that does not exist, with no prose: told so, then narrated.
 const unknown = await run("Unknown tool only", ["unknown-tool", "narrate"]);

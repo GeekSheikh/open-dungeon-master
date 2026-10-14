@@ -99,7 +99,7 @@ function firstCopyEnd(text) {
   console.log("ok: short repeated lines, a refrain between verses, varied narration, lists and rosters are left alone");
 }
 
-const event = (delta) => `data: ${JSON.stringify({ choices: [{ delta: { content: delta } }] })}\n\n`;
+const event = (delta) => `data: ${JSON.stringify({ choices: [{ delta: typeof delta === "string" ? { content: delta } : delta }] })}\n\n`;
 const toolEvent = `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: "call_1", function: { name: "request_roll", arguments: "{}" } }] } }] })}\n\n`;
 
 async function callWithDeltas(deltas, holdOpen = false, toolFirst = false, options = {}) {
@@ -278,6 +278,38 @@ try {
   const responsesWhole = await requestCustomMessage("https://api.openai.com/v1", "test-reasoner", "sk-test", [{ role: "user", content: "Continue." }], { toolChoice: "none" });
   assert.equal(responsesWhole.message?.content, paragraph, "and so is the Responses route's");
   console.log("ok: a whole narration reply that loops keeps its first copy on every route; other calls are untouched");
+
+  // A loop in the reasoning channel never reaches the table but runs to the
+  // output cap all the same, so it stops the call. With nothing to keep, it
+  // fails even a call that may only narrate.
+  const thinking = loop.match(/.{1,37}/gs);
+  for (const field of ["reasoning_content", "reasoning"]) {
+    const thought = await callWithDeltas([...thinking.map((piece) => ({ [field]: piece })), "The door opens."], true, false, { toolChoice: "none" });
+    assert.ok(thought.result.error, `a loop in ${field} stops the call`);
+    assert.equal((await thought.result.error.json()).code, "stream_repetition");
+    assert.equal(thought.signal.aborted, true);
+    assert.equal(thought.cancelled, true);
+    assert.equal(thought.shown, "", "the reasoning never reached the table");
+  }
+  const reasoned = await callWithDeltas([{ reasoning_content: [paragraph, second, chant].join("\n\n") }, "The door opens."]);
+  assert.equal(reasoned.result.message?.content, "The door opens.", "reasoning that does not loop is left alone");
+  assert.equal(reasoned.shown, "The door opens.");
+
+  globalThis.fetch = async () =>
+    new Response(thinking.map((piece) => JSON.stringify({ message: { content: "", thinking: piece } }) + "\n").join(""));
+  const localThought = await requestLocalMessage("test-model", [{ role: "user", content: "Continue." }], { onDelta: () => {} });
+  assert.equal((await localThought.error.json()).code, "stream_repetition", "Ollama's thinking loop stops the call");
+
+  let shownResponses = "";
+  globalThis.fetch = async () =>
+    new Response(
+      thinking.map((piece) => `data: ${JSON.stringify({ type: "response.reasoning_text.delta", delta: piece })}\n\n`).join("") + "data: [DONE]\n\n",
+      { headers: { "Content-Type": "text/event-stream" } },
+    );
+  const responsesThought = await requestCustomMessage("https://api.openai.com/v1", "test-reasoner", "sk-test", [{ role: "user", content: "Continue." }], { toolChoice: "none", onDelta: (text) => { shownResponses += text; } });
+  assert.equal((await responsesThought.error.json()).code, "stream_repetition", "a Responses reasoning loop stops the call");
+  assert.equal(shownResponses, "");
+  console.log("ok: a loop in the reasoning channel stops the call on Chat Completions, Ollama and the Responses route");
 } finally {
   globalThis.fetch = realFetch;
   removeTempDir(dir);

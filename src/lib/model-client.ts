@@ -131,10 +131,11 @@ export type ChatRequestOptions = {
   // llama.cpp and vLLM honor chat_template_kwargs, and OpenRouter ignores
   // the unknown field. OpenAI answers 400 for it, so describeEndpoint keeps
   // it off that backend entirely. Reasoning deltas never reach onDelta: the
-  // stream parser forwards only delta.content. `false` is sent too, not
-  // left to the server: Qwen's and Gemma's chat templates reason by default,
-  // so a call that wants none (the final narration) would think anyway.
-  // Left unset, the server's default stands.
+  // stream parser forwards only delta.content, and reads the reasoning only
+  // to stop a loop in it. `false` is sent too, not left to the server:
+  // Qwen's and Gemma's chat templates reason by default, so a call that
+  // wants none (the final narration) would think anyway. Left unset, the
+  // server's default stands.
   thinking?: boolean;
   // Body fields a previous attempt was rejected for, omitted on the retry.
   // Set only by requestCustomMessage's own unsupported-parameter path; no
@@ -403,8 +404,8 @@ function createRequestTimeout(ms: number) {
 
 // Thrown from inside a stream reader to stop a reply that began repeating.
 // firstCopy is the reply up to the end of the loop's first copy, or null
-// when that copy ends inside reasoning the server left in the reply, which
-// leaves no reply to keep.
+// when there is no reply to keep: a loop in the reasoning channel, or one
+// whose first copy ends inside reasoning the server left in the reply.
 class StreamRepetitionError extends Error {
   readonly firstCopy: string | null;
 
@@ -443,6 +444,20 @@ function guardStreamDelta(onDelta: StreamDeltaHandler | undefined, cancel: () =>
       throw new StreamRepetitionError(firstCopyOf(streamed, guard.firstCopyEnd));
     }
     onDelta(text);
+  };
+}
+
+// The reasoning channel loops too, and on a server with no reasoning budget
+// it runs to the output cap before any story text. Read only for that; it
+// never reaches the table.
+function guardReasoningDelta(streaming: boolean, cancel: () => void) {
+  if (!streaming) return undefined;
+  const guard = createStreamRepetitionGuard();
+  return (text: string) => {
+    if (guard.push(text)) {
+      cancel();
+      throw new StreamRepetitionError(null);
+    }
   };
 }
 
@@ -777,6 +792,7 @@ export async function requestCustomMessage(
   );
   const requestTimeout = createRequestTimeout(timeoutMs);
   const guardedDelta = guardStreamDelta(onDelta, requestTimeout.cancel);
+  const guardedReasoning = guardReasoningDelta(Boolean(onDelta), requestTimeout.cancel);
   let upstream: Response;
   try {
     upstream = await fetchBackend(endpoint, {
@@ -943,6 +959,7 @@ export async function requestCustomMessage(
     try {
       const reply = await readResponsesReply(upstream, {
         onDelta: guardedDelta,
+        onReasoningDelta: guardedReasoning,
         idleMs: timeoutMs,
         onIdleAbort: requestTimeout.abortNow,
       });
@@ -995,7 +1012,10 @@ export async function requestCustomMessage(
           return;
         }
         const record = parsed as {
-          choices?: Array<{ delta?: { content?: unknown; tool_calls?: unknown }; finish_reason?: unknown }>;
+          choices?: Array<{
+            delta?: { content?: unknown; tool_calls?: unknown; reasoning_content?: unknown; reasoning?: unknown };
+            finish_reason?: unknown;
+          }>;
           error?: { message?: string } | string;
           service_tier?: unknown;
         };
@@ -1015,6 +1035,18 @@ export async function requestCustomMessage(
         }
         streamUsage = chatUsage(record) ?? streamUsage;
         const delta = record.choices?.[0]?.delta;
+        // llama.cpp and DeepSeek name the reasoning reasoning_content;
+        // OpenRouter and newer vLLM name it reasoning. One of them, so a
+        // server that sends both is not read twice.
+        const thought =
+          typeof delta?.reasoning_content === "string"
+            ? delta.reasoning_content
+            : typeof delta?.reasoning === "string"
+              ? delta.reasoning
+              : "";
+        if (thought) {
+          guardedReasoning?.(thought);
+        }
         if (typeof delta?.content === "string" && delta.content) {
           contentParts.push(delta.content);
           guardedDelta?.(delta.content);
@@ -1154,6 +1186,7 @@ export async function requestLocalMessage(
   );
   const requestTimeout = createRequestTimeout(timeoutMs);
   const guardedDelta = guardStreamDelta(onDelta, requestTimeout.cancel);
+  const guardedReasoning = guardReasoningDelta(Boolean(onDelta), requestTimeout.cancel);
   let upstream: Response;
   try {
     upstream = await fetchBackend(`${baseUrl}/api/chat`, {
@@ -1230,12 +1263,15 @@ export async function requestLocalMessage(
           return;
         }
         const record = parsed as {
-          message?: { content?: unknown; tool_calls?: unknown };
+          message?: { content?: unknown; tool_calls?: unknown; thinking?: unknown };
           error?: unknown;
         };
         if (record.error) {
           upstreamError = String(record.error);
           return;
+        }
+        if (typeof record.message?.thinking === "string" && record.message.thinking) {
+          guardedReasoning?.(record.message.thinking);
         }
         if (typeof record.message?.content === "string" && record.message.content) {
           contentParts.push(record.message.content);
