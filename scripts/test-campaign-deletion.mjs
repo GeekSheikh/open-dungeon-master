@@ -29,6 +29,7 @@ const { createUser } = await import("../src/lib/db/users.ts");
 const { createCampaign, getCampaignById } = await import("../src/lib/db/campaigns.ts");
 const { campaignFilePaths, filePathsIn } = await import("../src/lib/image-files.ts");
 const { deleteCampaignWithFiles } = await import("../src/lib/campaign-deletion.ts");
+const rolls = await import("../src/lib/db/creation-rolls.ts");
 
 let passed = 0;
 function test(name, fn) {
@@ -139,6 +140,22 @@ write("secret.png");
 write("generated-audio", doomed.id, "m1.mp3");
 write("generated-audio", kept.id, "m9.mp3");
 
+// Dice Alice is owed while building (src/lib/db/creation-rolls.ts): an
+// ability six and a class's starting wealth at each table that rolls its
+// own, and her library six, which belongs to no table. The table that keeps
+// them is asked for before anyone has rolled.
+const rollsTableBeforeAnyRoll = Boolean(
+  db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'creation_rolls'`).get(),
+);
+const ownRule = (campaign) => rolls.abilityRollPlace({ id: campaign.id, gameSettings: { abilityRerollBelow: 108 } });
+rolls.rollAbilityPool(alice.id, ownRule(doomed));
+rolls.rollStartingWealth(alice.id, doomed.id, "fighter");
+rolls.rollAbilityPool(alice.id, ownRule(kept));
+rolls.rollStartingWealth(alice.id, kept.id, "wizard");
+rolls.rollAbilityPool(alice.id);
+const creationRolls = (scope) =>
+  db.prepare(`SELECT COUNT(*) AS n FROM creation_rolls WHERE scope = ? OR scope LIKE ?`).get(scope, `${scope}:%`).n;
+
 test("only our own file shapes are picked out of stored text", () => {
   assert.deepEqual(
     filePathsIn(
@@ -181,6 +198,20 @@ test("deleting removes the rows, the art only it used and its narration", () => 
   assert.equal(exists("generated", "1700000000000-42-comfyui-a-cave.png"), false);
   assert.equal(exists("generated", "1700000000000-42-comfyui-a-cave.w1024.webp"), false);
   assert.equal(exists("generated-audio", doomed.id), false);
+});
+
+test("the dice its players were owed go with it; the other table's and the library's stay", () => {
+  assert.equal(creationRolls(doomed.id), 0);
+  assert.equal(creationRolls(kept.id), 2);
+  assert.ok(rolls.openAbilityPool(alice.id), "the library six went with a table");
+  assert.ok(rolls.openWealthRoll(alice.id, kept.id, "wizard"));
+});
+
+test("a campaign is deleted on a server where nobody has rolled yet: the table of rolls is part of the schema", () => {
+  assert.ok(rollsTableBeforeAnyRoll, "creation_rolls is made only on first use, so a delete before it would fail");
+  const quiet = createCampaign(alice.id, table("A quiet table"));
+  deleteCampaignWithFiles(quiet.id);
+  assert.equal(getCampaignById(quiet.id), null);
 });
 
 test("art another row still names stays, and so does the other table", () => {

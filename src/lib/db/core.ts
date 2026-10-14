@@ -2343,6 +2343,22 @@ function ensureSchema(db: SqliteDatabase) {
     );
     CREATE INDEX IF NOT EXISTS idx_content_origins_origin
       ON content_origins(campaign_id, origin_id, origin_row_id);
+
+    -- Dice a player is owed while building a character, thrown and kept by
+    -- the server (src/lib/db/creation-rolls.ts). scope is '' for the
+    -- library's ability six, a campaign id for a table with its own reroll
+    -- rule, and "<campaign id>:<class>" for a table's rolled starting
+    -- wealth. No foreign keys: deleteCampaign and purgeAccount clear the
+    -- rows by hand. That module used to make the table on first use, with
+    -- this same definition, so a database that has it already is unchanged.
+    CREATE TABLE IF NOT EXISTS creation_rolls (
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      scope TEXT NOT NULL DEFAULT '',
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, kind, scope)
+    );
   `);
   // Databases that created player_webhooks before receivers could carry
   // their own Authorization value or extra headers (docs/player-webhooks.md).

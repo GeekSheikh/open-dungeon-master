@@ -13,8 +13,9 @@ import { tableRerollBelow } from "@/lib/srd/ability-rerolls";
 // One open roll of each kind per player (and, for wealth, per table and
 // class). A roll is spent when a character is made with it.
 //
-// The table is this module's own and is created on first use, so the schema
-// file does not have to know about it.
+// The table is created with the rest of the schema (src/lib/db/core.ts), so
+// deleting a campaign or an account can clear its rows without first asking
+// whether anyone ever rolled.
 
 const POOL_SIZE = 6;
 
@@ -53,28 +54,6 @@ export function abilityRollPlace(
   };
 }
 
-// Keyed by the connection, so a process that opens a second database (a
-// test, a restore) makes the table there too.
-const ensured = new WeakSet<object>();
-
-function db() {
-  const database = getDatabase();
-  if (!ensured.has(database)) {
-    database.exec(`
-      CREATE TABLE IF NOT EXISTS creation_rolls (
-        user_id TEXT NOT NULL,
-        kind TEXT NOT NULL,
-        scope TEXT NOT NULL DEFAULT '',
-        payload_json TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        PRIMARY KEY (user_id, kind, scope)
-      );
-    `);
-    ensured.add(database);
-  }
-  return database;
-}
-
 export type AbilityPoolRoll = {
   // The four faces of each throw and the total with the lowest set aside.
   throws: Array<{ dice: number[]; dropIndex: number; total: number }>;
@@ -91,7 +70,7 @@ export type AbilityPoolRoll = {
 };
 
 function read<T>(userId: string, kind: string, scope: string): { payload: T; createdAt: string } | null {
-  const row = db()
+  const row = getDatabase()
     .prepare(`SELECT payload_json, created_at FROM creation_rolls WHERE user_id = ? AND kind = ? AND scope = ?`)
     .get(userId, kind, scope) as { payload_json: string; created_at: string } | undefined;
   if (!row) {
@@ -102,7 +81,7 @@ function read<T>(userId: string, kind: string, scope: string): { payload: T; cre
 }
 
 function write(userId: string, kind: string, scope: string, payload: unknown) {
-  db()
+  getDatabase()
     .prepare(
       `INSERT INTO creation_rolls (user_id, kind, scope, payload_json, created_at)
        VALUES (?, ?, ?, ?, ?)
@@ -113,7 +92,7 @@ function write(userId: string, kind: string, scope: string, payload: unknown) {
 }
 
 function clear(userId: string, kind: string, scope: string) {
-  db()
+  getDatabase()
     .prepare(`DELETE FROM creation_rolls WHERE user_id = ? AND kind = ? AND scope = ?`)
     .run(userId, kind, scope);
 }
@@ -195,7 +174,7 @@ export function rollStartingWealth(userId: string, campaignId: string, classId: 
 }
 
 export function spendWealthRolls(userId: string, campaignId: string) {
-  db()
+  getDatabase()
     .prepare(`DELETE FROM creation_rolls WHERE user_id = ? AND kind = 'wealth' AND scope LIKE ?`)
     .run(userId, `${campaignId}:%`);
 }

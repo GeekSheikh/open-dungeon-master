@@ -422,6 +422,10 @@ export function deleteCampaign(campaignId: string) {
        AND id IN (SELECT user_id FROM character_sheets WHERE campaign_id = ?)`,
   ).run(campaignId);
   db.prepare(`DELETE FROM campaigns WHERE id = ?`).run(campaignId);
+  // The dice its players were owed while building (src/lib/db/creation-rolls.ts):
+  // the table's own ability six and its rolled starting wealth. Keyed by
+  // scope, not by a foreign key, so no cascade takes them.
+  db.prepare(`DELETE FROM creation_rolls WHERE scope = ? OR scope LIKE ?`).run(campaignId, `${campaignId}:%`);
   // Anyone still at the table stops hearing it now (src/lib/live-streams.ts),
   // and turns still waiting for it are not run against rows that are gone.
   closeStreamsForCampaign(campaignId);
