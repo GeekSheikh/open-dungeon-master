@@ -147,4 +147,41 @@ await test("A retry that fails again leaves a fresh notice with the link, and a 
   world.close();
 });
 
+await test("A main call that starts repeating one long passage is stopped with the halted notice, its tool call never runs, and the lead's Retry narrates once.", async () => {
+  const { world, kara, model } = await table();
+  const goldBefore = world.sheet(kara.id).gold;
+  const passage =
+    "Mother Hesk leans across the table, her ledger open to a page of names struck through in red ink, and taps the last one twice as the rain drums on the shutters.";
+  assert.ok(passage.length >= 160);
+  model.script([
+    reply({
+      text: (passage + "\n\n").repeat(6),
+      calls: [call("modify_gold", { characterId: kara.id, delta: 10, reason: "the council's advance" })],
+    }),
+  ]);
+  const halted = await model.turn(world, "I take the council's job.", kara.id);
+  assert.equal(halted, null, "the loop was posted as narration");
+
+  const turnId = getLatestDmTurnId(world.campaignId);
+  assert.equal(getDmTurn(turnId).status, "failed");
+  assert.equal(getDmStatus(world.campaignId), "idle");
+  const [notice] = notices(world);
+  assert.ok(notice, "the table was not told the DM stopped");
+  assert.match(notice.content, /repeating the same long passage/);
+  assert.equal(notice.dmTurnId, turnId, "the notice does not link the turn to retry");
+  assert.equal(model.served(), 1, "the halted call was asked again inside the turn");
+  assert.equal(world.sheet(kara.id).gold, goldBefore, "a tool call from the cut stream ran");
+
+  model.script([reply({ text: "Mother Hesk slides the job's seal across the table." })]);
+  const retried = await retry(world, world.owner, turnId);
+  assert.equal(retried.status, 200, JSON.stringify(retried.json));
+  assert.equal(getDmTurn(turnId).status, "done");
+  const said = narrations(world);
+  assert.equal(said.length, 1, `expected one narration, found ${said.length}`);
+  assert.match(said[0].content, /slides the job's seal/);
+  assert.ok(!said[0].content.includes(passage), "the loop reached the narration");
+  model.close();
+  world.close();
+});
+
 finish();
