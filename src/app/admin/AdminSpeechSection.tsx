@@ -183,7 +183,7 @@ export function AdminSpeechSection({
               value={speech.ttsModel}
               onChange={(ttsModel) => set({ ttsModel })}
               narrow={SPEECH_MODELS.narration}
-              blankLabel={env.ttsModel ? fromEnv(env.ttsModel, "TTS_MODEL") : BLANK.narration}
+              blankLabel={env.ttsModel ? fromEnv(env.ttsModel, "TTS_MODEL") : official ? BLANK.narration : BLANK.narrationServer}
             />
             <SecretField
               label="API key"

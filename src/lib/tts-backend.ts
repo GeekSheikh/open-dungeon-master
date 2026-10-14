@@ -1,4 +1,5 @@
 import { configValue, getGlobalConfig } from "@/lib/app-config";
+import { soleListedModel } from "@/lib/model-registry/discovery";
 import { openAiSpeechConfig } from "@/lib/openai-images";
 import { TTS_VOICES } from "@/lib/tts-voices";
 
@@ -15,7 +16,9 @@ import { TTS_VOICES } from "@/lib/tts-voices";
 // Both kinds are the same request on the wire; the kind only picks the
 // defaults, so a server set up before this existed keeps working untouched.
 // An "openai" server's model has no default: it is the admin's pick from
-// what the server lists, and with none picked nothing is sent.
+// what the server lists. With none picked, a server of the host's own that
+// lists exactly one model runs that one (narrationModel below); otherwise
+// nothing is sent.
 // The decision logic is pure and exported so scripts/test-tts-backend.mjs can
 // drive it without a network.
 
@@ -273,11 +276,32 @@ async function requestSpeech(backend: TtsBackend, input: string, voice: string, 
   return audio;
 }
 
+// The model a passage is asked for: the one picked (or TTS_MODEL), else, on
+// an OpenAI-compatible server that is not OpenAI itself, the only model it
+// lists, the way dictation's Whisper service runs its one (src/lib/stt.ts).
+// OpenAI lists dozens, so nothing is taken from its list. "" when there is
+// none: nothing is sent, and the readiness checks say narration is not
+// ready (src/lib/capabilities.ts).
+export async function narrationModel(backend: TtsBackend): Promise<string> {
+  if (backend.model || backend.provider !== "openai" || isOpenAiHost(backend.v1)) {
+    return backend.model;
+  }
+  return soleListedModel({ provider: "speech", baseUrl: backend.v1, apiKey: backend.apiKey });
+}
+
+// The backend with its model settled, for a caller that sends several clips
+// or names the model (the usage ledger, the render cache, the admin's test).
+export async function withNarrationModel(backend: TtsBackend): Promise<TtsBackend> {
+  const model = await narrationModel(backend);
+  return model === backend.model ? backend : { ...backend, model };
+}
+
 // One clip of speech from the configured server.
-export async function synthesizeSpeech(input: string, voice: string, speed = 1, backend: TtsBackend = ttsBackend()): Promise<Buffer> {
-  if (backend.provider === "off") {
+export async function synthesizeSpeech(input: string, voice: string, speed = 1, configured: TtsBackend = ttsBackend()): Promise<Buffer> {
+  if (configured.provider === "off") {
     throw new Error("Narration is switched off on this server.");
   }
+  const backend = await withNarrationModel(configured);
   if (!backend.model) {
     throw new SpeechModelMissingError();
   }

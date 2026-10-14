@@ -24,8 +24,9 @@ export function notChosen(runs: string): string {
 
 // A blank that runs the server's only model (the storyteller, #273's rule
 // in src/lib/model-registry/discovery.ts; a Whisper service,
-// src/lib/stt.ts): named, so the admin sees what is sent, and left blank,
-// so it follows the server when its model changes. Until the server
+// src/lib/stt.ts; a narration server that is not OpenAI,
+// src/lib/tts-backend.ts): named, so the admin sees what is sent, and left
+// blank, so it follows the server when its model changes. Until the server
 // answers, nobody knows whether it has just one.
 export function soleModelBlank(otherwise: string): (choices: ModelChoices | null) => string {
   return (choices) => {
@@ -43,6 +44,9 @@ export const BLANK = {
   picture: noneLabel("pictures"),
   checkpoint: noneLabel("pictures"),
   narration: noneLabel("narration"),
+  // A narration server of the host's own runs its only model for a blank,
+  // as a Whisper service does (src/lib/tts-backend.ts narrationModel).
+  narrationServer: soleModelBlank(noneLabel("narration")),
   whisper: soleModelBlank(noneLabel("Whisper dictation")),
   transcription: noneLabel("paid dictation"),
   // The agent program's own choice, which only the program knows.

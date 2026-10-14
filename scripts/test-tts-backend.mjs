@@ -33,6 +33,7 @@ const {
   describeSpeechFailure,
   upstreamDetail,
   synthesizeSpeech,
+  narrationModel,
   serverVoices,
   ttsBackend,
   SpeechHttpError,
@@ -44,6 +45,7 @@ const { subscribe } = await import("../src/lib/events.ts");
 const { createUser } = await import("../src/lib/db/users.ts");
 const { createCampaign } = await import("../src/lib/db/campaigns.ts");
 const { speechProbeUrl, backendPlace } = await import("../src/lib/capabilities.ts");
+const { forgetSoleModelsForTests } = await import("../src/lib/model-registry/discovery.ts");
 
 let passed = 0;
 async function test(name, fn) {
@@ -172,11 +174,18 @@ await test("a preview clip is named for the server, the model and the voice", ()
 
 const seen = [];
 let mode = "ok";
+// What the stand-in lists at /v1/models; null answers 404, as Kokoro does.
+let listedModels = null;
 const server = http.createServer((request, response) => {
   let body = "";
   request.on("data", (chunk) => (body += chunk));
   request.on("end", () => {
     seen.push({ url: request.url, auth: request.headers.authorization ?? "", body: body ? JSON.parse(body) : null });
+    if (request.url === "/v1/models" && listedModels) {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ data: listedModels.map((id) => ({ id })) }));
+      return;
+    }
     if (request.url === "/v1/audio/voices") {
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(JSON.stringify({ voices: ["af_heart", "narrator_one"] }));
@@ -303,6 +312,41 @@ await test("a passage with no narration model picked is published as failed, say
   assert.match(takeNarrationFailure("msg-unpicked") ?? "", /Admin > Speech/);
   assert.equal(seen.filter((entry) => entry.url === "/v1/audio/speech").length, before);
   saveGlobalConfig({ speech: { ttsModel: "my-tts" } });
+});
+
+await test("a server of the host's own that lists one model runs it for a blank field; one with several, and OpenAI, do not", async () => {
+  mode = "ok";
+  const speech = () => seen.filter((entry) => entry.url === "/v1/audio/speech");
+  saveGlobalConfig({ speech: { ttsProvider: "openai", ttsBaseUrl: base, ttsModel: "", ttsApiKey: "sk-local", ttsVoice: "narrator_one" } });
+  forgetSoleModelsForTests();
+  listedModels = ["only-voice"];
+  assert.equal(await narrationModel(ttsBackend()), "only-voice");
+  await synthesizeSpeech("Hi.", "narrator_one", 1, ttsBackend());
+  assert.equal(speech().at(-1).body.model, "only-voice", "the server's only model is asked for");
+  assert.equal(seen.filter((entry) => entry.url === "/v1/models").at(-1).auth, "Bearer sk-local", "listed with the server's own key");
+  // A passage is published with the model that read it.
+  await enqueueNarrationAudio(CAMP, "msg-sole", "The bell tolls.", [], "narrator_one");
+  assert.equal(takeNarrationFailure("msg-sole"), null);
+  assert.equal(speech().at(-1).body.model, "only-voice");
+
+  forgetSoleModelsForTests();
+  listedModels = ["voice-a", "voice-b"];
+  const before = speech().length;
+  await assert.rejects(synthesizeSpeech("Hi.", "narrator_one", 1, ttsBackend()), /No narration model is picked/);
+  assert.equal(speech().length, before, "two models and none picked: nothing is asked for");
+
+  // OpenAI lists dozens: nothing is taken from its list, and it is not asked.
+  saveGlobalConfig({ speech: { ttsBaseUrl: "https://api.openai.com/v1" } });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => assert.fail("OpenAI was asked for its models");
+  try {
+    assert.equal(await narrationModel(ttsBackend()), "");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  listedModels = null;
+  forgetSoleModelsForTests();
+  saveGlobalConfig({ speech: { ttsBaseUrl: base, ttsModel: "my-tts" } });
 });
 
 await test("Kokoro still sends its own model name", async () => {
