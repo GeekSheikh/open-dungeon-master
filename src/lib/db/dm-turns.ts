@@ -195,6 +195,25 @@ export function getAwaitingTurn(campaignId: string): DmTurn | null {
   return row ? mapTurn(row) : null;
 }
 
+// Whether the campaign's newest AI turn is one the storyteller parked on
+// physical dice: what the status line said while the process that parked it
+// was up (src/lib/dm/status.ts reads this when it has no status of its own).
+// Only AI turns count, because a person's adjudications (an opportunity
+// strike, a zone, the console) open turns of their own mid-play without
+// touching the status line. Of those, only one that asked the model
+// (call_index above 0) is the storyteller's: a monster pass a person
+// delegates, or an agent program's turn, never owned the line. An older
+// parked turn the table walked past, with a new action instead of the roll,
+// is not the newest and reads idle, as it did then.
+export function latestTurnParkedByAi(campaignId: string): boolean {
+  const row = getDatabase()
+    .prepare(
+      `SELECT status, call_index FROM dm_turns WHERE campaign_id = ? AND actor = 'ai' ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+    )
+    .get(campaignId) as { status: DmTurnStatus; call_index: number } | undefined;
+  return row?.status === "awaiting_rolls" && row.call_index > 0;
+}
+
 // ---- pending physical rolls ----
 
 export type PendingRollStatus = "pending" | "submitted" | "fallback";
