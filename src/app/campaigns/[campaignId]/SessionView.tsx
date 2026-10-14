@@ -34,8 +34,9 @@ import {
 } from "react";
 import { JOIN_NOTE_PREFIX, latestUnintroducedJoin } from "@/lib/campaign-types";
 import { composerLimit, textLength } from "@/lib/text-limits";
-import { markTourSeen, tourSeen } from "@/lib/tours/logic";
+import type { TourEnd } from "@/lib/tours/account-logic";
 import { DM_TOUR, DM_TOUR_ID, PLAYER_TOUR, PLAYER_TOUR_ID } from "@/lib/tours/table";
+import { finishTour, useTourFinished } from "@/lib/tours/tour-store";
 import { Composer, type InputKind } from "@/app/campaigns/[campaignId]/Composer";
 import { composerGate } from "@/app/campaigns/[campaignId]/composerGate";
 import { DiceOverlay } from "@/app/campaigns/[campaignId]/DiceOverlay";
@@ -162,30 +163,6 @@ function subscribeDicePref(callback: () => void) {
   };
   window.addEventListener(DICE3D_EVENT, listener);
   return () => window.removeEventListener(DICE3D_EVENT, listener);
-}
-
-// The once-only flag of each table tour, read the way the dice preference
-// is: from localStorage as an external store, so finishing a tour in one
-// tab is known to every other.
-const TOUR_SEEN_EVENT = "odm-tour-seen";
-const tourSeenCache = new Map<string, boolean>();
-
-function readTourSeen(tourId: string): boolean {
-  let seen = tourSeenCache.get(tourId);
-  if (seen === undefined) {
-    seen = tourSeen(window.localStorage, tourId);
-    tourSeenCache.set(tourId, seen);
-  }
-  return seen;
-}
-
-function subscribeTourSeen(callback: () => void) {
-  const listener = () => {
-    tourSeenCache.clear();
-    callback();
-  };
-  window.addEventListener(TOUR_SEEN_EVENT, listener);
-  return () => window.removeEventListener(TOUR_SEEN_EVENT, listener);
 }
 
 // The play table. Header, the story column, the docked context column and
@@ -420,14 +397,11 @@ export function SessionView({
     setKind("narrate");
   }
 
-  // The tour for this seat runs once, the first time the table is sat at,
-  // after the layout has had a moment to settle. Help replays it.
+  // The tour for this seat runs once per account, the first time the table
+  // is sat at, after the layout has had a moment to settle; only a definite
+  // "not finished" from the account opens it (issue #306). Help replays it.
   const tourId = isDm ? DM_TOUR_ID : PLAYER_TOUR_ID;
-  const tourAlreadySeen = useSyncExternalStore(
-    subscribeTourSeen,
-    () => readTourSeen(tourId),
-    () => true,
-  );
+  const seatTourFinished = useTourFinished(tourId);
   // A phone starts the tour on the chat column: which steps apply is read
   // off the page before any step's prepare runs, and a fight with a map
   // opens the phone on the board, which would drop every composer step.
@@ -439,15 +413,19 @@ export function SessionView({
     [setMobileView],
   );
   useEffect(() => {
-    if (tourAlreadySeen) return;
+    if (seatTourFinished !== false) return;
     const timer = window.setTimeout(() => startTour(isDm ? "dm" : "player"), 1200);
     return () => clearTimeout(timer);
-  }, [tourAlreadySeen, isDm, startTour]);
-  const closeTour = useCallback(() => {
-    markTourSeen(window.localStorage, tourId);
-    window.dispatchEvent(new Event(TOUR_SEEN_EVENT));
-    setTour(null);
-  }, [tourId]);
+  }, [seatTourFinished, isDm, startTour]);
+  // The tour that was on screen is the one finished: Help can replay the
+  // other seat's, and the seat can change while a tour is open.
+  const closeTour = useCallback(
+    (how: TourEnd) => {
+      if (tour) finishTour(tour === "dm" ? DM_TOUR_ID : PLAYER_TOUR_ID, how);
+      setTour(null);
+    },
+    [tour],
+  );
   // The campaign's opening narration gets everyone's full attention: while
   // it plays for this user, do/say/lead input waits (OOC stays open).
   const firstDmMessageId = messages.find((message) => message.authorType === "dm")?.id;
