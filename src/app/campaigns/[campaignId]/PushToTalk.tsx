@@ -21,6 +21,8 @@ export function PushToTalk({
 
   // No Whisper, no built-in engine and no device recognizer: a mic that can
   // only fail is not offered (Admin > Speech says the buttons are hidden).
+  // A take that is live when the engine goes is ended by useDictation, since
+  // the button it would be released on is gone.
   if (!available) {
     return null;
   }

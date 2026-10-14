@@ -69,6 +69,16 @@ export function useCapabilities(): ClientCapabilities | null {
   return value;
 }
 
+// Every fresh answer, for code that acts on a change instead of drawing it
+// (useDictation ends a live take when speech-to-text goes away). Returns the
+// unsubscribe.
+export function subscribeCapabilities(listener: (value: ClientCapabilities | null) => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
 // The two questions the builders ask. Both read "unknown" as "offered" so a
 // paint button only disappears on a positive answer from the server.
 

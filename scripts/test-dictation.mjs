@@ -213,6 +213,17 @@ test("both mic buttons hide when there is no engine", () => {
   assert.match(pushToTalk, /if \(!available\) \{\s*return null;\s*\}/);
 });
 
+// A take still live when the engine goes (a capabilities refresh that finds
+// no speech-to-text) is ended by the hook: the button it would be released
+// on hides with the engine, and the recorder would run to its time limit.
+test("a live take ends when the engine goes away", () => {
+  const hook = readFileSync(new URL("../src/lib/use-dictation.ts", import.meta.url), "utf8");
+  assert.match(
+    hook,
+    /subscribeCapabilities\(\(next\) => \{\s*if \(activeRef\.current && pickDictationEngine\(next\?\.stt, hasNativeDictation\(\)\) === "none"\) \{\s*cancel\(\);/,
+  );
+});
+
 test("WAV goes out and comes back as the same samples", () => {
   const samples = Float32Array.from({ length: 1600 }, (_, index) => Math.sin(index / 7) * 0.5);
   const bytes = encodeWav(samples);
