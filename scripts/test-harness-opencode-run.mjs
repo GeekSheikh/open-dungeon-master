@@ -192,5 +192,27 @@ await test("leftover sessions are deleted at the start, and one already gone, or
   fs.rmSync(kept, { recursive: true, force: true });
 });
 
+await test("a frame that is not JSON, or an event short of a figure, does not end the turn's stream", async () => {
+  const session = { sessionID: "ses_fake" };
+  const events = [
+    "not json at all",
+    "null",
+    { type: "session.text.delta", data: { sessionID: "ses_other", delta: "Someone else's. " } },
+    { type: "session.text.delta", data: { ...session, delta: "The goblin falls." } },
+    { type: "session.step.ended", data: { ...session, tokens: { input: 30, output: 5 } } },
+    { type: "session.execution.succeeded", data: session },
+  ];
+  const { session: started, heard, done } = await run({ scenario: { models: [ALPHA], events }, keep: true });
+  started.send("The goblin attacks.");
+  for (let waited = 0; !heard.some((event) => event.type === "turn_end" || event.type === "error") && waited < 5_000; waited += 50) {
+    await sleep(50);
+  }
+  await done();
+  assert.deepEqual(heard.slice(1), [
+    { type: "delta", text: "The goblin falls." },
+    { type: "turn_end", text: "The goblin falls.", usage: { inputTokens: 30, outputTokens: 5 } },
+  ]);
+});
+
 removeTempDir(dir);
 console.log(`opencode run: ${passed} checks passed`);

@@ -742,7 +742,33 @@ test("opencode 2's events become ODM's: narration only, usage summed over the tu
     { type: "error", kind: "limit", message: "Rate limit reached for requests" },
   ]);
   assert.deepEqual(readOpencodeEvent(turn, { type: "session.retry.scheduled", data: { ...session, attempt: 2, error: { type: "provider.overloaded", message: "busy" } } }), [], "other retries are opencode's to make");
+  // A provider that cannot be reached (the local model server is not
+  // running): opencode would retry until the turn times out with no reason
+  // given, so the turn ends with opencode's after a few tries.
+  const transport = { type: "provider.transport", message: "ConnectionRefused: Unable to connect. Is the computer able to access the url?" };
+  for (const attempt of [2, 3]) {
+    assert.deepEqual(readOpencodeEvent(turn, { type: "session.retry.scheduled", data: { ...session, attempt, error: transport } }), [], `retry ${attempt}`);
+  }
+  assert.deepEqual(readOpencodeEvent(turn, { type: "session.retry.scheduled", data: { ...session, attempt: 4, error: transport } }), [
+    { type: "error", kind: "crash", message: `opencode could not reach the model's provider: ${transport.message}` },
+  ]);
   assert.equal(readOpencodeEvent(turn, { type: "session.execution.failed", data: { sessionID: "ses_1", error: { type: "unknown", message: "boom" } } })[0].kind, "crash");
+  // A figure a later opencode leaves out counts as none, and a delta that is
+  // not text is no narration.
+  const sparse = { text: "", inputTokens: 0, outputTokens: 0 };
+  assert.deepEqual(
+    [
+      { type: "session.text.delta", data: { ...session, delta: undefined } },
+      { type: "session.text.delta", data: { ...session, delta: "Done." } },
+      { type: "session.step.ended", data: { ...session, tokens: { input: 9, output: 4 } } },
+      { type: "session.step.ended", data: { ...session } },
+      { type: "session.execution.succeeded", data: { sessionID: "ses_1" } },
+    ].flatMap((event) => readOpencodeEvent(sparse, event)),
+    [
+      { type: "delta", text: "Done." },
+      { type: "turn_end", text: "Done.", usage: { inputTokens: 9, outputTokens: 4 } },
+    ],
+  );
 });
 
 test("opencode below 2 is installed but unsupported", () => {

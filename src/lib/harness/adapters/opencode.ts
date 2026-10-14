@@ -23,7 +23,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync 
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { runProgram, spawnProgram } from "../process.ts";
+import { parseJsonLine, runProgram, spawnProgram } from "../process.ts";
 import type {
   HarnessAdapter,
   HarnessConfig,
@@ -47,6 +47,10 @@ const TOOLS_SETTLE_MS = 1_000;
 // run folder is still there: no run lives longer than HARNESS_MAX_RUN_MS,
 // and the margin covers a clock that is a little off.
 const STALE_AFTER_MS = HARNESS_MAX_RUN_MS + 10 * 60_000;
+// How many times opencode may fail to reach a provider before the turn
+// stops with its reason: about six seconds of its backoff on 2.0.27, where
+// the turn would otherwise wait out its whole timeout.
+const TRANSPORT_TRIES = 3;
 const NO_MODEL_MESSAGE = "opencode has no model it can use outside its own app. Connect a provider with `opencode auth login`.";
 
 type Effect = "allow" | "ask" | "deny";
@@ -447,23 +451,29 @@ function errorEvent(error: OpencodeError | undefined): HarnessEvent {
   };
 }
 
+const count = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+
 // One event from opencode's stream, already known to be this run's session,
 // as what ODM hears. Updates `turn`; reasoning is never passed on, the
 // players must not see it.
 export function readOpencodeEvent(turn: OpencodeTurn, event: OpencodeEvent): HarnessEvent[] {
   if (event.type === "session.text.delta") {
-    const delta = String(event.data.delta);
-    turn.text += delta;
-    return [{ type: "delta", text: delta }];
+    if (typeof event.data.delta !== "string") {
+      return [];
+    }
+    turn.text += event.data.delta;
+    return [{ type: "delta", text: event.data.delta }];
   }
   if (event.type === "session.step.ended") {
     // opencode splits a step's prompt into uncached, cache-read and
     // cache-written tokens, and its reply into text and reasoning; the
     // ledger counts the whole prompt and everything generated, as an
-    // OpenAI-compatible backend reports them.
-    const tokens = event.data.tokens as { input: number; output: number; reasoning: number; cache: { read: number; write: number } };
-    turn.inputTokens += tokens.input + tokens.cache.read + tokens.cache.write;
-    turn.outputTokens += tokens.output + tokens.reasoning;
+    // OpenAI-compatible backend reports them. A figure it leaves out counts
+    // as none.
+    const tokens = record(event.data.tokens);
+    const cache = record(tokens.cache);
+    turn.inputTokens += count(tokens.input) + count(cache.read) + count(cache.write);
+    turn.outputTokens += count(tokens.output) + count(tokens.reasoning);
     return [];
   }
   if (event.type === "session.execution.succeeded") {
@@ -478,10 +488,26 @@ export function readOpencodeEvent(turn: OpencodeTurn, event: OpencodeEvent): Har
   if (event.type === "session.execution.failed") {
     return [errorEvent(event.data.error as OpencodeError | undefined)];
   }
-  // opencode retries a rate limit on its own backoff for as long as it
-  // lasts; the turn stops instead, as it does for the other programs.
-  if (event.type === "session.retry.scheduled" && (event.data.error as OpencodeError | undefined)?.type === "provider.rate-limit") {
-    return [errorEvent(event.data.error as OpencodeError)];
+  if (event.type === "session.retry.scheduled") {
+    const error = event.data.error as OpencodeError | undefined;
+    // opencode retries a rate limit on its own backoff for as long as it
+    // lasts; the turn stops instead, as it does for the other programs.
+    if (error?.type === "provider.rate-limit") {
+      return [errorEvent(error)];
+    }
+    // A provider it cannot reach (a local model server that is not
+    // running) it retries for as long as the turn would wait, which then
+    // ends with no reason given; a few tries are enough to say why. Retry
+    // number N comes after N - 1 failed tries.
+    if (error?.type === "provider.transport" && count(event.data.attempt) > TRANSPORT_TRIES) {
+      return [
+        {
+          type: "error",
+          kind: "crash",
+          message: `opencode could not reach the model's provider: ${error.message || "no answer"}`,
+        },
+      ];
+    }
   }
   return [];
 }
@@ -695,12 +721,12 @@ export async function startOpencode(options: HarnessStartOptions, config: unknow
           .join("");
         buffer = buffer.slice(index + 2);
         index = buffer.indexOf("\n\n");
-        if (!data) {
-          continue;
-        }
-        const event = JSON.parse(data) as { type: string; data?: Record<string, unknown> };
-        if (sessionId && event.data && event.data.sessionID === sessionId) {
-          for (const heard of readOpencodeEvent(turn, { type: event.type, data: event.data })) {
+        // A frame that is not a JSON object carries nothing for ODM, and
+        // must not end the stream for the frames after it.
+        const event = data ? parseJsonLine(data) : null;
+        const eventData = event ? record(event.data) : {};
+        if (event && sessionId && eventData.sessionID === sessionId) {
+          for (const heard of readOpencodeEvent(turn, { type: String(event.type), data: eventData })) {
             options.onEvent(heard);
           }
         }
