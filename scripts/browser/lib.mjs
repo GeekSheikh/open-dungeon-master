@@ -140,6 +140,19 @@ export async function newContext(browser, viewport, { app }) {
     isMobile: size.touch && app,
     reducedMotion: "no-preference",
   });
+  // The first-visit tours open a moment after their page does, over
+  // whatever a scenario is about to press. On a slow load (the app's screens
+  // on a busy machine) the tour came after settle()'s Escapes and took the
+  // click: offer-settled's Accept and board-enlarged's figure failed that
+  // way. Every tour (src/lib/tours, tourKey) counts as seen before any page
+  // loads; no scenario is about the tour itself.
+  await context.addInitScript((keys) => {
+    try {
+      for (const key of keys) localStorage.setItem(key, "done");
+    } catch {
+      // A page with no storage shows its tour, and settle() closes it.
+    }
+  }, ["table-player", "table-dm", "workshop-shelf", "workshop-hub"].map((id) => `odm:tour:${id}`));
   return context;
 }
 
