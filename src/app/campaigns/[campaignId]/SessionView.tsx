@@ -62,6 +62,9 @@ import {
 } from "@/app/campaigns/[campaignId]/SessionTabs";
 import { SessionChatColumn } from "@/app/campaigns/[campaignId]/SessionChatColumn";
 import { SessionHeader } from "@/app/campaigns/[campaignId]/SessionHeader";
+import { SessionBanner, bannerButtonClass } from "@/app/campaigns/[campaignId]/SessionBanner";
+import { isPrimaryDm } from "@/lib/dm/viewer";
+import Link from "next/link";
 import { SidePanel } from "@/app/campaigns/[campaignId]/SidePanel";
 import { useChatChime } from "@/app/campaigns/[campaignId]/useChatChime";
 import { useTableAudio } from "@/app/campaigns/[campaignId]/useTableAudio";
@@ -438,6 +441,13 @@ export function SessionView({
   // Muted by the party lead: the server refuses the send, so the box says
   // so instead of letting the player type into a wall.
   const muted = Boolean(state.members.find((member) => member.userId === meId)?.muted);
+  // An ended campaign refuses every new action (the actions route), so the
+  // box says so the same way, and the story above it stays to be read.
+  const ended = campaign?.status === "ended";
+  const silenced = muted || ended;
+  const silencedPlaceholder = ended
+    ? "This campaign has ended. The story stays here to read."
+    : "The party lead has muted you at this table.";
   const enemyTurns = state.encounter?.enemyTurns === true;
   const gate = useMemo(
     () =>
@@ -562,7 +572,7 @@ export function SessionView({
       event.preventDefault();
       const content = input.trim();
       // Over the mode's limit the box says so and keeps the draft (issue 207).
-      if (!content || sending || gate.inputBlocked || muted || textLength(content) > composerLimit(kind, leadPrivate)) {
+      if (!content || sending || gate.inputBlocked || silenced || textLength(content) > composerLimit(kind, leadPrivate)) {
         return;
       }
       setSending(true);
@@ -614,7 +624,7 @@ export function SessionView({
         setSending(false);
       }
     },
-    [campaignId, input, sending, gate.inputBlocked, muted, kind, leadPrivate, speaker, mySheet, actingSheet],
+    [campaignId, input, sending, gate.inputBlocked, silenced, kind, leadPrivate, speaker, mySheet, actingSheet],
   );
 
   const clearChatTarget = useCallback(() => setChatTarget(null), []);
@@ -791,8 +801,8 @@ export function SessionView({
       input={input}
       setInput={setInput}
       sending={sending}
-      inputBlocked={gate.inputBlocked || muted}
-      placeholder={muted ? "The party lead has muted you at this table." : gate.placeholder}
+      inputBlocked={gate.inputBlocked || silenced}
+      placeholder={silenced ? silencedPlaceholder : gate.placeholder}
       onSubmit={submit}
       maxChars={composerLimit(kind, leadPrivate)}
       // The stage's copy opens the story for what its window leaves out;
@@ -825,6 +835,17 @@ export function SessionView({
     isLead,
     leadUserId: campaign.leadUserId,
     canTransferLead: isLead || campaign.ownerUserId === me.id,
+    // The same pair the PATCH route lets end it: the owner, or the DM proper.
+    canEndCampaign:
+      campaign.ownerUserId === me.id ||
+      isPrimaryDm(
+        {
+          dmMode: campaign.gameSettings?.dmMode ?? "ai",
+          humanDmUserId: campaign.dmUserId,
+          assistantDmUserId: campaign.assistantDmUserId,
+        },
+        me.id,
+      ),
     spotlightUserIds: floor.mode === "spotlight" ? floor.userIds : EMPTY_IDS,
     onlineUserIds: state.online,
     auditLog,
@@ -1008,6 +1029,22 @@ export function SessionView({
                   </Suspense>
                 ) : (
                   <>
+                  {ended ? (
+                    <SessionBanner
+                      glyph="tab-campaigns"
+                      tone="quiet"
+                      className="campaign-ended-banner"
+                      title="The campaign has ended"
+                      actions={
+                        <Link href="/" className={bannerButtonClass(true)}>
+                          All campaigns
+                        </Link>
+                      }
+                    >
+                      Characters from a library took their progress home with them. The story stays
+                      here to read.
+                    </SessionBanner>
+                  ) : null}
                   {/* The plan the party is coordinating (issue 254), above the
                       box its players would otherwise type their moves into. */}
                   {state.coordination ? (
@@ -1028,8 +1065,8 @@ export function SessionView({
                     setInput={setInput}
                     sending={sending}
                     error={error}
-                    inputBlocked={gate.inputBlocked || muted}
-                    placeholder={muted ? "The party lead has muted you at this table." : gate.placeholder}
+                    inputBlocked={gate.inputBlocked || silenced}
+                    placeholder={silenced ? silencedPlaceholder : gate.placeholder}
                     dmStatus={dmStatus}
                     pendingRolls={pendingRolls}
                     members={state.members}

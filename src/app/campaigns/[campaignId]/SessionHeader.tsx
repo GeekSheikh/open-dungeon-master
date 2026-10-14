@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Check } from "lucide-react";
+import { ArrowLeft, Check } from "lucide-react";
 import { memo, useState, type ComponentProps, type ReactNode } from "react";
 import { HeaderGlyph } from "@/app/campaigns/[campaignId]/SessionGlyph";
 import { GameIcon } from "@/components/ui/GameIcon";
@@ -189,6 +189,17 @@ export const SessionHeader = memo(function SessionHeader({
   const diceItem = "session-menu-row";
   return (
     <header className="glass session-header cine-header z-10 flex items-center gap-2 border-b border-stone-700/40 px-3 pb-2 pt-[calc(0.5rem+env(safe-area-inset-top))] sm:gap-3 sm:px-4">
+      {/* The way out on a phone. From sm up the All campaigns button below
+          is it; under sm that button has no room, and a door behind the
+          avatar menu is not one a newcomer, or an installed app with no
+          browser back button, finds. The title gives up the width. */}
+      <Link
+        href="/"
+        aria-label="All campaigns"
+        className="-ml-1.5 flex size-10 shrink-0 items-center justify-center rounded-md text-stone-400 transition-colors hover:text-amber-200 sm:hidden"
+      >
+        <ArrowLeft className="size-5" />
+      </Link>
       <div className="min-w-0 flex-1">
         <h1 className="gold-title session-title font-display">{title}</h1>
         <p key={scene} className="live-in truncate font-serif text-xs italic text-stone-400">
