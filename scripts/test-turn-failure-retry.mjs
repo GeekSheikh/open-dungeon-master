@@ -11,27 +11,16 @@
 import assert from "node:assert/strict";
 import { openWorld } from "./lib/enforce-world.mjs";
 import { suite } from "./lib/enforce-harness.mjs";
-import { call, failure, fakeModel, reply } from "./lib/enforce-narrator.mjs";
+import { call, failure, fakeModel, reply, settleQueue } from "./lib/enforce-narrator.mjs";
 
 const { test, finish } = suite("test-turn-failure-retry");
 
 const { listRecentMessages, findMessageForDmTurn } = await import("../src/lib/db/messages.ts");
 const { getDmTurn, getLatestDmTurnId } = await import("../src/lib/db/dm-turns.ts");
-const { dmQueueDepth } = await import("../src/lib/dm/queue.ts");
 const { getDmStatus } = await import("../src/lib/dm/status.ts");
 const { DM_HALTED_PREFIX } = await import("../src/lib/campaign-types.ts");
 
 const RETRY_NOTE = /interrupted by an internal error/;
-
-async function settle(campaignId, ms = 30_000) {
-  const until = Date.now() + ms;
-  while (dmQueueDepth(campaignId) > 0) {
-    if (Date.now() > until) {
-      throw new Error(`the DM queue for ${campaignId} never ran dry`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-}
 
 async function retry(world, user, turnId) {
   const route = await world.route("campaigns/[campaignId]/dm-turn/retry");
@@ -45,7 +34,7 @@ async function retry(world, user, turnId) {
     { params: Promise.resolve({ campaignId: world.campaignId }) },
   );
   const json = await response.json().catch(() => ({}));
-  await settle(world.campaignId);
+  await settleQueue(world.campaignId);
   return { status: response.status, json };
 }
 

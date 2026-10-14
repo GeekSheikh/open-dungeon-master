@@ -12,13 +12,12 @@
 import assert from "node:assert/strict";
 import { openWorld } from "./lib/enforce-world.mjs";
 import { suite } from "./lib/enforce-harness.mjs";
-import { fakeModel, reply } from "./lib/enforce-narrator.mjs";
+import { fakeModel, reply, settleQueue } from "./lib/enforce-narrator.mjs";
 
 const { test, finish } = suite("test-begin-first-turn");
 
 const campaigns = await import("../src/lib/db/campaigns.ts");
 const { listRecentMessages } = await import("../src/lib/db/messages.ts");
-const { dmQueueDepth } = await import("../src/lib/dm/queue.ts");
 const { getBoundarySnapshot } = await import("../src/lib/db/snapshots.ts");
 const { getDmStatus } = await import("../src/lib/dm/status.ts");
 
@@ -38,18 +37,6 @@ const ARC = JSON.stringify({
   ],
   finale: "Ring the bell again with the Hook driven off.",
 });
-
-// The kickoff queues its jobs and returns; the test waits for the queue the
-// route filled to run dry, as a reload of the page would find it.
-async function settle(campaignId, ms = 30_000) {
-  const until = Date.now() + ms;
-  while (dmQueueDepth(campaignId) > 0) {
-    if (Date.now() > until) {
-      throw new Error(`the DM queue for ${campaignId} never ran dry`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-}
 
 async function send(world, user, name, method, body, campaignId = world.campaignId) {
   const route = await world.route(name);
@@ -97,7 +84,7 @@ await test("Begin is refused until the table is ready, then runs setup, the arc,
   assert.equal((await ready(world, world.owner)).status, 200);
   const started = await begin(world, world.owner);
   assert.equal(started.status, 200, JSON.stringify(started.json));
-  await settle(world.campaignId);
+  await settleQueue(world.campaignId);
 
   const campaign = world.campaign();
   assert.equal(campaign.status, "active");
@@ -129,7 +116,7 @@ await test("Begin is refused until the table is ready, then runs setup, the arc,
   const again = await begin(world, world.owner);
   assert.equal(again.status, 400);
   assert.match(again.json.error ?? "", /already started/);
-  await settle(world.campaignId);
+  await settleQueue(world.campaignId);
   assert.equal(transcript(world.campaignId).dm.length, 1, "a second Begin narrated again");
   model.close();
   world.close();
@@ -154,7 +141,7 @@ await test("Quick Start: the starter route, a ready-made hero, Begin, and the op
   assert.equal((await ready(world, world.owner, campaignId)).status, 200);
   const started = await begin(world, world.owner, campaignId);
   assert.equal(started.status, 200, JSON.stringify(started.json));
-  await settle(campaignId);
+  await settleQueue(campaignId);
 
   assert.equal(campaigns.getCampaignById(campaignId).status, "active");
   const { kickoff, dm } = transcript(campaignId);

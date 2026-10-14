@@ -15,6 +15,7 @@
 //   await model.pointAt(world);
 //   model.script([reply({ calls: [call("pc_attack", {...})] }), reply({ text: "..." })]);
 //   const turn = await model.turn(world, "I swing at the goblin.");
+//   await settleQueue(world.campaignId);   // after a route that queues work
 //   model.close();
 //
 // The claims reader (src/lib/dm/claims.ts) is answered apart from the
@@ -58,6 +59,19 @@ export function reply({ text = "", calls = [] } = {}) {
 // mid-turn does: an HTTP error with an OpenAI-style error body.
 export function failure(status = 500, message = "The backend fell over.") {
   return { text: "", calls: [], fail: { status, message } };
+}
+
+// A route queues its DM jobs and returns; this waits for the campaign's
+// queue to run dry, as a reload of the page would find it.
+export async function settleQueue(campaignId, ms = 30_000) {
+  const { dmQueueDepth } = await import("../../src/lib/dm/queue.ts");
+  const until = Date.now() + ms;
+  while (dmQueueDepth(campaignId) > 0) {
+    if (Date.now() > until) {
+      throw new Error(`the DM queue for ${campaignId} never ran dry`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
 }
 
 // A fake OpenAI-compatible server. Each /chat/completions request takes the

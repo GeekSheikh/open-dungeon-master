@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { openWorld } from "./lib/enforce-world.mjs";
 import { suite } from "./lib/enforce-harness.mjs";
 import { call as callRoute } from "./lib/enforce-campaign.mjs";
-import { call, fakeModel, reply } from "./lib/enforce-narrator.mjs";
+import { call, fakeModel, reply, settleQueue } from "./lib/enforce-narrator.mjs";
 
 const { test, finish } = suite("test-real-dice-restart");
 
@@ -22,7 +22,6 @@ const { getDatabase } = await import("../src/lib/db/core.ts");
 const { setMemberRealDice } = await import("../src/lib/db/campaigns.ts");
 const { getDmTurn, getLatestDmTurnId, listOpenPendingRolls } = await import("../src/lib/db/dm-turns.ts");
 const { listRecentMessages } = await import("../src/lib/db/messages.ts");
-const { dmQueueDepth } = await import("../src/lib/dm/queue.ts");
 const { getDmStatus } = await import("../src/lib/dm/status.ts");
 
 // What a restart takes: the database handle (the file stays, and the next
@@ -46,16 +45,6 @@ function restart() {
     globalThis[key] = undefined;
   }
   getDatabase().prepare("SELECT 1").get();
-}
-
-async function settle(campaignId, ms = 30_000) {
-  const until = Date.now() + ms;
-  while (dmQueueDepth(campaignId) > 0) {
-    if (Date.now() > until) {
-      throw new Error(`the DM queue for ${campaignId} never ran dry`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
 }
 
 await test("A roll parked for a player's own dice survives a restart, and the roll they enter afterwards finishes the turn once, from where it stopped.", async () => {
@@ -90,7 +79,7 @@ await test("A roll parked for a player's own dice survives a restart, and the ro
   world.signIn({ id: userId });
   const answered = await callRoute(submitRoute, "POST", { dice: [15] }, { campaignId: world.campaignId, pendingRollId: pending.id });
   assert.equal(answered.status, 200, JSON.stringify(answered.json));
-  await settle(world.campaignId);
+  await settleQueue(world.campaignId);
 
   assert.equal(getDmTurn(turnId).status, "done", "the turn did not finish after the restart");
   assert.equal(getDmStatus(world.campaignId), "idle");
@@ -114,7 +103,7 @@ await test("A roll parked for a player's own dice survives a restart, and the ro
   // The same roll entered twice changes nothing.
   const twice = await callRoute(submitRoute, "POST", { dice: [15] }, { campaignId: world.campaignId, pendingRollId: pending.id });
   assert.notEqual(twice.status, 200, "a roll already answered was taken again");
-  await settle(world.campaignId);
+  await settleQueue(world.campaignId);
   assert.equal(listRecentMessages(world.campaignId, 50).filter((message) => message.authorType === "dm").length, 1);
   assert.equal(model.served(), 2);
 
