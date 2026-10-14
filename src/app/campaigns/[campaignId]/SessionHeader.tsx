@@ -13,6 +13,7 @@ import { cn } from "@/lib/cn";
 import { ui } from "@/lib/ui";
 import { headerButtonClass } from "@/app/campaigns/[campaignId]/headerButton";
 import { VoiceDock } from "@/app/campaigns/[campaignId]/VoiceDock";
+import { useCapabilities } from "@/lib/use-capabilities";
 import { RulebookDialog } from "@/components/rulebook/RulebookDialog";
 import type { NarrationAudio } from "@/app/campaigns/[campaignId]/useNarrationAudio";
 import type { AmbienceAudio } from "@/app/campaigns/[campaignId]/useAmbienceAudio";
@@ -180,6 +181,11 @@ export const SessionHeader = memo(function SessionHeader({
   // DM seat keeps one, every player seat another.
   layoutSeat?: LayoutSeat;
 }) {
+  // Narration switched off server-wide: no passage is read aloud, so the
+  // narration volume would steer nothing (issue 275; the lobby's own row
+  // reads Off for the same reason).
+  const capabilities = useCapabilities();
+  const narrates = ttsEnabled && capabilities?.tts?.provider !== "off";
   const diceItem = "session-menu-row";
   return (
     <header className="glass session-header cine-header z-10 flex items-center gap-2 border-b border-stone-700/40 px-3 pb-2 pt-[calc(0.5rem+env(safe-area-inset-top))] sm:gap-3 sm:px-4">
@@ -255,7 +261,7 @@ export const SessionHeader = memo(function SessionHeader({
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
-        {ttsEnabled ? (
+        {narrates ? (
           <HeaderAudioControl
             onLabel="Mute narration"
             offLabel="Unmute narration"

@@ -351,6 +351,23 @@ function trimSlashes(url: string): string {
   return url.trim().replace(/\/+$/, "");
 }
 
+// Whether a new table's narration switch starts on: the server has a speech
+// engine switched on and, for a server of its own, named or answering (the
+// new-campaign dialog's rule, from /api/capabilities). The API's bare create
+// and Quick start took the schema default instead, so a text-only server's
+// first table opened saying "Narration on" over a note that the server had
+// none (issue 275). Off is known without a probe.
+export async function narrationAvailable(): Promise<boolean> {
+  if (ttsBackend().provider === "off") {
+    return false;
+  }
+  try {
+    return (await capabilitiesSnapshot()).tts.configured;
+  } catch {
+    return true;
+  }
+}
+
 // Whether the chosen agent program is installed, allowed to run here and
 // signed in. Uses the cached probe (five minutes), so a polling UI never
 // starts the program itself.
