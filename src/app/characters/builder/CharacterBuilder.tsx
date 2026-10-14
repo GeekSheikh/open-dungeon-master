@@ -138,6 +138,7 @@ function CharacterBuilderForm({
   busy,
   error,
   role,
+  onCancel,
   className,
 }: {
   // The table the character is made for: its hit point method and starting
@@ -166,6 +167,9 @@ function CharacterBuilderForm({
   // Player character or DM-played ally; only the library page asks, since a
   // campaign already knows which door the character comes through.
   role?: { value: BuilderRole; onChange: (role: BuilderRole) => void };
+  // Where the first step's back arrow leads (the page or dialog it opened
+  // from), as every other wizard's does; later steps step back as before.
+  onCancel?: () => void;
   className?: string;
 }) {
   const {
@@ -461,6 +465,7 @@ function CharacterBuilderForm({
             : undefined
         }
         steps={steps}
+        onCancel={onCancel}
         onDone={submit}
         doneLabel={
           busy ? (

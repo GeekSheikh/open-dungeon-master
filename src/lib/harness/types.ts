@@ -10,6 +10,12 @@ export function isHarnessId(value: unknown): value is HarnessId {
   return typeof value === "string" && (HARNESS_IDS as readonly string[]).includes(value);
 }
 
+// No run of a program lives longer than this: the bridge closes every
+// session and every completion by then (src/lib/harness/bridge.ts). opencode
+// keeps its sessions in a store of its own, and one older than this cannot
+// belong to a live run (src/lib/harness/adapters/opencode.ts).
+export const HARNESS_MAX_RUN_MS = 20 * 60_000;
+
 // How far the program's own tools were taken away. "removed" means the
 // program was started with none of its built-in tools at all (proven by the
 // tool list it reports). "contained" means some remain but are boxed in: a
@@ -30,9 +36,14 @@ export type HarnessModel = {
   fast?: boolean;
   // Its vendor has deprecated it (the model catalog, src/lib/model-registry).
   deprecated?: boolean;
-  // The model an alias stands for, where the program says so (Claude Code's
-  // "opus" is claude-opus-5-5): what the catalog is asked about it.
+  // The full model id an alias resolves to today, where the program reports
+  // it (Claude Code's "opus" stands for whichever Opus model it currently
+  // runs): what the catalog is asked about it.
   catalogId?: string;
+  // The efforts this model offers, where the program lists them (opencode's
+  // variants); one it lacks runs at the model's own default. An empty list
+  // means it has none, and no list at all that the program does not say.
+  efforts?: string[];
 };
 
 export type HarnessAuth = {
