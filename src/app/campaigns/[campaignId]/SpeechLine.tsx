@@ -14,16 +14,17 @@ export function SpeechLine({
   cast,
   children,
   className,
-  // A face from somewhere other than the cast: a character's own portrait.
-  face: given,
+  // Faces from somewhere other than the cast, best first: a character's
+  // own portrait, then their plate (speakerFaces).
+  faces: given,
 }: {
   speaker: Speaker;
   cast: CastMember[];
   children: React.ReactNode;
   className?: string;
-  face?: string;
+  faces?: readonly string[];
 }) {
-  const face = given || cast.find((member) => member.id === speaker.id || member.name.toLowerCase() === speaker.name.toLowerCase())?.portraitUrl;
+  const face = given?.[0] || cast.find((member) => member.id === speaker.id || member.name.toLowerCase() === speaker.name.toLowerCase())?.portraitUrl;
   // A painted face grows with the line it speaks (useFaceSize); the initial
   // that stands in for an unpainted one keeps its small circle.
   const [faceStyle, textColumn] = useFaceSize<HTMLDivElement>();

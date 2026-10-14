@@ -7,7 +7,7 @@ import { SectionHead } from "@/components/ui/SectionHead";
 import { PortraitMedallion } from "@/components/sheet/SheetParts";
 import { useFaceSize } from "@/app/campaigns/[campaignId]/useFaceSize";
 import { cn } from "@/lib/cn";
-import { avatarPlaceholder, characterPlaceholder } from "@/lib/placeholders";
+import { playerFaces } from "@/lib/speaker-faces";
 import { JOIN_NOTE_PREFIX, LEAD_NOTE_PREFIX, systemNoteWords, type CampaignMember } from "@/lib/campaign-types";
 import type { CampaignMessage } from "@/lib/db/messages";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
@@ -116,17 +116,9 @@ export function PlayerMessage({
   const sheet =
     (message.characterId ? sheetsById.get(message.characterId) : undefined) ??
     (message.userId ? sheets.find((candidate) => candidate.userId === message.userId) : undefined);
-  // Character portrait first, then the player's own avatar, then a stand-in:
-  // the plate for the character's class or race, or the sigil the player's
-  // id hashes to when there is no sheet to draw from.
-  const portraitUrl =
-    sheet?.portrait?.url ??
-    (message.userId ? membersById.get(message.userId)?.avatar?.url : undefined) ??
-    (sheet
-      ? characterPlaceholder({ race: sheet.race, class: sheet.class, gender: sheet.gender })
-      : message.userId
-        ? avatarPlaceholder(message.userId)
-        : undefined);
+  // Character portrait first, then the player's own avatar, then a stand-in
+  // (playerFaces).
+  const [portraitUrl] = playerFaces({ sheet, avatarUrl: message.userId ? membersById.get(message.userId)?.avatar?.url : undefined, userId: message.userId });
   const actions: MessageAction[] = [copyAction(message)];
   if (onReport && !mine && message.userId) {
     actions.push(reportAction(message, onReport, false));
