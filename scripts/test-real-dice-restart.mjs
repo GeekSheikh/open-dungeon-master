@@ -6,14 +6,15 @@
 // a player is still finding their d20, and the roll they type afterwards
 // has to finish the turn, once, from the conversation the database kept.
 //
-// The restart closes the database handle (the file stays) and wipes the
-// DM's per-campaign state a process keeps on globalThis: the queue, the
-// status, the turn requests, the narration slots, compaction. State a module
-// holds in its own scope (chapter pacing, model-client's learned routes)
-// survives this in-process restart, so the test shows the database is
-// enough to resume a parked turn, not that nothing else outlives a real
-// one. The scripted fake model stands in for the backend, which a server
-// restart does not touch.
+// The restart closes the database handle (the file stays), wipes the DM's
+// per-campaign state a process keeps on globalThis (the queue, the status,
+// the turn requests, the narration slots, compaction, the X-card's pause),
+// and boots as a new process does, through Next's startup hook
+// (src/instrumentation.ts). State a module holds in its own scope (chapter
+// pacing, model-client's learned routes) survives this in-process restart,
+// so the test shows the database is enough to resume a parked turn, not
+// that nothing else outlives a real one. The scripted fake model stands in
+// for the backend, which a server restart does not touch.
 import assert from "node:assert/strict";
 import { openWorld } from "./lib/enforce-world.mjs";
 import { suite } from "./lib/enforce-harness.mjs";
@@ -28,10 +29,18 @@ const { createDmTurn, getDmTurn, getLatestDmTurnId, listOpenPendingRolls, saveDm
 const { listRecentMessages } = await import("../src/lib/db/messages.ts");
 const { listRecentRolls } = await import("../src/lib/db/rolls.ts");
 const { getDmStatus } = await import("../src/lib/dm/status.ts");
+const { dmQueueDepth } = await import("../src/lib/dm/queue.ts");
+const { requestDmTurn } = await import("../src/lib/dm/loop.ts");
+const { xCardRaised } = await import("../src/lib/dm/safety.ts");
+const { register } = await import("../src/instrumentation.ts");
+
+// The startup hook does its server work only in the node runtime.
+process.env.NEXT_RUNTIME = "nodejs";
 
 // What a restart takes: the database handle (the file stays, and the next
 // query reopens it and runs the boot migrations) and the DM's maps on
-// globalThis, which every caller reads afresh. Chapter pacing is not wiped
+// globalThis, which every caller reads afresh, with the flag that says this
+// process already ran its restart recovery. Chapter pacing is not wiped
 // here: chapter-close.ts keeps its own reference to the map from load time,
 // so clearing the global would change nothing.
 const IN_MEMORY = [
@@ -43,14 +52,16 @@ const IN_MEMORY = [
   "__odmTurnRequested",
   "__odmNarrationSlots",
   "__odmCompaction",
+  "__odmDmRecovered",
 ];
-function restart() {
+async function restart() {
   getDatabase().close();
   globalThis.__localRoleplayDb = undefined;
   for (const key of IN_MEMORY) {
     globalThis[key] = undefined;
   }
   getDatabase().prepare("SELECT 1").get();
+  await register();
 }
 
 await test("A roll parked for a player's own dice survives a restart, and the roll they enter afterwards finishes the turn once, from where it stopped.", async () => {
@@ -81,7 +92,7 @@ await test("A roll parked for a player's own dice survives a restart, and the ro
   assert.ok(pending, "no roll was parked for Kara's dice");
   assert.equal(model.served(), 1);
 
-  restart();
+  await restart();
 
   // The new process finds the turn still waiting and the roll still open,
   // and the table still reads as waiting on them.
@@ -167,7 +178,7 @@ await test("A table parked on physical dice reads as waiting on them after a res
   const { world, model } = await parkedTable();
   assert.equal(getDmStatus(world.campaignId), "awaiting_rolls");
   assert.deepEqual(await extendAndReroll(world), [409, 409], "continue or reroll ran while the turn waited on dice");
-  restart();
+  await restart();
   assert.equal(getDmStatus(world.campaignId), "awaiting_rolls", "the restart reset a parked table to idle");
   const snapshot = await callRoute(await world.route("campaigns/[campaignId]"), "GET", undefined, { campaignId: world.campaignId });
   assert.equal(snapshot.json.dmStatus, "awaiting_rolls", "a client reloading after the restart lost the waiting status");
@@ -185,7 +196,7 @@ await test("A parked turn the table walked past reads idle after a restart, as i
   const person = createDmTurn(world.campaignId, [], "human_dm");
   person.status = "done";
   saveDmTurn(person);
-  restart();
+  await restart();
   assert.equal(getDmStatus(world.campaignId), "awaiting_rolls", "a person's adjudication hid the parked turn");
 
   // Kara ignores the roll card and acts instead: the new turn answers her,
@@ -194,7 +205,7 @@ await test("A parked turn the table walked past reads idle after a restart, as i
   await model.turn(world, "Never mind the gate; I look at the hinges.", kara.id, userId);
   assert.equal(getDmStatus(world.campaignId), "idle");
   assert.deepEqual(await extendAndReroll(world), [200, 200]);
-  restart();
+  await restart();
   assert.equal(getDmStatus(world.campaignId), "idle", "the restart put a walked-past roll back on the status line");
   model.script([reply({ text: "The hinges are old iron, flaked with rust." }), reply({ text: "Rust flakes from old iron hinges." })]);
   assert.deepEqual(await extendAndReroll(world), [200, 200], "continue or reroll was refused for a roll the table walked past");
@@ -203,8 +214,41 @@ await test("A parked turn the table walked past reads idle after a restart, as i
   const pass = createDmTurn(world.campaignId, [], "ai");
   pass.status = "awaiting_rolls";
   saveDmTurn(pass);
-  restart();
+  await restart();
   assert.equal(getDmStatus(world.campaignId), "idle", "a delegated monster pass put itself on the status line");
+  model.close();
+  world.close();
+});
+
+await test("A raised X-card is still raised after a restart: the table's next turn waits at the gate until the story's lead resumes, and a card already resumed stays down.", async () => {
+  const world = await openWorld({ gameSettings: { ttsEnabled: false, safety: { xCard: true } } });
+  const kara = world.addHero({ name: "Kara", class: "fighter", level: 1 });
+  const userId = world.sheet(kara.id).userId;
+  const model = await fakeModel();
+  model.pointAt(world);
+  const params = { campaignId: world.campaignId };
+  world.signIn({ id: userId });
+  assert.equal((await callRoute(await world.route("campaigns/[campaignId]/safety/x-card"), "POST", undefined, params)).status, 200);
+
+  await restart();
+  assert.equal(xCardRaised(world.campaignId), true, "the restart lowered the X-card");
+  const snapshot = await callRoute(await world.route("campaigns/[campaignId]"), "GET", undefined, params);
+  assert.ok(snapshot.json.safetyPause, "a client reloading after the restart no longer sees the X-card");
+
+  model.script([reply({ text: "The fog parts on the far bank, and nothing follows it." })]);
+  world.say("player", "I wait for the fog to lift.", world.sheet(kara.id));
+  requestDmTurn(world.campaignId);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(dmQueueDepth(world.campaignId), 1, "the turn did not wait at the gate");
+  assert.equal(model.served(), 0, "the DM narrated under a raised X-card");
+
+  world.signIn(world.owner);
+  assert.equal((await callRoute(await world.route("campaigns/[campaignId]/safety/resume"), "POST", { action: "continue" }, params)).status, 200);
+  await settleQueue(world.campaignId);
+  assert.equal(model.served(), 1, "the turn did not run once the table resumed");
+
+  await restart();
+  assert.equal(xCardRaised(world.campaignId), false, "the restart raised a card the table had already resumed");
   model.close();
   world.close();
 });
