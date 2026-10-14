@@ -52,6 +52,31 @@ await test("The words and the number agree: the first roll stands at 0, reroll f
   assert.equal(rerolls.tableRerollBelow(0, 70), 0);
 });
 
+await test("The builder words the rule from its choice and names whose rule it is: this table's at a table, this server's in the library; a table that follows the server says which rule that is.", () => {
+  const keep = rerolls.rerollWords(0, true);
+  assert.equal(keep.closed, "This table allows no second throw. These six are yours.");
+  assert.equal(keep.closedTitle, "This table allows no second throw");
+  assert.match(keep.rule, /this table allows no second throw/);
+  assert.equal(rerolls.rerollWords(0, false).closedTitle, "This server allows no second throw");
+
+  const free = rerolls.rerollWords(108, true);
+  assert.equal(free.open, "This table lets you throw all six again as often as you like.");
+  assert.equal(free.openTitle, "This table lets you throw again as often as you like");
+  assert.match(free.rule, /as often as you like/);
+  for (const text of [free.rule, free.open, free.openTitle]) {
+    assert.doesNotMatch(text, /108/, "a free rule was put to the player as a number");
+  }
+
+  const low = rerolls.rerollWords(70, true);
+  assert.equal(low.open, "Under 70: you may throw all six again.");
+  assert.match(low.rule, /at this table you may throw again only if they add up to less than 70/);
+  assert.equal(rerolls.rerollWords(70, false).rule, "The six are yours to keep: you may throw again only if they add up to less than 70.");
+
+  assert.equal(rerolls.describeTableReroll(null, 0), "The server's rule (the first roll stands)");
+  assert.equal(rerolls.describeTableReroll(null, null), "The server's reroll rule");
+  assert.equal(rerolls.describeTableReroll(108, 0), "Reroll as often as you like");
+});
+
 const table = await openCreation();
 const { world, campaignId, player, call, atTable, clearSeat, sheetRoute } = table;
 const rollsRoute = await world.route("characters/rolls");

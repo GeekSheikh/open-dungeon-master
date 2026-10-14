@@ -4,7 +4,14 @@ import { InfoButton } from "@/components/ui/InfoDialog";
 import { NumberStepper } from "@/components/ui/NumberStepper";
 import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/cn";
-import { REROLL_LOW_DEFAULT, rerollBelowFor, rerollChoiceOf, type RerollChoice } from "@/lib/srd/ability-rerolls";
+import {
+  REROLL_LOW_DEFAULT,
+  describeReroll,
+  rerollBelowFor,
+  rerollChoiceOf,
+  type RerollChoice,
+} from "@/lib/srd/ability-rerolls";
+import { useServerRerollBelow } from "@/app/characters/builder/useTableRules";
 import {
   CAMPAIGN_DIFFICULTIES,
   CAMPAIGN_DIFFICULTY_HINTS,
@@ -36,6 +43,8 @@ const LENGTH_INFO =
 // only an AI narrator plans a story arc, so length hides with it.
 export function PartyStep({ draft, patch, gates }: StepProps) {
   const { solo, aiNarrates } = gates;
+  // Named in the "follow the server" choice, so it says what it means.
+  const serverRerollBelow = useServerRerollBelow();
   return (
     <div className="space-y-4 text-sm">
       <div className={cn("grid gap-3", solo ? "grid-cols-2" : "grid-cols-3")}>
@@ -112,14 +121,14 @@ export function PartyStep({ draft, patch, gates }: StepProps) {
             label="Rolled stats"
             className="w-full"
             options={[
-              { value: "server", label: "Follow the server's reroll rule" },
+              { value: "server", label: `Follow the server's reroll rule${serverRerollBelow === null ? "" : ` (${describeReroll(serverRerollBelow).toLowerCase()})`}` },
               { value: "keep", label: "The first roll stands" },
               { value: "low", label: `Reroll a roll totalling under ${REROLL_LOW_DEFAULT}` },
               { value: "free", label: "Reroll as often as you like" },
             ]}
           />
           <p className="mt-1 text-xs text-stone-500">
-            For 4d6 ability scores rolled here: whether a player may throw the six again. The server rolls them either way.
+            For 4d6 ability scores rolled here: whether a player may throw the six again. The server rolls them either way. Following the server, a player&apos;s six here are the ones from their library; a rule of the table&apos;s own gives each player a separate six here.
           </p>
         </label>
       </div>

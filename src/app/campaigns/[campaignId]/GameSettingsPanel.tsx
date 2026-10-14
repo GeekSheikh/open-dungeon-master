@@ -23,7 +23,14 @@ import { CharacterVoices } from "@/app/campaigns/[campaignId]/CharacterVoices";
 import { VoicePreviewButton } from "@/components/VoicePreviewButton";
 import { SafetyToneFields } from "@/components/SafetyToneFields";
 import type { GameSettings } from "@/lib/schemas/game-settings";
-import { REROLL_LOW_DEFAULT, rerollBelowFor, rerollChoiceOf, type RerollChoice } from "@/lib/srd/ability-rerolls";
+import {
+  REROLL_LOW_DEFAULT,
+  describeTableReroll,
+  rerollBelowFor,
+  rerollChoiceOf,
+  type RerollChoice,
+} from "@/lib/srd/ability-rerolls";
+import { useServerRerollBelow } from "@/app/characters/builder/useTableRules";
 import {
   CAMPAIGN_LENGTH_LABELS,
   CAMPAIGN_LENGTHS,
@@ -105,6 +112,10 @@ export function GameSettingsPanel({
   // flashes on installs that are fine while the answer is in flight.
   const [ambienceInstalled, setAmbienceInstalled] = useState(true);
   const [ambienceCounts, setAmbienceCounts] = useState<Record<"bed" | "music" | "sting", { installed: number; total: number }> | null>(null);
+  // What "the server's rule" for rolled stats is, so neither the lead's
+  // choice nor a player's summary leaves it unnamed.
+  const serverRerollBelow = useServerRerollBelow();
+  const serverRerollLabel = describeTableReroll(null, serverRerollBelow).toLowerCase();
 
   // Installed world packs, so the lead can switch worlds after creation. An
   // empty list simply hides the row.
@@ -224,6 +235,10 @@ export function GameSettingsPanel({
           <span className="flex items-center gap-1.5">
             <GameIcon icon={{ kind: "glyph", key: "coin-gp" }} size="size-5" />
             {WEALTH_SHORT[settings.startingWealth ?? "equipment"]}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <GameIcon icon={{ kind: "glyph", key: "die-d6" }} size="size-5" />
+            Stats: {describeTableReroll(settings.abilityRerollBelow, serverRerollBelow).toLowerCase()}
           </span>
           <span className="flex items-center gap-1.5">
             <GameIcon icon={{ kind: "glyph", key: "tab-friends" }} size="size-5" />
@@ -522,7 +537,7 @@ export function GameSettingsPanel({
               />
             </span>
           </Tooltip>
-          <Tooltip content="For 4d6 ability scores rolled at this table: whether a player may throw the six again, and when. The server rolls the dice either way. Characters brought from the library keep the scores they were made with.">
+          <Tooltip content="For 4d6 ability scores rolled at this table: whether a player may throw the six again, and when. The server rolls the dice either way. Following the server's rule, a player's six here are the ones they rolled in their library; with a rule of its own the table keeps a separate six for each player. A character made here still joins its player's library like any other, and characters brought from the library keep the scores they were made with.">
             <span className="inline-flex min-w-0 max-w-full">
               <Select
                 size="sm"
@@ -537,7 +552,7 @@ export function GameSettingsPanel({
                   })
                 }
                 options={[
-                  { value: "server", label: "Stats: the server's reroll rule" },
+                  { value: "server", label: `Stats: ${serverRerollLabel}` },
                   { value: "keep", label: "Stats: the first roll stands" },
                   { value: "low", label: `Stats: reroll under ${rerollBelowFor("low", settings.abilityRerollBelow ?? REROLL_LOW_DEFAULT)}` },
                   { value: "free", label: "Stats: reroll freely" },

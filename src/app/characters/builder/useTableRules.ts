@@ -89,6 +89,28 @@ export async function fetchOpenAbilityPool(campaignId?: string | null): Promise<
   }
 }
 
+// The server's own reroll rule (Admin > Server), for a screen that lets a
+// table follow it and should say what that means. Null until the server
+// answers, and from a server too old to say.
+export function useServerRerollBelow(): number | null {
+  const [below, setBelow] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/characters/rolls")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!cancelled && typeof data?.rerollBelow === "number") {
+          setBelow(data.rerollBelow);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return below;
+}
+
 export type TableRulesState = {
   // Undefined in the library, where a character is built under the defaults.
   rules: TableRules | undefined;
