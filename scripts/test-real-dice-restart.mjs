@@ -25,7 +25,9 @@ const { test, finish } = suite("test-real-dice-restart");
 
 const { getDatabase } = await import("../src/lib/db/core.ts");
 const { setMemberRealDice } = await import("../src/lib/db/campaigns.ts");
-const { createDmTurn, getDmTurn, getLatestDmTurnId, listOpenPendingRolls, saveDmTurn } = await import("../src/lib/db/dm-turns.ts");
+const { createDmTurn, createPendingRoll, getDmTurn, getLatestDmTurnId, listOpenPendingRolls, saveDmTurn } = await import(
+  "../src/lib/db/dm-turns.ts"
+);
 const { listRecentMessages } = await import("../src/lib/db/messages.ts");
 const { listRecentRolls } = await import("../src/lib/db/rolls.ts");
 const { getDmStatus } = await import("../src/lib/dm/status.ts");
@@ -143,8 +145,8 @@ await test("A roll parked for a player's own dice survives a restart, and the ro
 });
 
 // A table with one narration behind it and a turn parked on Kara's own d20.
-async function parkedTable() {
-  const world = await openWorld({ gameSettings: { ttsEnabled: false, dicePolicy: "real_allowed" } });
+async function parkedTable(gameSettings = {}) {
+  const world = await openWorld({ gameSettings: { ttsEnabled: false, dicePolicy: "real_allowed", ...gameSettings } });
   const kara = world.addHero({ name: "Kara", class: "fighter", level: 1, abilities: { str: 16 } });
   const userId = world.sheet(kara.id).userId;
   const model = await fakeModel();
@@ -212,8 +214,22 @@ await test("A parked turn the table walked past reads idle after a restart, as i
   model.script([reply({ text: "The hinges are old iron, flaked with rust." }), reply({ text: "Rust flakes from old iron hinges." })]);
   assert.deepEqual(await extendAndReroll(world), [200, 200], "continue or reroll was refused for a roll the table walked past");
 
-  // A monster pass a person delegated parks without ever owning the line.
+  // A monster pass a person delegated parks on a player's roll without ever
+  // owning the line.
   const pass = createDmTurn(world.campaignId, [], "ai");
+  createPendingRoll({
+    campaignId: world.campaignId,
+    turnId: pass.id,
+    toolCallId: null,
+    userId,
+    characterId: kara.id,
+    kind: "saving_throw",
+    detail: "DEX save",
+    expression: "1d20+0",
+    advantage: "none",
+    dc: 12,
+    reason: "the ghoul's claws",
+  });
   pass.status = "awaiting_rolls";
   saveDmTurn(pass);
   await restart();
@@ -270,6 +286,76 @@ await test("A turn the restart cut short is halted with the notice that offers R
   const roll = model.results(model.requests[0]).map((entry) => entry.result).find((result) => result.rolledBy);
   assert.match(roll?.rolledBy ?? "", /physical dice/, "the retried turn lost the player's roll");
   assert.equal(roll.total, 18);
+  model.close();
+  world.close();
+});
+
+await test("A roll entered while another job held the queue, then a restart: the turn resumes at boot and narrates the roll once.", async () => {
+  const { world, userId, model, turnId, pending } = await parkedTable();
+  await rollWhileQueueHeld(world, userId, pending);
+  const served = model.served();
+  await restart();
+  await settleQueue(world.campaignId);
+  assert.equal(getDmTurn(turnId).status, "done", "the turn sits awaiting rolls with none left to enter");
+  assert.equal(model.served(), served + 1, "the resumed turn did not make exactly one call");
+  const roll = model.results(model.requests.at(-1)).map((entry) => entry.result).find((result) => result.rolledBy);
+  assert.match(roll?.rolledBy ?? "", /physical dice/, "the resumed call lost the player's roll");
+  assert.equal(roll.total, 18);
+  const said = listRecentMessages(world.campaignId, 50).filter((message) => message.authorType === "dm");
+  assert.equal(said.length, 2, `expected the earlier narration and this one, found ${said.length}`);
+  assert.match(said.at(-1).content, /slams against her shield/);
+  assert.equal(getDmStatus(world.campaignId), "idle");
+  // A second boot in the same process changes nothing.
+  await register();
+  await settleQueue(world.campaignId);
+  assert.equal(model.served(), served + 1, "a second boot resumed the turn again");
+  model.close();
+  world.close();
+});
+
+await test("A roll entered under a raised X-card, then a restart: the resume waits at the gate the card left up, and runs once the lead resumes.", async () => {
+  const { world, userId, model, turnId, pending } = await parkedTable({ safety: { xCard: true } });
+  const params = { campaignId: world.campaignId };
+  world.signIn({ id: userId });
+  const raised = await callRoute(await world.route("campaigns/[campaignId]/safety/x-card"), "POST", undefined, params);
+  assert.equal(raised.status, 200, JSON.stringify(raised.json));
+  const submitRoute = await world.route("campaigns/[campaignId]/pending-rolls/[pendingRollId]");
+  const answered = await callRoute(submitRoute, "POST", { dice: [15] }, { campaignId: world.campaignId, pendingRollId: pending.id });
+  assert.equal(answered.status, 200, JSON.stringify(answered.json));
+  const served = model.served();
+
+  await restart();
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(xCardRaised(world.campaignId), true, "the restart lowered the X-card");
+  assert.equal(dmQueueDepth(world.campaignId), 1, "the resume was not queued at the gate");
+  assert.equal(model.served(), served, "the DM narrated under a raised X-card");
+  assert.equal(getDmTurn(turnId).status, "awaiting_rolls");
+
+  world.signIn(world.owner);
+  assert.equal((await callRoute(await world.route("campaigns/[campaignId]/safety/resume"), "POST", { action: "continue" }, params)).status, 200);
+  await settleQueue(world.campaignId);
+  assert.equal(getDmTurn(turnId).status, "done", "the turn did not resume once the table did");
+  assert.match(listRecentMessages(world.campaignId, 50).filter((message) => message.authorType === "dm").at(-1).content, /slams against her shield/);
+  model.close();
+  world.close();
+});
+
+await test("A parked turn the story moved past before the restart is closed at boot, with no model call and no notice, and its roll is not narrated into the later scene.", async () => {
+  const { world, kara, userId, model, turnId, pending } = await parkedTable();
+  // The roll lands while another job holds the queue, and before its resume
+  // runs a newer turn answers Kara's next line.
+  await rollWhileQueueHeld(world, userId, pending);
+  model.script([reply({ text: "Kara walks on into the crypt." })]);
+  await model.turn(world, "I leave the gate and walk on.", kara.id, userId);
+  const served = model.served();
+
+  await restart();
+  await settleQueue(world.campaignId);
+  assert.equal(getDmTurn(turnId).status, "failed", "the stale parked turn was left waiting on dice");
+  assert.equal(model.served(), served, "the stale turn was narrated");
+  assert.deepEqual(notices(world), [], "the stale turn offered a Retry the story has moved past");
+  const said = listRecentMessages(world.campaignId, 50).filter((message) => message.authorType === "dm");
+  assert.match(said.at(-1).content, /walks on into the crypt/, "the old roll was narrated after the newer turn");
   model.close();
   world.close();
 });
