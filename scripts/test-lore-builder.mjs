@@ -72,8 +72,16 @@ test("renderLoreForPrompt respects the budget and empty case", () => {
     entry({ id: `e${index}`, title: `Entry ${index}`, body: "b".repeat(300) }),
   );
   const block = renderLoreForPrompt([], entries, 800);
-  assert.ok(block.length <= 800 + 80);
-  assert.ok(!block.includes("Entry 9"));
+  // The entry lines and the closing line stay inside the budget; the header
+  // is outside it, as it always was.
+  const [header, ...body] = block.split("\n");
+  assert.ok(header.startsWith("WORLD LORE"));
+  assert.ok(body.join("\n").length <= 800, `${body.join("\n").length} characters`);
+  // Shorter excerpts fit more entries than the old 300-character cut did, and
+  // what still does not fit is named, never silently missing (issue #305).
+  assert.ok(body.filter((line) => line.startsWith("- [")).length >= 3);
+  assert.ok(!body.some((line) => line.startsWith("- [history] Entry 9:")));
+  assert.match(body.at(-1), /^Also bearing on this moment, left out for room \(search_lore reads them\): .*Entry 9/);
   assert.equal(renderLoreForPrompt([], [], 1600), "");
 });
 

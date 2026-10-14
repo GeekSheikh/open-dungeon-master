@@ -474,6 +474,7 @@ export async function startDmTurn(campaignId: string) {
       variantRulesBlock: retrieval.variantRulesBlock,
       houseRulesBlock: retrieval.houseRulesBlock,
       loreBlock: retrieval.loreBlock,
+      loreTrace: retrieval.loreTrace,
       factionsBlock: renderFactionsForPrompt(listFactions(campaign.id), getParty(campaign.id).reputation, true),
       worldBlock: world.block,
       shopsBlock: shopsBlock(campaign),

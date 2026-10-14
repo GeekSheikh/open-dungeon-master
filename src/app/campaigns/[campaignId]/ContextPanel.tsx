@@ -139,8 +139,8 @@ export function ContextPanel({ campaignId }: { campaignId: string }) {
 
           {trace.arc ? (
             <div className="panel rounded-lg px-2.5 py-1.5 text-xs" data-testid="arc-trace">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="font-medium text-amber-200">Story arc</span>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                <span className="whitespace-nowrap font-medium text-amber-200">Story arc</span>
                 <span className="shrink-0 font-mono text-[11px] text-stone-400">
                   {trace.arc.beats.shown}/{trace.arc.beats.total} beats, {trace.arc.chars.toLocaleString()}/{trace.arc.budgetChars.toLocaleString()} event chars
                 </span>
@@ -156,6 +156,35 @@ export function ContextPanel({ campaignId }: { campaignId: string }) {
                 </ul>
               ) : (
                 <p className="mt-0.5 text-[11px] text-stone-500">No planned events pending.</p>
+              )}
+            </div>
+          ) : null}
+
+          {trace.lore ? (
+            <div className="panel rounded-lg px-2.5 py-1.5 text-xs" data-testid="lore-trace">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                <span className="whitespace-nowrap font-medium text-amber-200">World lore</span>
+                <span className="shrink-0 font-mono text-[11px] text-stone-400">
+                  {trace.lore.picks.filter((pick) => pick.included).length}/{trace.lore.picks.filter((pick) => !pick.weak).length} entries, {trace.lore.chars.toLocaleString()}/{trace.lore.budgetChars.toLocaleString()} chars
+                </span>
+              </div>
+              {trace.lore.picks.length ? (
+                <ul className="mt-1 space-y-0.5">
+                  {trace.lore.picks.map((pick) => (
+                    <li
+                      key={pick.id}
+                      title={pick.id}
+                      data-lore-pick={pick.included ? "kept" : pick.weak ? "near" : "held"}
+                      className={cn("text-[11px]", pick.included ? "text-stone-400" : pick.weak ? "text-stone-500" : "text-red-300/90")}
+                    >
+                      {pick.title}
+                      {pick.secret ? <span className="text-ember-300"> (secret)</span> : null}
+                      <span className="text-stone-500">: {pick.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-0.5 text-[11px] text-stone-500">No entry matched this moment.</p>
               )}
             </div>
           ) : null}
