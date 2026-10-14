@@ -37,7 +37,8 @@ import { generateImageTool, parseGenerateImageToolCall } from "@/lib/image-tool"
 import { createStreamingArtifactFilter, extractReplyText, extractStoryText } from "@/lib/story-prompt";
 import { salvageJsonToolCalls } from "@/lib/dm/json-salvage";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
-import { fulfillMessageImage } from "@/lib/dm/images";
+import { fulfillAutoImage } from "@/lib/dm/images";
+import { imagesAvailable } from "@/lib/capabilities";
 import { imageProducerReady } from "@/lib/image-generate";
 import { enqueueNarrationAudio } from "@/lib/tts";
 import { requestDmMessage } from "@/lib/dm/model";
@@ -1039,8 +1040,9 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
     // Location bookkeeping is synchronous and cheap; maps render async on
     // the media queue when vision allows.
     const locationResults = new Map<string, Record<string, unknown>>();
+    const picturesAvailable = locationCalls.length > 0 && (await imagesAvailable(campaign.settings));
     for (const locationCall of locationCalls) {
-      const result = handleLocationCall(campaign, locationCall.name, locationCall.rawArguments);
+      const result = handleLocationCall(campaign, locationCall.name, locationCall.rawArguments, picturesAvailable);
       if (result.movedToNewLocation) {
         delete result.movedToNewLocation;
         // Link the narration message finalize() writes to the new area so
@@ -1758,10 +1760,16 @@ export function handleRecordEvent(
 // move_party / update_location: record the structured area state, keep the
 // campaign scene in sync, and kick off a map render when vision allows.
 // Exported for the adjudication façade (src/lib/dm/invoke.ts).
+//
+// picturesAvailable is the caller's answer to imagesAvailable(), asked before
+// the call because this bookkeeping stays synchronous. A server whose setup
+// said "no pictures" still has ComfyUI as its fallback backend, so without it
+// every new area queued a map that could only fail, in front of the table.
 export function handleLocationCall(
   campaign: Campaign,
   toolName: string,
   rawArguments: string,
+  picturesAvailable = true,
 ): Record<string, unknown> {
   let args: {
     name?: unknown;
@@ -1850,6 +1858,7 @@ export function handleLocationCall(
   const mapEnqueued =
     visionClear &&
     campaign.gameSettings.mapsEnabled &&
+    picturesAvailable &&
     imageProducerReady(campaign.settings) &&
     (!location.mapImage || layoutRevised);
   if (mapEnqueued) {
@@ -2066,7 +2075,7 @@ function finalize(context: TurnContext, turn: DmTurn, failed: string, spoken: re
   }
 
   if (message.imageRequest && imageProducerReady(context.campaign.settings)) {
-    void fulfillMessageImage(campaignId, message.id, message.imageRequest, context.campaign.settings);
+    void fulfillAutoImage(campaignId, message.id, message.imageRequest, context.campaign.settings);
   }
   if (context.campaign.gameSettings.ttsEnabled) {
     void enqueueNarrationAudio(
