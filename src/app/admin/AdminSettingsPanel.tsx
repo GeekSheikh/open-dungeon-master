@@ -9,6 +9,8 @@ import { PageSection } from "@/components/PageShell";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { GameIcon } from "@/components/ui/GameIcon";
 import { NumberStepper } from "@/components/ui/NumberStepper";
+import { Select } from "@/components/ui/Select";
+import { REROLL_LOW_DEFAULT, rerollBelowFor, rerollChoiceOf } from "@/lib/srd/ability-rerolls";
 import { AdminInvitesSection } from "@/app/admin/AdminInvitesSection";
 import { SpeedField } from "@/app/admin/SpeedField";
 import { apiSpeedEligibility } from "@/lib/speed-tier";
@@ -325,24 +327,38 @@ export function AdminSettingsPanel() {
               />
             </Field>
             <Field
-              label="Reroll the 4d6 ability dice under a total of"
-              hint="The server throws and keeps a player's six 4d6 totals; they may throw again only while the six add up to less than this. 0 allows no reroll; 108 lets anything be rethrown. The book names no rule; 70 is the default."
+              label="Rolled 4d6 stats"
+              hint="The server throws and keeps a player's six 4d6 totals. Choose whether they may throw again: never, only when the six add up to less than a total you set (70 is the default; the book names no rule), or as often as they like. This is the rule in the library; each table can set its own in its settings."
             >
-              <NumberStepper
-                label="Reroll the 4d6 ability dice under a total of"
-                min={0}
-                max={108}
-                step={1}
-                suffix={config.abilityRerollBelow === 0 ? "no rerolls" : "total"}
-                value={config.abilityRerollBelow}
-                onChange={(next) => {
-                  const below = Math.round(Number(next));
-                  setConfig({
-                    ...config,
-                    abilityRerollBelow: Number.isFinite(below) ? Math.min(108, Math.max(0, below)) : 70,
-                  });
-                }}
+              <Select
+                label="Rolled 4d6 stats"
+                value={rerollChoiceOf(config.abilityRerollBelow)}
+                onChange={(choice) =>
+                  setConfig({ ...config, abilityRerollBelow: rerollBelowFor(choice, config.abilityRerollBelow) })
+                }
+                options={[
+                  { value: "keep", label: "The first roll stands" },
+                  { value: "low", label: "Reroll a low roll" },
+                  { value: "free", label: "Reroll as often as they like" },
+                ]}
               />
+              {rerollChoiceOf(config.abilityRerollBelow) === "low" ? (
+                <NumberStepper
+                  label="Reroll when the six add up to less than"
+                  min={1}
+                  max={107}
+                  step={1}
+                  suffix="total"
+                  value={config.abilityRerollBelow}
+                  onChange={(next) => {
+                    const below = Math.round(Number(next));
+                    setConfig({
+                      ...config,
+                      abilityRerollBelow: Number.isFinite(below) ? Math.min(107, Math.max(1, below)) : REROLL_LOW_DEFAULT,
+                    });
+                  }}
+                />
+              ) : null}
             </Field>
           </div>
         </PageSection>

@@ -23,6 +23,7 @@ import { CharacterVoices } from "@/app/campaigns/[campaignId]/CharacterVoices";
 import { VoicePreviewButton } from "@/components/VoicePreviewButton";
 import { SafetyToneFields } from "@/components/SafetyToneFields";
 import type { GameSettings } from "@/lib/schemas/game-settings";
+import { REROLL_LOW_DEFAULT, rerollBelowFor, rerollChoiceOf, type RerollChoice } from "@/lib/srd/ability-rerolls";
 import {
   CAMPAIGN_LENGTH_LABELS,
   CAMPAIGN_LENGTHS,
@@ -517,6 +518,30 @@ export function GameSettingsPanel({
                 value={settings.startingWealth ?? "equipment"}
                 onChange={(value) => patch({ startingWealth: value as GameSettings["startingWealth"] })}
                 options={STARTING_WEALTH.map((method) => ({ value: method, label: WEALTH_SHORT[method] }))}
+                className={selectClass}
+              />
+            </span>
+          </Tooltip>
+          <Tooltip content="For 4d6 ability scores rolled at this table: whether a player may throw the six again, and when. The server rolls the dice either way. Characters brought from the library keep the scores they were made with.">
+            <span className="inline-flex min-w-0 max-w-full">
+              <Select
+                size="sm"
+                label="Rolled stats"
+                value={settings.abilityRerollBelow == null ? "server" : rerollChoiceOf(settings.abilityRerollBelow)}
+                onChange={(value) =>
+                  patch({
+                    abilityRerollBelow:
+                      value === "server"
+                        ? null
+                        : rerollBelowFor(value as RerollChoice, settings.abilityRerollBelow ?? REROLL_LOW_DEFAULT),
+                  })
+                }
+                options={[
+                  { value: "server", label: "Stats: the server's reroll rule" },
+                  { value: "keep", label: "Stats: the first roll stands" },
+                  { value: "low", label: `Stats: reroll under ${rerollBelowFor("low", settings.abilityRerollBelow ?? REROLL_LOW_DEFAULT)}` },
+                  { value: "free", label: "Stats: reroll freely" },
+                ]}
                 className={selectClass}
               />
             </span>
