@@ -265,7 +265,12 @@ async function appNavigate(page, route, ids, touch) {
   const campaign = route.match(/^\/campaigns\/([^/?]+)/)?.[1];
   if (campaign) {
     const title = ids.titles?.[campaign] ?? (campaign === ids.campaignId ? ids.title : ids.lobbyTitle);
-    const tile = page.locator(".game-root a, .game-root button").filter({ hasText: new RegExp(title, "i") }).first();
+    // A title is matched as written: "Closing Table (desktop)" has
+    // parentheses a pattern would read as a group.
+    const tile = page
+      .locator(".game-root a, .game-root button")
+      .filter({ hasText: new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") })
+      .first();
     if (!(await tile.isVisible().catch(() => false))) {
       await push("/");
       await sleep(2_000);
