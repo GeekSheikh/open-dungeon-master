@@ -470,4 +470,36 @@ test("a versatile weapon offers two hands only when no shield is worn", () => {
   assert.equal(shielded.dice, free.dice);
 });
 
+// The off-hand swing of two-weapon fighting has a weapon in each hand, so a
+// Dual Wielder's second longsword is never offered the two-handed grip.
+test("the off-hand card of a versatile weapon does not offer two hands", () => {
+  const duelist = sheet({ feats: ["Dual Wielder"], equipment: [item("Longsword", { qty: 2, equipped: true })] });
+  const cards = deriveHand(duelist, mine());
+  assert.match(byId(cards, "attack:longsword").rules, /two hands/);
+  const off = byId(cards, "offhand:longsword");
+  assert.ok(off, "Dual Wielder deals the off-hand longsword");
+  assert.doesNotMatch(off.rules, /two hands/);
+});
+
+// handsRuling refuses a two-handed weapon outright while a shield is worn,
+// so its card is shut with the engine's own sentence instead of being
+// offered and refused.
+test("a two-handed weapon's card is shut while a shield is worn, in the engine's words", () => {
+  for (const [weapon, extra] of [["Greatsword", []], ["Longbow", [item("Arrows", { qty: 20 })]]]) {
+    const id = `attack:${weapon.toLowerCase()}`;
+    const shielded = byId(deriveHand(sheet({ equipment: [item(weapon, { equipped: true }), ...extra, item("Shield", { equipped: true })] }), mine()), id);
+    assert.equal(
+      shielded.disabled,
+      `${weapon} needs both hands, and Kael has Shield on one arm. They put the shield away first (unequip it on the sheet) or attack with a one-handed weapon.`,
+    );
+    assert.equal(byId(deriveHand(sheet({ equipment: [item(weapon, { equipped: true }), ...extra] }), mine()), id).disabled, null);
+    // A shield in the pack and off the arm leaves both hands free.
+    const doffed = sheet({ equipment: [item(weapon, { equipped: true }), ...extra, item("Shield", { equipped: false })] });
+    assert.equal(byId(deriveHand(doffed, mine()), id).disabled, null);
+  }
+  // A one-handed weapon beside the shield is swung as ever.
+  const sword = byId(deriveHand(sheet({ equipment: [item("Longsword", { equipped: true }), item("Shield", { equipped: true })] }), mine()), "attack:longsword");
+  assert.equal(sword.disabled, null);
+});
+
 console.log(`test-hand-engine: ${passed} passed`);

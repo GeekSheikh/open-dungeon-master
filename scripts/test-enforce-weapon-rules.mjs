@@ -18,6 +18,7 @@ import { abilityMod, proficiencyBonus, suite } from "./lib/enforce-harness.mjs";
 import { gearKit, profs } from "./lib/enforce-equipment.mjs";
 
 const { test, finish } = suite("test-enforce-weapon-rules");
+const { deriveHand } = await import("../src/lib/battlemap/hand.ts");
 
 const LEVEL = 5;
 const PB = proficiencyBonus(LEVEL);
@@ -70,6 +71,9 @@ await test("A two-handed weapon requires two hands to attack with, so it cannot 
   arm(hero.id, { str: 14, equipment: [{ name: "Greatsword", qty: 1, equipped: true }, { name: "Shield", qty: 1, equipped: true }, { name: "Chain Mail", qty: 1, equipped: true }] });
   const swing = await kit.swing(hero.id, { weapon: "Greatsword" }, 10, 3, 4);
   assert.equal(swing.ok, false, `the greatsword hit for ${swing.result?.damage} behind AC ${world.sheet(hero.id).ac}`);
+  // The player's Hand shuts the card with the engine's own sentence.
+  const card = deriveHand(world.sheet(hero.id)).find((entry) => entry.id === "attack:greatsword");
+  assert.equal(card.disabled, swing.error);
 });
 
 // ---- two-weapon fighting ----

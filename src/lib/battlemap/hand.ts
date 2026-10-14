@@ -10,7 +10,7 @@ import { racialNaturalWeapon } from "@/lib/srd/racial-weapons";
 import { optionCards } from "@/lib/battlemap/hand-options";
 import { maneuverDieFor, maneuverUse, type ManeuverUse } from "@/lib/dm/maneuver-rules";
 import { ragingMeleeBonus, weaponAttackProfile, weaponOf } from "@/lib/dm/attack-logic";
-import { dualWields, offHandProblem } from "@/lib/dm/attack-rules";
+import { dualWields, handsRuling, offHandProblem } from "@/lib/dm/attack-rules";
 import { magicWeaponOfRow, type WeaponGear } from "@/lib/dm/gear-attack";
 import { bonusRouteFor, kiLeft, usesLeft, type BonusRoute, type MoveAction } from "@/lib/dm/bonus-routes";
 import { effectiveSpeed, exhaustionSpeed } from "@/lib/dm/condition-logic";
@@ -86,7 +86,9 @@ function attackCards(sheet: CharacterSheet, turn: HandTurn, riders: CombatRiders
   // Martial Arts only with no armor and no shield (the engine's own gate).
   const martialArts = martialArtsApplies(sheet);
   // A shield on the arm keeps a versatile weapon in one hand, whatever is
-  // asked (handsRuling in src/lib/dm/attack-rules.ts).
+  // asked, and a two-handed weapon out of use (handsRuling in
+  // src/lib/dm/attack-rules.ts). The off-hand swing of two-weapon fighting
+  // has a weapon in each hand, so it is one-handed as well.
   const shieldName = acBreakdownFor(sheet).shieldName;
   const onHit = conditionOnHitDice(sheet.conditions);
   const cards: HandCard[] = [];
@@ -152,7 +154,7 @@ function attackCards(sheet: CharacterSheet, turn: HandTurn, riders: CombatRiders
     notes.push(...onHit.notes.map((note) => `${note}.`));
     notes.push(...profile.riderNotes.map((note) => `${note}.`));
     if (!profile.proficient) notes.push("Not proficient.");
-    if (srd?.properties?.includes("versatile") && !profile.twoHanded && !shieldName) notes.push("Versatile: say two hands for the bigger die.");
+    if (srd?.properties?.includes("versatile") && !profile.twoHanded && !shieldName && !offHand) notes.push("Versatile: say two hands for the bigger die.");
     const ammoKind = srd?.properties?.includes("ammunition") ? ammoKindForWeapon(name) ?? ammoKindForWeapon(srd.name) : null;
     const ammo = ammoKind ? findAmmo(sheet.equipment, ammoKind) : null;
     const empty = ammoKind !== null && ammo === null;
@@ -176,6 +178,13 @@ function attackCards(sheet: CharacterSheet, turn: HandTurn, riders: CombatRiders
     };
     const ammoGate: Gate =
       empty && options.trackAmmo ? { reason: `Out of ${AMMO_LABELS[ammoKind!]}.`, spent: true } : null;
+    // A two-handed weapon is not swung at all with a shield on the arm, in
+    // handsRuling's own words. A lance is left to the engine: the Hand does
+    // not know whether its rider is mounted.
+    const hands = srd
+      ? handsRuling({ who: sheet.name, weapon: name, properties: srd.properties ?? [], lance: false, mounted: false, twoHandedAsked: false, shieldName })
+      : null;
+    const handsGate: Gate = hands && "error" in hands ? { reason: hands.error, spent: false } : null;
     if (offHand) {
       // The engine's own rule (attack-rules.ts offHandProblem): the swing is
       // earned by the Attack action's weapon, not by any attack, so a rapier
@@ -198,7 +207,7 @@ function attackCards(sheet: CharacterSheet, turn: HandTurn, riders: CombatRiders
       const opened: Gate = rule ? { reason: rule, spent: false } : null;
       return gated(card, standing, costGate("bonus", turn, sheet, `an off-hand attack with ${name}`), opened);
     }
-    return gated(card, standing, attackGate(turn, allowed, sheet, { unarmed: srd === null }), ammoGate);
+    return gated(card, standing, handsGate, attackGate(turn, allowed, sheet, { unarmed: srd === null }), ammoGate);
   };
 
   for (const weapon of carried) cards.push(build(weapon.name, weapon.srd, false, weapon.gear));
