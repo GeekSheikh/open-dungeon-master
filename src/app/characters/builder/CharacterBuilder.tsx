@@ -6,6 +6,7 @@ import { useId, useMemo, useState } from "react";
 import { AvatarCropDialog } from "@/app/settings/AvatarCropDialog";
 import { Wizard, type WizardNotice, type WizardStep } from "@/components/ui/Wizard";
 import { cn } from "@/lib/cn";
+import { useEffectsRoot } from "@/lib/effects-mode";
 import type { Genre } from "@/lib/schemas/game-settings";
 import type { Ability, CreateSheetInput } from "@/lib/schemas/sheet";
 import { SRD_SKILLS } from "@/lib/srd";
@@ -172,6 +173,10 @@ function CharacterBuilderForm({
   onCancel?: () => void;
   className?: string;
 }) {
+  // creator.css stills its loops under <html data-effects="low">, which only
+  // the table's session view set; the library and join pages build
+  // characters outside it.
+  useEffectsRoot();
   const {
     races: rawRaces,
     classes: rawClasses,
