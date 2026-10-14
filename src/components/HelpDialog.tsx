@@ -320,6 +320,13 @@ export function HelpDialog({
           the volume. Hover a DM message to replay its narration. Push-to-talk, when configured,
           lets you hold the microphone button to dictate your message.
         </p>
+        <p>
+          A key can hold the microphone too: choose one under{" "}
+          <span className="text-stone-300">Dictation key</span> in your account settings (the apps
+          also have it under Audio and dice), and its name appears on the mic. Hold it in the message
+          box, or anywhere at the table outside another field, and let go when you are done. The
+          words wait in the box like the button&apos;s; only Send sends them.
+        </p>
       </Section>
 
       <Section icon={Mic} title="Live voice chat">
