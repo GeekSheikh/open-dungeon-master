@@ -95,6 +95,19 @@ test("a versatile weapon behind a shield is swung in one hand whatever was asked
   assert.equal(profileOf("Longsword", { twoHanded: false }).damageExpression, "1d8+3");
 });
 
+// SRD 5.1 Two-Weapon Fighting: the bonus attack is made with the weapon in
+// the other hand, so the main hand holds a weapon too.
+test("the off-hand swing of a versatile weapon is one-handed whatever was asked", () => {
+  const ruled = hands("Longsword", { offHand: true, twoHandedAsked: true });
+  assert.deepEqual(ruled, { twoHanded: false, note: "Longsword is in the off hand: swung in one hand" });
+  // One hand rolls the one-handed die and is no Great Weapon Fighting swing.
+  const swing = profileOf("Longsword", { offHand: true, twoHanded: ruled.twoHanded });
+  assert.equal(swing.damageExpression, "1d8");
+  assert.equal(swing.twoHanded, false);
+  assert.deepEqual(hands("Longsword", { offHand: true }), { twoHanded: false, note: null });
+  assert.deepEqual(hands("Longsword", { offHand: false, twoHandedAsked: true }), { twoHanded: true, note: null });
+});
+
 test("a lance needs both hands on foot and one in the saddle", () => {
   assert.ok("error" in hands("Lance", { shieldName: "Shield" }));
   assert.ok(!("error" in hands("Lance", { shieldName: "Shield", mounted: true })));

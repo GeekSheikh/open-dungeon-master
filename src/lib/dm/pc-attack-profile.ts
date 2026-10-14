@@ -273,7 +273,8 @@ export function buildAttackProfile(
         error: `${sheet.name} carries no ${resolved.displayName}. They attack with a weapon from their equipment, with an unarmed strike, or with something they pick up (an improvised weapon, named for what it is).`,
       };
     }
-    // Hands: a shield on the arm leaves one free.
+    // Hands: a shield on the arm leaves one free, and the off-hand swing
+    // has the other weapon in the other hand.
     const properties = resolved.srd?.properties ?? [];
     const shieldName = acBreakdownFor(sheet).shieldName;
     const lance = resolved.srd?.name === SPECIAL_WEAPONS.lance;
@@ -285,6 +286,7 @@ export function buildAttackProfile(
       mounted: Boolean(getMounts(campaignId)[sheet.id]),
       twoHandedAsked: args.twoHanded === true,
       shieldName,
+      offHand: args.offHand === true,
     });
     if ("error" in hands) {
       return hands;

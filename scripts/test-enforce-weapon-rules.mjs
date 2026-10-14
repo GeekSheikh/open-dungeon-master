@@ -95,6 +95,17 @@ await test("the off-hand swing leaves the ability modifier off the damage", asyn
   assert.equal(swing.result.damage, 4);
 });
 
+await test("The off-hand swing is made with a weapon in each hand, so a versatile weapon there rolls its one-handed die however it is asked for.", async () => {
+  world.patch(anchor.id, { feats: ["Dual Wielder"] });
+  arm(anchor.id, { str: 16, equipment: [{ name: "Longsword", qty: 2 }] });
+  const swing = await offHandSwing({ weapon: "Longsword", twoHanded: true }, 10, 4);
+  world.patch(anchor.id, { feats: [] });
+  assert.equal(swing.ok, true, swing.error);
+  assert.deepEqual(swing.damageDice, [8], `the off-hand longsword rolled a d${swing.damageDice[0]}`);
+  assert.equal(swing.result.damage, 4);
+  assert.ok(swing.result.conditionEffects.includes("Longsword is in the off hand: swung in one hand"), swing.result.conditionEffects.join("; "));
+});
+
 await test("the Two-Weapon Fighting style puts the modifier back", async () => {
   arm(anchor.id, {
     str: 16,
