@@ -509,7 +509,7 @@ export function StoryAiPanel({
         (settings.imageBackend === "openai" || (settings.imageBackend === "comfyui" && serverImagesNeedModel)) ? (
           <p className="reveal text-amber-400/90">
             {deviceManaged && settings.imageBackend === "openai"
-              ? "No picture model is saved on this device, so nothing is painted. Save your key again from Story AI on the app's home screen to pick one."
+              ? "No picture model is saved on this device, so nothing is painted. Save your key again from Story AI on the app's home screen, which picks one from the key's list, or pick one in Admin > Image generation."
               : serverManaged
                 ? "No picture model is picked on this server, so nothing is painted. An admin picks one in Admin > Image generation."
                 : "No picture model is picked, so nothing is painted until one is. Pick it in Admin > Image generation."}
