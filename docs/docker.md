@@ -104,9 +104,12 @@ in-process event bus, so it cannot be replicated or pointed at a shared volume f
 hosts. See [Storage and the single-writer rule](storage.md).
 
 To move to a newer release: `docker compose pull && docker compose up -d`. The volumes
-carry over. A locally built image is updated from the clone instead, with
-`git pull && docker compose up -d --build`. That build refreshes the content pack from
-api.open5e.com, so it needs network; the running container never does.
+carry over. If you build locally instead, `docker compose up -d --build` refreshes the
+content pack from api.open5e.com, so the build needs network; the running container
+never does.
+
+A locally built image is updated from its clone: `git pull`, then
+`docker compose up -d --build`.
 
 ## Publishing (maintainers)
 

@@ -9,6 +9,9 @@ import { MINUTES_PER_DAY, MINUTES_PER_HOUR } from "@/lib/dm/calendar";
 // planner keeps to it (src/lib/dm/arc.ts reads dmOutline). The heroes are
 // src/lib/starter/pregens.ts, picked from the lobby.
 
+// Six in the evening, the hour the premise opens on.
+export const STARTER_HOUR = 18;
+
 export const STARTER_ONE_SHOT = {
   id: "silent-bell",
   title: "The Silent Bell of Marrow's Crossing",
@@ -28,9 +31,6 @@ export const STARTER_ONE_SHOT = {
     "Tone: Ravenloft-lite river gothic, fog and lamplight, no gore. NPC names: Mother Hesk (council), Tam Rill (ferryman), Aldo Merrin (sexton), Widow Pell (runs the inn, knows everyone's business, trades gossip for help with the stove).",
   ].join("\n\n"),
 };
-
-// Six in the evening, the hour the premise opens on.
-export const STARTER_HOUR = 18;
 
 export function createStarterCampaign(userId: string, options: { solo: boolean }): Campaign {
   const campaign = createCampaign(userId, {
