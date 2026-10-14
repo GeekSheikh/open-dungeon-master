@@ -146,6 +146,7 @@ export function CompanionBuilderDialog({
             onSubmit={submit}
             busy={busy}
             error={error}
+            onCancel={onClose}
           />
         </Dialog.Content>
       </Dialog.Portal>

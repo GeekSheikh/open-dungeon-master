@@ -81,7 +81,9 @@ export function Sheet({
                 // Over a full-screen editor the X floats on the content, which
                 // comes later in the page and would otherwise paint over it,
                 // leaving a phone (no backdrop to tap) only the Escape key.
-                hideTitle && "absolute right-3 top-3 z-10 lg:right-4 lg:top-4",
+                // Those sheets fill the screen below lg, so the X also clears
+                // the status bar an installed iOS app draws over the page.
+                hideTitle && "absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-10 lg:right-4 lg:top-4",
               )}
               aria-label="Close"
             >
