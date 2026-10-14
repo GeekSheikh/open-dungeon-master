@@ -80,7 +80,9 @@ The **Image model** picker offers two kinds of choice:
   weights (fp8, int8, bf16), or a copy in a subfolder, counts. Choosing a model
   paints every campaign's ComfyUI pictures with it.
 - **Checkpoints**: any checkpoint ComfyUI lists, and a campaign may keep its
-  own. Checkpoints the catalog recognises (SDXL, Pony, SD 3.5, NetaYume,
+  own; a campaign with none of its own paints with the one picked here.
+  Nothing is painted until a model or a checkpoint is picked: the app names
+  no checkpoint itself and takes none from ComfyUI's list. Checkpoints the catalog recognises (SDXL, Pony, SD 3.5, NetaYume,
   HiDream-O1) run with their family's settings; others run with the SDXL-era
   defaults (25 steps, CFG 6). Video models, upscalers, refiners and bare
   diffusion models linked into `models/checkpoints` are left out, since none of
@@ -203,12 +205,15 @@ Pick the model in the admin panel, from the picture models the server lists
 (or set `OPENAI_IMAGE_MODEL`); with none picked, no picture is asked for.
 `OPENAI_IMAGE_BASE_URL` exists for OpenAI-compatible image proxies. The app's
 fast/slow dial maps onto the quality tiers (`medium` and `high`), so **slow**
-is several times the price of **fast**. Notes:
+is several times the price of **fast**. A model that takes other tiers (a
+dall-e model behind a proxy) is asked once more without the field, at its own
+default, and a size it refuses is replaced by one from the list its refusal
+names. Notes:
 
 - Character portrait references are not used by this backend, same as ComfyUI;
   the picture comes from the text prompt alone.
-- Nothing is probed: a backend with no key simply records the request and the
-  placeholder tells the table a picture is coming.
+- Nothing is probed: a backend with no key or no model simply records the
+  request and the placeholder tells the table a picture is coming.
 - Prompts go to OpenAI, so this is the one backend that is not on-device.
 - A key that lives only in ONE campaign's Story AI panel (an admin's
   campaign: a player's campaign always runs on the server's keys) covers that
