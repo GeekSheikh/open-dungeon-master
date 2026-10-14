@@ -3,7 +3,9 @@
 // character speaking inside the narration wears their portrait, else the
 // painted plate for their class and race, never a bare letter; an NPC's face
 // still comes only from the public cast; a player's own line puts their
-// avatar between the portrait and the plate.
+// avatar between the portrait and the plate. Each list is the order the
+// transcript falls back through when a picture fails to load (useFaceChain),
+// so a deleted upload gives way to the plate instead of a broken image.
 import assert from "node:assert/strict";
 import { register } from "node:module";
 import { createElement } from "react";

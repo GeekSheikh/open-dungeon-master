@@ -5,6 +5,7 @@ import { GameIcon } from "@/components/ui/GameIcon";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { SectionHead } from "@/components/ui/SectionHead";
 import { PortraitMedallion } from "@/components/sheet/SheetParts";
+import { useFaceChain } from "@/app/campaigns/[campaignId]/useFaceChain";
 import { useFaceSize } from "@/app/campaigns/[campaignId]/useFaceSize";
 import { cn } from "@/lib/cn";
 import { playerFaces } from "@/lib/speaker-faces";
@@ -117,14 +118,16 @@ export function PlayerMessage({
     (message.characterId ? sheetsById.get(message.characterId) : undefined) ??
     (message.userId ? sheets.find((candidate) => candidate.userId === message.userId) : undefined);
   // Character portrait first, then the player's own avatar, then a stand-in
-  // (playerFaces).
-  const [portraitUrl] = playerFaces({ sheet, avatarUrl: message.userId ? membersById.get(message.userId)?.avatar?.url : undefined, userId: message.userId });
+  // (playerFaces); one that fails to load gives way to the next.
+  const [portraitUrl, onFaceError] = useFaceChain(
+    playerFaces({ sheet, avatarUrl: message.userId ? membersById.get(message.userId)?.avatar?.url : undefined, userId: message.userId }),
+  );
   const actions: MessageAction[] = [copyAction(message)];
   if (onReport && !mine && message.userId) {
     actions.push(reportAction(message, onReport, false));
   }
   // eslint-disable-next-line @next/next/no-img-element
-  const face = portraitUrl ? <img src={portraitUrl} alt="" /> : null;
+  const face = portraitUrl ? <img src={portraitUrl} alt="" onError={onFaceError} /> : null;
   const ooc = message.content.startsWith("(ooc)");
   // The portrait as tall as the name and bubble beside it (useFaceSize).
   const [faceStyle, textColumn] = useFaceSize<HTMLDivElement>();

@@ -2,11 +2,12 @@ import { avatarPlaceholder, characterPlaceholder } from "@/lib/placeholders";
 import type { Speaker } from "@/lib/dm/speech";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 
-// The faces the story log gives the people who speak in it, as lists in
-// order of preference, best first, the way the board's tokens are handed
-// theirs (TokenFace). The painted plates come last because they ship with
-// the server and the apps (scripts/test-placeholders.mjs checks every one
-// resolves).
+// The faces the story log gives the people who speak in it, as lists to try
+// best first: the transcript shows the first that loads (useFaceChain), so an
+// upload that was deleted or cannot be reached gives way to the next instead
+// of a broken image, the way the board's tokens fall back (TokenFace). The
+// painted plates come last because they ship with the server and the apps
+// (scripts/test-placeholders.mjs checks every one resolves).
 
 type FaceSheet = Pick<CharacterSheet, "portrait" | "race" | "class" | "gender">;
 
