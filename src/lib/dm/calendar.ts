@@ -109,7 +109,9 @@ export const SEASONS_CALENDAR: CalendarDefinition = {
     { name: "Leafturn", days: 30 },
     { name: "Yearsend", days: 30 },
   ],
-  weekdays: ["Firstday", "Seconday", "Midday", "Fourthday", "Fifthday", "Restday"],
+  // No weekday may share a word with DAY_PARTS: "Midday, Greening 1 (19:00),
+  // evening" read as noon to players and to the model alike.
+  weekdays: ["Firstday", "Seconday", "Midweek", "Fourthday", "Fifthday", "Restday"],
   yearSuffix: "",
   epochYear: 1,
 };

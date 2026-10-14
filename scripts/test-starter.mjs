@@ -25,6 +25,7 @@ const { createSheet, listSheets } = await import("../src/lib/db/sheets.ts");
 const { createCharacter, listCharactersForUser } = await import("../src/lib/db/characters.ts");
 const { PREGENS, pregenById, pregenSummaries } = await import("../src/lib/starter/pregens.ts");
 const { STARTER_ONE_SHOT, createStarterCampaign } = await import("../src/lib/starter/one-shot.ts");
+const { CALENDAR_PRESETS, DAY_PARTS, breakDown, dayPart } = await import("../src/lib/dm/calendar.ts");
 
 let failed = 0;
 function test(name, run) {
@@ -54,6 +55,27 @@ test("the one-shot campaign carries its premise, its secret outline and a short 
   assert.ok(!stored.description.includes("ghoul"), "the players' premise keeps the twist");
   const solo = createStarterCampaign(host.id, { solo: true });
   assert.equal(solo.maxPlayers, 1);
+});
+
+// The premise says "you arrive at dusk", and the DM narrates the hour the
+// clock shows; a campaign's clock otherwise opens at eight in the morning.
+test("the one-shot's clock opens at dusk, as its premise does", () => {
+  assert.match(STARTER_ONE_SHOT.description, /at dusk/);
+  const table = getCampaignById(createStarterCampaign(host.id, { solo: true }).id);
+  const now = breakDown(table.clock.calendar, table.clock.instant);
+  assert.equal(now.hour, 18);
+  assert.equal(dayPart(now.hour), "evening");
+});
+
+// A weekday named like an hour ("Midday, Greening 1 (19:00), evening") reads
+// as the hour to players and to the model.
+test("no weekday of a built-in calendar shares a word with a time of day", () => {
+  const dayWords = new Set(DAY_PARTS.flatMap((part) => part.split(" ")).concat(["noon", "midnight", "dusk", "dawn"]));
+  for (const calendar of CALENDAR_PRESETS) {
+    for (const weekday of calendar.weekdays) {
+      assert.equal(dayWords.has(weekday.toLowerCase()), false, `${calendar.name}: ${weekday}`);
+    }
+  }
 });
 
 test("every ready-made hero passes the table's admission door at level 1 and arrives armed", () => {
