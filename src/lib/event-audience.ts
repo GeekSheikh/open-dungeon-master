@@ -55,6 +55,7 @@ export const EVENT_AUDIENCE: Readonly<Record<string, Audience>> = {
   message_added: TABLE,
   message_updated: TABLE,
   dm_delta: TABLE,
+  dm_draft_reset: TABLE,
   dm_draft_seq: TABLE,
   dm_status: TABLE,
   dm_intent_queued: TABLE,

@@ -8,6 +8,7 @@ import { createStreamWatchdog } from "@/app/campaigns/[campaignId]/streamWatchdo
 import {
   appendDmDraft,
   clearDmDraft,
+  replaceDmDraft,
   setDmDraftSeq,
   resetLiveStores,
   setVoiceSpeaking,
@@ -139,6 +140,8 @@ export type CampaignLocation = {
   visited: boolean;
   isCurrent: boolean;
   mapImage: { url: string } | null;
+  // Why its last map render failed, while it has none (src/lib/db/locations.ts).
+  mapFailed?: string | null;
   // The place's ambience bed and music, which name its kind of scene.
   ambience: { bed: string; music: string } | null;
   updatedAt: string;
@@ -673,7 +676,7 @@ export function campaignReducer(state: CampaignState, action: Action): CampaignS
         case "location_map_ready":
           next.locations = state.locations.map((location) =>
             location.id === payload.locationId
-              ? { ...location, mapImage: payload.image as CampaignLocation["mapImage"] }
+              ? { ...location, mapImage: payload.image as CampaignLocation["mapImage"], mapFailed: null }
               : location,
           );
           next.mediaStatus = withoutKey(state.mediaStatus, String(payload.locationId ?? ""));
@@ -1049,6 +1052,8 @@ const EPHEMERAL_EVENTS = [
   "dm_status",
   "utility_calls",
   "dm_delta",
+  // The turn withheld text it had streamed: the draft shows what it kept.
+  "dm_draft_reset",
   // A player answered the streaming passage: where it will be written.
   "dm_draft_seq",
   "media_status",
@@ -1467,6 +1472,8 @@ export function useCampaignStream(campaignId: string) {
           // the draft bubble and the voice dock alone (liveStore.ts).
           if (eventType === "dm_delta") {
             appendDmDraft(String(payload.text ?? ""));
+          } else if (eventType === "dm_draft_reset") {
+            replaceDmDraft(String(payload.text ?? ""));
           } else if (eventType === "dm_draft_seq") {
             setDmDraftSeq(typeof payload.seq === "number" ? payload.seq : null);
           } else if (eventType === "voice_speaking") {

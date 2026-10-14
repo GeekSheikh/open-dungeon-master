@@ -16,8 +16,16 @@ export function PushToTalk({
   disabled: boolean;
   onTranscript: (text: string) => void;
 }) {
-  const { state: rawState, hint, start, stop } = useDictation({ onTranscript });
+  const { state: rawState, hint, start, stop, available } = useDictation({ onTranscript });
   const state = rawState === "starting" ? "idle" : rawState;
+
+  // No Whisper, no built-in engine and no device recognizer: a mic that can
+  // only fail is not offered (Admin > Speech says the buttons are hidden).
+  // A take that is live when the engine goes is ended by useDictation, since
+  // the button it would be released on is gone.
+  if (!available) {
+    return null;
+  }
 
   return (
     <div className="relative self-end">
