@@ -28,6 +28,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { ChatMessage, ChatRequestOptions, UpstreamResult } from "@/lib/model-client";
+import { createStreamRepetitionGuard, firstCopyOf, streamRepetitionResponse } from "@/lib/stream-repetition";
 import { buildChildEnv, leaksServerSecret } from "./child-env.ts";
 import { childPath } from "./discover.ts";
 import { renderCompletion, renderFollowUp, renderTurn, toMcpTools, toolNames } from "./render.ts";
@@ -92,6 +93,9 @@ export class BridgeSession {
   private queue: PendingCall[] = [];
   private inflight = new Map<string, PendingCall>();
   private text = "";
+  // Reads `text` for a loop, as a model's stream is read
+  // (src/lib/stream-repetition.ts); started again whenever `text` empties.
+  private loop = createStreamRepetitionGuard();
   // What the program wrote before its last call refused for narration only:
   // the message if it writes nothing after the refusal (refuseToNarrate).
   private draft = "";
@@ -165,6 +169,10 @@ export class BridgeSession {
     }
     if (event.type === "delta") {
       this.text += event.text;
+      if (this.loop.push(event.text)) {
+        this.stopRepeating();
+        return;
+      }
       this.waiter?.onDelta?.(event.text);
       return;
     }
@@ -172,7 +180,7 @@ export class BridgeSession {
       this.finished = true;
       this.lastUsage = event.usage;
       const content = (this.text.trim() ? this.text : this.draft || event.text).trim();
-      this.text = "";
+      this.clearText();
       this.draft = "";
       // Calls still queued when the program says it is done can only be
       // strays; they are answered and dropped.
@@ -249,8 +257,29 @@ export class BridgeSession {
     if (this.text.trim()) {
       this.draft = this.text;
     }
-    this.text = "";
+    this.clearText();
     return NARRATE_NOW;
+  }
+
+  private clearText() {
+    this.text = "";
+    this.loop = createStreamRepetitionGuard();
+  }
+
+  // The program began repeating itself, so it is stopped as a model's stream
+  // would be. An ask that may only narrate has no calls to lose, and gets the
+  // text up to the end of the first copy; any other gets the halted-turn
+  // error, since its prose without the calls it never made could narrate
+  // outcomes nothing resolved.
+  private stopRepeating() {
+    const kept = firstCopyOf(this.text, this.loop.firstCopyEnd);
+    const content = kept === null ? "" : kept.trim() || this.draft.trim();
+    this.deliver(
+      this.narrateOnly && content
+        ? { message: { content }, finishReason: "repetition" }
+        : { error: streamRepetitionResponse() },
+    );
+    this.close();
   }
 
   private scheduleGather() {
@@ -270,7 +299,7 @@ export class BridgeSession {
       this.inflight.set(call.id, call);
     }
     const content = this.text.trim();
-    this.text = "";
+    this.clearText();
     this.deliver({
       message: {
         content,
@@ -716,6 +745,10 @@ async function completeWithHarness(
   const rendered = renderCompletion(messages);
   let program: HarnessSession | null = null;
   let text = "";
+  // A streamed or narration-only answer is read for a loop as a model's is.
+  // A completion has no tools, so one that begins repeating is settled with
+  // its first copy, and the program is stopped below like a finished one.
+  const loop = options.onDelta || options.toolChoice === "none" ? createStreamRepetitionGuard() : null;
   let outcome: UpstreamResult;
   try {
     outcome = await new Promise<UpstreamResult>((resolve) => {
@@ -747,6 +780,15 @@ async function completeWithHarness(
         onEvent: (event) => {
           if (event.type === "delta") {
             text += event.text;
+            if (loop?.push(event.text)) {
+              const kept = firstCopyOf(text, loop.firstCopyEnd);
+              settle(
+                kept === null
+                  ? { error: streamRepetitionResponse() }
+                  : { message: { content: kept.trim() }, finishReason: "repetition" },
+              );
+              return;
+            }
             options.onDelta?.(event.text);
           } else if (event.type === "turn_end") {
             settle({ message: { content: (text.trim() ? text : event.text).trim() } });
