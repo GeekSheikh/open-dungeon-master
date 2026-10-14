@@ -43,7 +43,9 @@ export type Capabilities = {
   // backend: which engine /api/stt will use; wantsWav: whether the browser
   // must send 16 kHz WAV instead of its own recording (the built-in engine).
   stt: { configured: boolean; backend: SttBackend; wantsWav: boolean };
-  voice: { enabled: boolean; mode: VoiceMode };
+  // transcribes: whether voice-chat transcription can write anything down
+  // (the transcript route's own check, src/lib/stt.ts sttAvailable).
+  voice: { enabled: boolean; mode: VoiceMode; transcribes: boolean };
 };
 
 export const PROBE_TIMEOUT_MS = 2_500;
@@ -425,6 +427,8 @@ export async function capabilitiesSnapshot(): Promise<Capabilities> {
   const narrationNeedsModel =
     speech.provider === "openai" && !speechModel && (isOpenAiHost(speech.v1) ? speech.apiKey !== "" : ttsReachable);
 
+  const dictation = await sttInputs(async () => sttReachable);
+
   return {
     story: {
       configured: storyReady,
@@ -474,7 +478,11 @@ export async function capabilitiesSnapshot(): Promise<Capabilities> {
     // Whisper (an explicit URL, or the default address answering) with its
     // model, then the built-in engine, then an OpenAI key with its model:
     // see src/lib/stt-logic.ts. The probe above is the one sttInputs asks.
-    stt: sttCapability(pickSttBackend(await sttInputs(async () => sttReachable))),
-    voice: { enabled: voice.enabled, mode: voice.mode },
+    stt: sttCapability(pickSttBackend(dictation)),
+    // The voice-chat transcript writes only to a Whisper service the admin
+    // or STT_URL named, with its model (src/lib/stt.ts sttAvailable), read
+    // from the same probe-gated inputs, so a named box that does not answer
+    // costs nothing here.
+    voice: { enabled: voice.enabled, mode: voice.mode, transcribes: Boolean(dictation.explicitWhisperUrl && dictation.whisperModel) },
   };
 }

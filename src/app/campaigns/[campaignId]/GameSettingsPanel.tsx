@@ -31,6 +31,7 @@ import {
   type RerollChoice,
 } from "@/lib/srd/ability-rerolls";
 import { useServerRerollBelow } from "@/app/characters/builder/useTableRules";
+import { transcribesVoice, useCapabilities } from "@/lib/use-capabilities";
 import {
   CAMPAIGN_LENGTH_LABELS,
   CAMPAIGN_LENGTHS,
@@ -115,6 +116,10 @@ export function GameSettingsPanel({
   // What "the server's rule" for rolled stats is, so neither the lead's
   // choice nor a player's summary leaves it unnamed.
   const serverRerollBelow = useServerRerollBelow();
+  // A server that cannot transcribe holds the Transcription switch off; the
+  // table's stored choice is kept, so transcription added later brings it
+  // back.
+  const transcribes = transcribesVoice(useCapabilities());
   const serverRerollLabel = describeTableReroll(null, serverRerollBelow).toLowerCase();
 
   // Installed world packs, so the lead can switch worlds after creation. An
@@ -715,9 +720,19 @@ export function GameSettingsPanel({
                   />
                 </span>
               </Tooltip>
-              <Tooltip content="Transcription: each speaker's microphone is written down with their name, for the beat drafter and the chapter summary. Never read by the DM prompt. The lobby says out loud that the table is being transcribed while this is on.">
-                <SettingToggle on={settings.voice.transcribe} onToggle={() => patch({ voice: { ...settings.voice, transcribe: !settings.voice.transcribe } })}>
-                  Transcription {settings.voice.transcribe ? "on" : "off"}
+              <Tooltip
+                content={
+                  transcribes
+                    ? "Transcription: each speaker's microphone is written down with their name, for the beat drafter and the chapter summary. Never read by the DM prompt. The lobby says out loud that the table is being transcribed while this is on."
+                    : "This server has no transcription service, so nothing said on the call can be written down. An admin sets up a Whisper service (STT_URL, or Admin > Speech) to switch it on."
+                }
+              >
+                <SettingToggle
+                  on={settings.voice.transcribe && transcribes}
+                  disabled={!transcribes}
+                  onToggle={() => patch({ voice: { ...settings.voice, transcribe: !settings.voice.transcribe } })}
+                >
+                  Transcription {!transcribes ? "off on this server" : settings.voice.transcribe ? "on" : "off"}
                 </SettingToggle>
               </Tooltip>
               <Tooltip content="Distance decides who hears whom, using the battle map. Outside combat, or with no map, everyone hears everyone as usual. The DM always hears everyone and is always heard.">

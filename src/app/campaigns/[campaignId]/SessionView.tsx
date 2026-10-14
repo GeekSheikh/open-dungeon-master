@@ -5,6 +5,7 @@ import { LevelUpMoment, LootMoment, MomentVeil, RestMoment, TravelBanner } from 
 import { CoordinationPanel } from "@/app/campaigns/[campaignId]/CoordinationPanel";
 import { haptic, useEffectsRoot, useTurnChime } from "@/lib/effects-mode";
 import { levelForXp } from "@/lib/srd";
+import { transcribesVoice, useCapabilities } from "@/lib/use-capabilities";
 import { SceneTitle } from "@/components/SceneTitle";
 import { askConcentrationSwap, isConcentrationQuestion } from "@/components/concentration-prompt";
 import { HandoutStage } from "@/components/HandoutStage";
@@ -538,7 +539,9 @@ export function SessionView({
   const voiceSettings = campaign?.gameSettings?.voice;
   const turnEnforcement = voiceSettings?.turnEnforcement ?? "soft";
   const sayRangeRule = Boolean(voiceSettings?.rules?.sayRange);
-  const transcribe = Boolean(voiceSettings?.transcribe);
+  // Nothing records or announces a transcript the server cannot write.
+  const capabilities = useCapabilities();
+  const transcribe = Boolean(voiceSettings?.transcribe) && transcribesVoice(capabilities);
   const floorUserIds =
     floor.mode === "spotlight" || floor.mode === "initiative" ? floor.userIds : EMPTY_IDS;
   const voice = useMemo(

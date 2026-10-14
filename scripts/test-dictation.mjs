@@ -264,6 +264,23 @@ test("both mic buttons hide when there is no engine", () => {
   assert.match(read("src/app/admin/BuiltinSpeechCard.tsx"), /none: "nothing yet, so the mic buttons are hidden \(the Android app uses the phone's own recognizer\)"/);
 });
 
+// Voice-chat transcription asks the transcript route's own question
+// (sttAvailable): a server that cannot write anything down holds the table's
+// switch off, and the call neither records rings nor tells everyone it is
+// being transcribed. A server that does not say is taken at its word.
+const { transcribesVoice } = await import("../src/lib/use-capabilities.ts");
+test("transcription waits on a server that can write it down", () => {
+  const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  assert.equal(transcribesVoice(null), true);
+  assert.equal(transcribesVoice({ voice: { enabled: true, mode: "auto" } }), true, "an older server's answer hid the switch");
+  assert.equal(transcribesVoice({ voice: { enabled: true, mode: "auto", transcribes: false } }), false);
+  assert.match(read("src/lib/capabilities.ts"), /transcribes: Boolean\(dictation\.explicitWhisperUrl && dictation\.whisperModel\)/);
+  const panel = read("src/app/campaigns/[campaignId]/GameSettingsPanel.tsx");
+  assert.match(panel, /on=\{settings\.voice\.transcribe && transcribes\}\s*disabled=\{!transcribes\}/);
+  assert.match(read("src/app/campaigns/[campaignId]/SessionView.tsx"), /const transcribe = Boolean\(voiceSettings\?\.transcribe\) && transcribesVoice\(capabilities\);/);
+  assert.match(read("src/app/campaigns/[campaignId]/Lobby.tsx"), /campaign\.gameSettings\.voice\.transcribe && transcribes \? \(/);
+});
+
 // A take still live when the engine goes (a capabilities refresh that finds
 // no speech-to-text) is ended by the hook: the button it would be released
 // on hides with the engine, and the recorder would run to its time limit.

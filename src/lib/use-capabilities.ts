@@ -20,7 +20,8 @@ export type ClientCapabilities = {
   tts: { configured: boolean; reachable: boolean; provider?: "kokoro" | "openai" | "off"; place?: string; needsModel?: boolean };
   // backend and wantsWav arrive from servers newer than 0.23.11.
   stt: { configured: boolean; backend?: "whisper" | "builtin" | "openai" | "none"; wantsWav?: boolean };
-  voice: { enabled: boolean; mode: string };
+  // transcribes arrives from servers newer than 0.26.4.
+  voice: { enabled: boolean; mode: string; transcribes?: boolean };
 };
 
 let cached: ClientCapabilities | null = null;
@@ -86,6 +87,13 @@ export function subscribeCapabilities(listener: (value: ClientCapabilities | nul
 // Is there an image backend to paint portraits, maps and scenes with?
 export function offersImages(capabilities: ClientCapabilities | null): boolean {
   return capabilities === null || capabilities.images.configured;
+}
+
+// Can voice chat be written down? A table's Transcription switch, the call's
+// 30-second rings and the "being transcribed" notices all wait on it. An
+// older server that does not say is taken at its word, as before.
+export function transcribesVoice(capabilities: ClientCapabilities | null): boolean {
+  return capabilities?.voice.transcribes !== false;
 }
 
 // Is there a text model for suggestions, drafts and the AI storyteller?
