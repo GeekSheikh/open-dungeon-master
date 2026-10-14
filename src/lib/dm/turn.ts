@@ -603,6 +603,11 @@ export async function resumeDmTurn(campaignId: string, turnId: string) {
   // model to hand them to, so the turn closes as a person's does rather than
   // narrating at a table the AI no longer runs.
   if (personRunsTable(campaign)) {
+    if (takeNarrationSeq(campaignId, turn.id) !== null) {
+      // A message posted while the turn waited reserved a place for its
+      // narration, and nothing will fill it; the draft bubble lets it go.
+      publishEphemeral(campaignId, "dm_draft_seq", { seq: null });
+    }
     turn.status = "done";
     saveDmTurn(turn);
     setDmStatus(campaignId, "idle");
@@ -654,6 +659,9 @@ export async function resumeDmTurn(campaignId: string, turnId: string) {
   turn.status = "running";
   saveDmTurn(turn);
   setDmStatus(campaignId, "narrating");
+  // The place it held while parked, or a fresh one after a restart: a move
+  // posted while the model reads the rolls sits after this narration.
+  narrationShown(campaignId, turn.id);
   await advance(context, turn);
 }
 
@@ -661,6 +669,9 @@ export async function resumeDmTurn(campaignId: string, turnId: string) {
 // its persisted conversation. Lives here because advance() and loadContext()
 // are turn internals; the retry's own guards run before this is called.
 export async function reenterDmTurn(campaign: Campaign, turn: DmTurn) {
+  // A retried turn thinks again before it speaks; a move posted meanwhile
+  // belongs after its narration, as on the turn's first run.
+  narrationShown(campaign.id, turn.id);
   await advance(loadContext(campaign), turn);
 }
 
@@ -1563,21 +1574,19 @@ async function resolveModelCall(
   const rawArguments = strictBooleanArgs(toolCall.rawArguments);
   // The model's damage, healing and binding conditions are the server's to
   // roll (src/lib/dm/ai-gate.ts). The encounter and mutation calls below run
-  // their handlers directly, so they are held to it here; the rest reach the
-  // gate in dispatchAdjudication, and are not gated twice.
-  let gatedArguments = rawArguments;
-  if (ENCOUNTER_NAMES.has(name) || MUTATION_NAMES.has(name)) {
-    const gated = gateAiCall(name, rawArguments, { campaign, turn, sheetsById });
-    if ("result" in gated) {
-      return gated.result;
-    }
-    gatedArguments = gated.args;
-  }
+  // their handlers directly, so they are held to it here, once a call is
+  // past its cap (the gate may roll dice or a save the table sees); the rest
+  // reach the gate in dispatchAdjudication, and are not gated twice.
+  const gate = () => gateAiCall(name, rawArguments, { campaign, turn, sheetsById });
   if (ENCOUNTER_NAMES.has(name)) {
     if (turn.encounterCount >= ENCOUNTER_CAP_PER_TURN) {
       return { error: "Encounter action limit reached for this turn." };
     }
-    const result = applyEncounterCall(campaign, turn, name, gatedArguments, sheets, sheetsById, {
+    const gated = gate();
+    if ("result" in gated) {
+      return gated.result;
+    }
+    const result = applyEncounterCall(campaign, turn, name, gated.args, sheets, sheetsById, {
       realDiceUserIds,
       toolCallId: toolCall.id ?? null,
     }).result;
@@ -1610,9 +1619,13 @@ async function resolveModelCall(
     if (turn.mutationCount >= MUTATION_CAP_PER_TURN) {
       return { error: "Mutation limit reached for this turn." };
     }
+    const gated = gate();
+    if ("result" in gated) {
+      return gated.result;
+    }
     const result =
-      maybeProposeItemChange(campaign, turn.id, name, gatedArguments, sheetsById) ??
-      applyDmMutation(campaign, turn.id, name, gatedArguments, sheets, sheetsById).result;
+      maybeProposeItemChange(campaign, turn.id, name, gated.args, sheetsById) ??
+      applyDmMutation(campaign, turn.id, name, gated.args, sheets, sheetsById).result;
     if (!("error" in result)) {
       turn.mutationCount += 1;
     }

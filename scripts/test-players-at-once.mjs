@@ -18,13 +18,14 @@
 import assert from "node:assert/strict";
 import { openWorld } from "./lib/enforce-world.mjs";
 import { suite } from "./lib/enforce-harness.mjs";
-import { call, fakeModel, held, reply } from "./lib/enforce-narrator.mjs";
+import { call, failure, fakeModel, held, reply } from "./lib/enforce-narrator.mjs";
 
 const { test, finish } = suite("test-players-at-once");
 
 const { listRecentMessages } = await import("../src/lib/db/messages.ts");
 const { getFloor } = await import("../src/lib/db/campaigns.ts");
 const { dmQueueDepth } = await import("../src/lib/dm/queue.ts");
+const { getLatestDmTurnId } = await import("../src/lib/db/dm-turns.ts");
 
 async function until(what, check, ms = 30_000) {
   const end = Date.now() + ms;
@@ -92,6 +93,40 @@ await test("Moves that land while the DM is still answering share one follow-up 
     "I watch the upper windows.",
     "I knock again, louder.",
     "(ooc) back in a sec",
+    "Somewhere above, a shutter bangs once and goes still. What do you do?",
+  ]);
+  model.close();
+  world.close();
+});
+
+await test("A move posted while a retried turn is still thinking is answered too, and sits after the narration the retry wrote.", async () => {
+  const { world, karaUser, bramUser, model } = await table();
+  model.script([failure(500)]);
+  assert.equal((await act(world, karaUser, "I knock on the chapel door.")).status, 202);
+  await settle(world);
+  const turnId = getLatestDmTurnId(world.campaignId);
+
+  const retried = held(reply({ text: "The chapel door is old oak, swollen with river damp. What do you do?" }));
+  model.script([retried.entry, reply({ text: "Somewhere above, a shutter bangs once and goes still. What do you do?" })]);
+  const route = await world.route("campaigns/[campaignId]/dm-turn/retry");
+  world.signIn(karaUser);
+  const response = await route.POST(
+    new Request("http://test/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ turnId }) }),
+    { params: Promise.resolve({ campaignId: world.campaignId }) },
+  );
+  assert.equal(response.status, 200);
+  await until("the retried turn to reach the model", () => model.requests.length === 1);
+
+  assert.equal((await act(world, bramUser, "I watch the upper windows.")).status, 202);
+  retried.release();
+  await settle(world);
+
+  assert.equal(model.served(), 2, `expected the retry and one follow-up, the model answered ${model.served()} times`);
+  assert.match(sent(model.requests[1]), /upper windows/, "the follow-up never read Bram's move");
+  assert.deepEqual(transcript(world), [
+    "I knock on the chapel door.",
+    "The chapel door is old oak, swollen with river damp. What do you do?",
+    "I watch the upper windows.",
     "Somewhere above, a shutter bangs once and goes still. What do you do?",
   ]);
   model.close();
