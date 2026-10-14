@@ -66,6 +66,7 @@ import { modelTextLines } from "@/lib/dm/speech-lines";
 import type { SpokenLine } from "@/lib/dm/speech";
 import { markToolError } from "@/lib/dm/tool-errors";
 import { dispatchAdjudication } from "@/lib/dm/invoke-dispatch";
+import { gateAiCall } from "@/lib/dm/ai-gate";
 import { characterAwaitingPlayer } from "@/lib/dm/player-word";
 import { enemiesOwedTurn, personRunsTable } from "@/lib/dm/enemies-due";
 import { intentAnswered, intentCorrection, intentNeedsTool, type MessageIntent } from "@/lib/dm/intent-logic";
@@ -1560,11 +1561,23 @@ async function resolveModelCall(
   const { name } = toolCall;
   // "false" sent as a string is false (src/lib/dm/arg-coerce.ts).
   const rawArguments = strictBooleanArgs(toolCall.rawArguments);
+  // The model's damage, healing and binding conditions are the server's to
+  // roll (src/lib/dm/ai-gate.ts). The encounter and mutation calls below run
+  // their handlers directly, so they are held to it here; the rest reach the
+  // gate in dispatchAdjudication, and are not gated twice.
+  let gatedArguments = rawArguments;
+  if (ENCOUNTER_NAMES.has(name) || MUTATION_NAMES.has(name)) {
+    const gated = gateAiCall(name, rawArguments, { campaign, turn, sheetsById });
+    if ("result" in gated) {
+      return gated.result;
+    }
+    gatedArguments = gated.args;
+  }
   if (ENCOUNTER_NAMES.has(name)) {
     if (turn.encounterCount >= ENCOUNTER_CAP_PER_TURN) {
       return { error: "Encounter action limit reached for this turn." };
     }
-    const result = applyEncounterCall(campaign, turn, name, rawArguments, sheets, sheetsById, {
+    const result = applyEncounterCall(campaign, turn, name, gatedArguments, sheets, sheetsById, {
       realDiceUserIds,
       toolCallId: toolCall.id ?? null,
     }).result;
@@ -1598,8 +1611,8 @@ async function resolveModelCall(
       return { error: "Mutation limit reached for this turn." };
     }
     const result =
-      maybeProposeItemChange(campaign, turn.id, name, rawArguments, sheetsById) ??
-      applyDmMutation(campaign, turn.id, name, rawArguments, sheets, sheetsById).result;
+      maybeProposeItemChange(campaign, turn.id, name, gatedArguments, sheetsById) ??
+      applyDmMutation(campaign, turn.id, name, gatedArguments, sheets, sheetsById).result;
     if (!("error" in result)) {
       turn.mutationCount += 1;
     }
