@@ -22,7 +22,11 @@ export function whisperUrl(): string {
 // picked, else the only one the service lists (a Whisper service usually
 // loads one), else none and the service is skipped.
 export async function whisperModelFor(base: string): Promise<string> {
-  return configValue(getGlobalConfig().speech.sttModel, "STT_MODEL") || (await soleListedModel({ provider: "speech", baseUrl: base }));
+  return pickedWhisperModel() || (await soleListedModel({ provider: "speech", baseUrl: base }));
+}
+
+function pickedWhisperModel(): string {
+  return configValue(getGlobalConfig().speech.sttModel, "STT_MODEL");
 }
 
 // What the pure rule in stt-logic.ts decides from. `reachable` says whether
@@ -33,13 +37,20 @@ export async function sttInputs(reachable: (url: string) => Promise<boolean>): P
   const configured = configValue(getGlobalConfig().speech.sttUrl, "STT_URL");
   const off = whisperSwitchedOff(configured);
   const explicitWhisperUrl = off ? "" : configured;
-  const whisperReachable = off ? false : explicitWhisperUrl ? true : await reachable(whisperUrl());
+  const picked = off ? "" : pickedWhisperModel();
+  // An address the admin or STT_URL named counts as there, answering or not
+  // (some Whisper servers do not answer the probe's model list), and with
+  // its model picked nothing more is asked. Without one, the service is
+  // asked for its list only when the probe heard it: the probe is cached for
+  // half a minute and a listing is not, so a named box that is switched off
+  // costs one short probe per window instead of a 12 s listing on every
+  // capabilities read.
+  const answering = off || (explicitWhisperUrl && picked) ? false : await reachable(whisperUrl());
   const openAi = openAiSpeechConfig();
   return {
     explicitWhisperUrl,
-    whisperReachable,
-    // Only a service that is there is asked for its list.
-    whisperModel: explicitWhisperUrl || whisperReachable ? await whisperModelFor(whisperUrl()) : "",
+    whisperReachable: Boolean(explicitWhisperUrl) || answering,
+    whisperModel: picked || (answering ? await whisperModelFor(whisperUrl()) : ""),
     builtinInstalled: builtinSpeechInstalled(),
     openAiKey: openAi.apiKey,
     openAiModel: openAi.model,

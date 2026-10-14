@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import fs, { readFileSync } from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { register } from "node:module";
@@ -36,7 +37,7 @@ const { pickSttBackend, sttWantsWav, whisperNeedsModel, whisperSwitchedOff } = a
 const { sttAvailable, sttInputs, transcribeAudio } = await import("../src/lib/stt.ts");
 const { saveGlobalConfig } = await import("../src/lib/db/app-settings.ts");
 const { forgetSoleModelsForTests } = await import("../src/lib/model-registry/discovery.ts");
-const { sttProbeUrl } = await import("../src/lib/capabilities.ts");
+const { capabilitiesSnapshot, sttProbeUrl } = await import("../src/lib/capabilities.ts");
 
 let passed = 0;
 function test(name, fn) {
@@ -161,18 +162,22 @@ const sent = [];
 globalThis.fetch = async (url, init) => {
   if (String(url).endsWith("/v1/models")) {
     listings += 1;
+    if (!listed) throw new TypeError("fetch failed");
     return Response.json({ data: listed.map((id) => ({ id })) });
   }
   sent.push({ url: String(url), model: init.body.get("model") });
   return Response.json({ text: "The bridge is out." });
 };
-const noProbe = async () => assert.fail("an address the admin named is not probed");
+// The capability probe's cached answer: an address the admin named counts
+// as there either way, but only one the probe heard is asked for its list.
+const answers = async () => true;
+const silent = async () => false;
 saveGlobalConfig({ speech: { sttModel: "" } });
 assert.equal(await sttAvailable(), false, "two models and none picked: transcription is not configured");
 assert.deepEqual(await transcribeAudio(new Blob(["ring"])), { error: "This server has no transcription service configured." });
 assert.equal(sent.length, 0, "nothing was sent without a model");
-assert.equal(pickSttBackend(await sttInputs(noProbe)), "none", "push-to-talk skips it too");
-assert.equal(whisperNeedsModel(await sttInputs(noProbe)), true);
+assert.equal(pickSttBackend(await sttInputs(answers)), "none", "push-to-talk skips it too");
+assert.equal(whisperNeedsModel(await sttInputs(answers)), true);
 assert.equal(listings, 1, "the service's answer, several models, is remembered, not asked again on every check");
 // A few minutes later (the memory cleared), the service runs one model.
 forgetSoleModelsForTests();
@@ -180,17 +185,40 @@ listed = ["large-v3"];
 assert.equal(await sttAvailable(), true, "the service's only model is used");
 assert.deepEqual(await transcribeAudio(new Blob(["ring"])), { text: "The bridge is out." });
 assert.deepEqual(sent.at(-1), { url: "http://stt.test:8870/v1/audio/transcriptions", model: "large-v3" });
-assert.equal(pickSttBackend(await sttInputs(noProbe)), "whisper");
+assert.equal(pickSttBackend(await sttInputs(answers)), "whisper");
+// A named service the probe did not hear is not asked for its list: the
+// listing waits up to 12 s and is not the probe's to cache.
+forgetSoleModelsForTests();
+listings = 0;
+const unheard = await sttInputs(silent);
+assert.equal(listings, 0, "a service the probe did not hear was asked for its models");
+assert.equal(unheard.whisperReachable, true, "a named address still counts as there");
+assert.equal(unheard.whisperModel, "");
 process.env.STT_MODEL = "env-model";
+assert.equal(pickSttBackend(await sttInputs(async () => assert.fail("a named address with its model picked is not probed"))), "whisper");
 await transcribeAudio(new Blob(["ring"]));
 assert.equal(sent.at(-1).model, "env-model", "STT_MODEL is picked over the listed one");
 saveGlobalConfig({ speech: { sttModel: "saved-model" } });
 await transcribeAudio(new Blob(["ring"]));
 assert.equal(sent.at(-1).model, "saved-model", "the saved model wins");
+delete process.env.STT_MODEL;
+saveGlobalConfig({ speech: { sttModel: "" } });
+passed += 1;
+
+// A Whisper box that does not answer: the transcript has no probe of its
+// own, so the failed listing is remembered for the probe's half minute
+// instead of costing a listing timeout on every ring.
+forgetSoleModelsForTests();
+listed = null;
+listings = 0;
+assert.equal(await sttAvailable(), false);
+assert.deepEqual(await transcribeAudio(new Blob(["ring"])), { error: "This server has no transcription service configured." });
+assert.equal(await sttAvailable(), false);
+assert.equal(listings, 1, "a service that did not answer was asked again straight away");
+passed += 1;
+
 globalThis.fetch = realFetch;
 delete process.env.STT_URL;
-delete process.env.STT_MODEL;
-passed += 1;
 
 test("the page's engine follows the server, then the device", () => {
   assert.equal(pickDictationEngine(null, true), "upload");
@@ -281,6 +309,43 @@ test("a long take goes up in parts, cut at a pause", () => {
   // Every part fits /api/stt's 8 MB as WAV.
   assert.ok(encodeWav(parts[0]).length < 8 * 1024 * 1024);
 });
+
+// A named Whisper box that takes the connection and never answers (a GPU
+// machine switched off behind a firewall that drops, not refuses): the
+// first capabilities read pays the probe's short timeout, and the next is
+// answered from the probe's cache instead of a 12 s model listing each time.
+{
+  const sockets = [];
+  const hole = net.createServer((socket) => sockets.push(socket));
+  await new Promise((resolve) => hole.listen(0, "127.0.0.1", resolve));
+  const saved = Object.fromEntries(["STT_URL", "KOKORO_URL", "COMFYUI_URL", "OPENAI_COMPAT_BASE_URL"].map((name) => [name, process.env[name]]));
+  process.env.STT_URL = `http://127.0.0.1:${hole.address().port}`;
+  // Everything else the snapshot asks refuses at once.
+  process.env.KOKORO_URL = "http://127.0.0.1:9";
+  process.env.COMFYUI_URL = "http://127.0.0.1:9";
+  process.env.OPENAI_COMPAT_BASE_URL = "http://127.0.0.1:9/v1";
+  saveGlobalConfig({ speech: { sttUrl: "", sttModel: "" } });
+  forgetSoleModelsForTests();
+  try {
+    const timed = async () => {
+      const started = Date.now();
+      await capabilitiesSnapshot();
+      return Date.now() - started;
+    };
+    const first = await timed();
+    const second = await timed();
+    assert.ok(first < 8_000, `the first snapshot took ${first} ms`);
+    assert.ok(second < 1_500, `the second snapshot took ${second} ms`);
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    hole.close();
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+  passed += 1;
+}
 
 removeTempDir(dir);
 console.log(`dictation: ${passed} checks passed`);

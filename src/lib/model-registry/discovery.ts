@@ -129,11 +129,17 @@ async function listModelIds(baseUrlInput: string, apiKey: string, read: (json: u
   }
 }
 
-type SoleCache = Map<string, { at: number; id: string }>;
+type SoleCache = Map<string, { at: number; id: string; ttl: number }>;
 declare global {
   var __odmSoleModel: SoleCache | undefined;
 }
 const SOLE_TTL_MS = 5 * 60_000;
+// How long a speech server that did not answer is left alone: the
+// capability probe's window (src/lib/capabilities.ts PROBE_CACHE_MS), so a
+// Whisper box that is switched off costs one listing timeout per half
+// minute on the paths that have no probe of their own (the voice-chat
+// transcript, narration), not one per request.
+const SOLE_SILENT_TTL_MS = 30_000;
 
 // The one model a backend serves, when it serves exactly one: a
 // llama-server started with a single model, an Ollama with one pull, a
@@ -145,7 +151,7 @@ export async function soleListedModel(input: { provider: "local" | "custom" | "s
   const key = `${input.provider}::${input.baseUrl.trim()}`;
   const cache = (globalThis.__odmSoleModel ??= new Map());
   const kept = cache.get(key);
-  if (kept && Date.now() - kept.at < SOLE_TTL_MS) return kept.id;
+  if (kept && Date.now() - kept.at < kept.ttl) return kept.id;
   let id = "";
   let answered = false;
   if (input.provider === "local") {
@@ -163,9 +169,12 @@ export async function soleListedModel(input: { provider: "local" | "custom" | "s
     answered = listing.ok;
   }
   // Whatever the server answered is remembered, "several" (or none) too, so
-  // a blank field is not listed again on every turn or page; a server that
-  // was down is asked again.
-  if (answered) cache.set(key, { at: Date.now(), id });
+  // a blank field is not listed again on every turn or page. A storyteller
+  // that was down is asked again on the next turn, which should find a
+  // server just started; a speech server that was down is left alone for
+  // the probe's window.
+  if (answered) cache.set(key, { at: Date.now(), id, ttl: SOLE_TTL_MS });
+  else if (input.provider === "speech") cache.set(key, { at: Date.now(), id: "", ttl: SOLE_SILENT_TTL_MS });
   return id;
 }
 
