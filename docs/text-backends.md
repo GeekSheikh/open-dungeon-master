@@ -138,8 +138,9 @@ changed. Three sources feed the pickers (src/lib/model-registry):
   (each model's window and whether it calls tools, which outrank the
   catalog); an OpenAI-compatible server or hosted provider is asked
   `/v1/models`, with the key saved for that host and no other; the agent
-  programs use their own discovery (Codex's `model/list`, opencode's and
-  Grok's `models` commands, Claude Code's `initialize` answer). An
+  programs use their own discovery (Codex's `model/list`, opencode's
+  `/api/model` on a private server, Grok's `models` command, Claude Code's
+  `initialize` answer). An
   OpenAI-compatible images API is asked `/v1/models` and kept to its picture
   models. No model is named in the code: nothing is preselected that the
   backend does not list, and a backend that lists exactly one chat model

@@ -25,9 +25,19 @@ const { claudeAdapter, claudeArgs, CLAUDE_ENV, CLAUDE_MCP_PREFIX, parseClaudeMod
   "../src/lib/harness/adapters/claude.ts"
 );
 const { codexAdapter, codexArgs, ignoredCodexSettings, userCodexMcpServers } = await import("../src/lib/harness/adapters/codex.ts");
-const { opencodeAdapter, opencodeConfig, OPENCODE_SESSION_RULES, parseOpencodeModels } = await import(
-  "../src/lib/harness/adapters/opencode.ts"
-);
+const {
+  opencodeAdapter,
+  opencodeConfig,
+  opencodeEffect,
+  opencodeLockdownHolds,
+  opencodeModels,
+  opencodeVariant,
+  opencodeVersion,
+  adminOpencodeProviders,
+  staleOdmSessions,
+  readOpencodeEvent,
+  OPENCODE_BUILT_IN_ACTIONS,
+} = await import("../src/lib/harness/adapters/opencode.ts");
 const { grokAdapter, grokArgs, grokAgentProfile, GROK_ENV } = await import("../src/lib/harness/adapters/grok.ts");
 const { sniffImage, imageSize, acceptImage, MAX_HARNESS_IMAGE_BYTES } = await import("../src/lib/harness/images.ts");
 const { maskAccount } = await import("../src/lib/harness/status.ts");
@@ -538,27 +548,158 @@ test("Codex is started with its shell, web, apps and sub-agents off, read-only, 
   );
 });
 
-test("opencode's agent denies everything but ODM's tools, in config and on the session", () => {
-  const config = opencodeConfig({ system: "SYS", mcp: { url: "http://127.0.0.1:1/api/mcp", token: "tok" } });
-  assert.deepEqual(config.permission, { "*": "deny", "odm_*": "allow" });
-  const agent = config.agent["odm-dm"];
-  assert.equal(agent.prompt, "SYS");
-  assert.deepEqual(agent.permission, { "*": "deny", "odm_*": "allow" });
-  for (const tool of ["bash", "edit", "write", "read", "webfetch", "websearch", "task", "apply_patch"]) {
-    assert.equal(agent.tools[tool], false, `${tool} must be off`);
+test("opencode 2's agent denies everything but ODM's tools, with ODM's MCP server outside Code Mode", () => {
+  const config = opencodeConfig({ system: "SYS", mcp: { url: "http://127.0.0.1:1/api/mcp", token: "tok" }, providers: {} });
+  const rules = [
+    { action: "*", resource: "*", effect: "deny" },
+    { action: "odm_*", resource: "*", effect: "allow" },
+  ];
+  assert.deepEqual(config.permissions, rules);
+  const agent = config.agents["odm-dm"];
+  assert.equal(agent.system, "SYS");
+  assert.equal(agent.mode, "primary");
+  assert.deepEqual(agent.permissions, rules);
+  assert.equal(config.mcp.servers.odm.codemode, false, "Code Mode would hide ODM's tools behind execute");
+  assert.equal(config.mcp.servers.odm.oauth, false);
+  assert.equal(config.mcp.servers.odm.headers.Authorization, "Bearer tok");
+  assert.equal(config.providers, undefined);
+  // Read as opencode reads it: the last matching rule wins.
+  assert.ok(opencodeLockdownHolds(agent.permissions, true));
+  assert.ok(OPENCODE_BUILT_IN_ACTIONS.includes("execute") && OPENCODE_BUILT_IN_ACTIONS.includes("browser"));
+  for (const action of OPENCODE_BUILT_IN_ACTIONS) {
+    assert.equal(opencodeEffect(agent.permissions, action), "deny", action);
   }
-  assert.equal(agent.tools["odm_*"], true);
-  assert.equal(config.mcp.odm.oauth, false);
-  assert.equal(config.mcp.odm.headers.Authorization, "Bearer tok");
-  const completion = opencodeConfig({ system: "S", mcp: null });
+  assert.equal(opencodeEffect(agent.permissions, "odm_request_roll"), "allow");
+  const completion = opencodeConfig({ system: "S", mcp: null, providers: {} });
   assert.equal(completion.mcp, undefined);
-  assert.deepEqual(completion.permission, { "*": "deny", "odm_*": "deny" });
-  assert.deepEqual(OPENCODE_SESSION_RULES(true)[0], { permission: "*", pattern: "*", action: "deny" });
+  assert.equal(opencodeEffect(completion.agents["odm-dm"].permissions, "odm_request_roll"), "deny");
+  assert.ok(opencodeLockdownHolds(completion.agents["odm-dm"].permissions, false));
+  // The rules opencode resolved for the agent on 2.0.27: its defaults first,
+  // then ODM's, then the browser deny it appends.
+  const resolved = [
+    { action: "*", resource: "*", effect: "allow" },
+    { action: "read", resource: "*.env", effect: "ask" },
+    { action: "read", resource: "*.env.example", effect: "allow" },
+    ...rules,
+    { action: "browser", resource: "*", effect: "deny" },
+  ];
+  assert.ok(opencodeLockdownHolds(resolved, true));
+  assert.ok(!opencodeLockdownHolds([...rules, { action: "*", resource: "*", effect: "allow" }], true), "an allow-all last opens everything");
+  assert.ok(!opencodeLockdownHolds([...rules, { action: "read", resource: "*.md", effect: "allow" }], true), "a later allow on some files opens read");
+  assert.ok(!opencodeLockdownHolds([...rules, { action: "shell", resource: "*", effect: "ask" }], true), "ask is not deny");
+  assert.ok(!opencodeLockdownHolds([{ action: "*", resource: "*", effect: "deny" }], true), "ODM's tools must be allowed on a turn");
+  assert.ok(!opencodeLockdownHolds(rules, false), "a completion gets no ODM tool either");
+  assert.ok(!opencodeLockdownHolds([], false), "no rule at all allows everything");
+});
+
+test("opencode carries over only the providers from the admin's global config, JSON or JSONC", () => {
+  const llama = { package: "@opencode/ai/providers/openai-compatible", settings: { baseURL: "http://127.0.0.1:8080/v1" } };
   assert.deepEqual(
-    parseOpencodeModels("opencode/big-pickle\nllama/qwen3.6-35b\nclaude-code/haiku\n  noise line\n").map((m) => m.id),
-    ["llama/qwen3.6-35b", "claude-code/haiku"],
+    adminOpencodeProviders(JSON.stringify({ providers: { llama }, plugins: ["x"], mcp: { servers: { gh: {} } }, permissions: [] })),
+    { llama },
+  );
+  const jsonc = `{
+    // the admin's own notes
+    "plugins": ["opencode-wakatime"],
+    /* a block comment with "quotes" */
+    "provider": { "old": { "options": { "baseURL": "http://a//b" } }, },
+    "providers": { "llama": ${JSON.stringify(llama)}, },
+  }`;
+  assert.deepEqual(adminOpencodeProviders(jsonc), { old: { options: { baseURL: "http://a//b" } }, llama });
+  assert.deepEqual(adminOpencodeProviders("{}"), {});
+  assert.throws(() => adminOpencodeProviders("{ nope"));
+  const config = opencodeConfig({ system: "S", mcp: null, providers: { llama } });
+  assert.deepEqual(config.providers, { llama });
+  assert.equal(config.plugins, undefined);
+});
+
+// GET /api/model on 2.0.27, trimmed.
+const OPENCODE_MODELS = [
+  { id: "claude-sonnet-5-5", providerID: "anthropic", variants: [{ id: "low" }, { id: "medium" }, { id: "high" }, { id: "xhigh" }, { id: "max" }], limit: { context: 1000000, output: 128000 } },
+  { id: "claude-haiku-5-5", providerID: "anthropic", variants: [{ id: "none" }, { id: "low" }, { id: "medium" }, { id: "high" }, { id: "xhigh" }, { id: "max" }], limit: { context: 1000000, output: 128000 } },
+  { id: "qwen/qwen3.8-flash", providerID: "openrouter", variants: [{ id: "none" }, { id: "high" }, { id: "max" }], limit: { context: 1000000, output: 131072 } },
+  { id: "exo-free", providerID: "opencode", variants: [], limit: { context: 1048576, output: 131072 } },
+];
+
+test("opencode's models come with the efforts they offer, and Effort is sent as the model's variant", () => {
+  const models = opencodeModels(OPENCODE_MODELS);
+  assert.deepEqual(
+    models.map((model) => model.id),
+    ["anthropic/claude-sonnet-5-5", "anthropic/claude-haiku-5-5", "openrouter/qwen/qwen3.8-flash"],
     "opencode's own free models refuse outside use and are not offered",
   );
+  assert.deepEqual(models[0].efforts, ["low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(models[2].efforts, ["high", "max"], "none and minimal are not efforts ODM offers");
+  assert.equal(models[0].contextTokens, 1000000);
+  assert.equal(opencodeVariant(OPENCODE_MODELS, "anthropic/claude-sonnet-5-5", "low"), "low");
+  assert.equal(opencodeVariant(OPENCODE_MODELS, "openrouter/qwen/qwen3.8-flash", "max"), "max");
+  assert.equal(opencodeVariant(OPENCODE_MODELS, "openrouter/qwen/qwen3.8-flash", "medium"), undefined, "an effort the model lacks is not sent");
+  assert.equal(opencodeVariant(OPENCODE_MODELS, "anthropic/claude-sonnet-5-5", ""), undefined, "the program's default sends none");
+  assert.equal(opencodeVariant(OPENCODE_MODELS, "llama/unlisted", "high"), undefined);
+});
+
+test("opencode 2's events become ODM's: narration only, usage summed over the turn's steps with cached prompt and reasoning counted, errors by kind", () => {
+  const session = { sessionID: "ses_1", assistantMessageID: "msg_1" };
+  const recorded = [
+    { type: "session.step.started", data: { ...session, agent: "odm-dm" } },
+    { type: "session.text.delta", data: { ...session, ordinal: 0, delta: "Roll! " } },
+    { type: "session.tool.called", data: { ...session, id: "call_1", input: { die: "d20" } } },
+    { type: "session.text.ended", data: { ...session, ordinal: 0, text: "Roll! " } },
+    { type: "session.step.ended", data: { ...session, finish: "tool-calls", tokens: { input: 100, output: 10, reasoning: 0, cache: { read: 0, write: 0 } } } },
+    { type: "session.usage.updated", data: { sessionID: "ses_1", tokens: { input: 100, output: 10 } } },
+    { type: "session.reasoning.started", data: { ...session, ordinal: 0 } },
+    { type: "session.reasoning.delta", data: { ...session, ordinal: 0, delta: "secret thoughts " } },
+    { type: "session.reasoning.ended", data: { ...session, ordinal: 0, text: "secret thoughts " } },
+    { type: "session.text.delta", data: { ...session, ordinal: 0, delta: "The goblin falls." } },
+    { type: "session.step.ended", data: { ...session, finish: "stop", tokens: { input: 20, output: 5, reasoning: 7, cache: { read: 60, write: 40 } } } },
+    { type: "session.usage.updated", data: { sessionID: "ses_1", tokens: { input: 220, output: 15 } } },
+    { type: "session.execution.succeeded", data: { sessionID: "ses_1" } },
+  ];
+  const turn = { text: "", inputTokens: 0, outputTokens: 0 };
+  const heard = recorded.flatMap((event) => readOpencodeEvent(turn, event));
+  assert.deepEqual(heard, [
+    { type: "delta", text: "Roll! " },
+    { type: "delta", text: "The goblin falls." },
+    { type: "turn_end", text: "Roll! The goblin falls.", usage: { inputTokens: 220, outputTokens: 22 } },
+  ]);
+  assert.ok(!JSON.stringify(heard).includes("secret"), "reasoning reaches no one");
+  assert.deepEqual(turn, { text: "", inputTokens: 0, outputTokens: 0 }, "the next turn starts from nothing");
+  const auth = { type: "provider.auth", message: "Incorrect API key provided", status: 401 };
+  assert.deepEqual(readOpencodeEvent(turn, { type: "session.execution.failed", data: { sessionID: "ses_1", error: auth } }), [
+    { type: "error", kind: "signed-out", message: "Incorrect API key provided" },
+  ]);
+  const limit = { type: "provider.rate-limit", message: "Rate limit reached for requests", status: 429 };
+  assert.deepEqual(readOpencodeEvent(turn, { type: "session.retry.scheduled", data: { ...session, attempt: 2, error: limit } }), [
+    { type: "error", kind: "limit", message: "Rate limit reached for requests" },
+  ]);
+  assert.deepEqual(readOpencodeEvent(turn, { type: "session.retry.scheduled", data: { ...session, attempt: 2, error: { type: "provider.overloaded", message: "busy" } } }), [], "other retries are opencode's to make");
+  assert.equal(readOpencodeEvent(turn, { type: "session.execution.failed", data: { sessionID: "ses_1", error: { type: "unknown", message: "boom" } } })[0].kind, "crash");
+});
+
+test("opencode below 2 is installed but unsupported", () => {
+  assert.deepEqual(opencodeVersion("opencode v2.0.27\n"), { version: "2.0.27", supported: true });
+  assert.deepEqual(opencodeVersion("1.18.30\n"), { version: "1.18.30", supported: false });
+  assert.equal(opencodeVersion("nonsense"), null);
+});
+
+test("the sweep deletes only sessions a killed ODM run left behind", () => {
+  const tmpdir = "/tmp";
+  const tag = { openDungeonMaster: "run" };
+  const live = new Set(["/tmp/odm-harness-live"]);
+  const sessions = [
+    { id: "gone", metadata: tag, location: { directory: "/tmp/odm-harness-gone" } },
+    { id: "live-run", metadata: tag, location: { directory: "/tmp/odm-harness-live" } },
+    { id: "admin-own", location: { directory: "/home/dm/projects/site" } },
+    { id: "same-title-no-tag", location: { directory: "/tmp/odm-harness-old" } },
+    { id: "tag-outside-tmp", metadata: tag, location: { directory: "/home/dm/odm-harness-x" } },
+    { id: "tag-nested", metadata: tag, location: { directory: "/tmp/sub/odm-harness-y" } },
+    { id: "tag-other-folder", metadata: tag, location: { directory: "/tmp/project" } },
+    { id: "other-tag", metadata: { openDungeonMaster: "something else" }, location: { directory: "/tmp/odm-harness-z" } },
+  ];
+  assert.deepEqual(staleOdmSessions(sessions, { tmpdir, ignoreCase: false, exists: (dir) => live.has(dir) }), ["gone"]);
+  const otherCase = [{ id: "other-case", metadata: tag, location: { directory: "/TMP/odm-harness-gone" } }];
+  assert.deepEqual(staleOdmSessions(otherCase, { tmpdir, ignoreCase: true, exists: () => false }), ["other-case"], "Windows: case does not count");
+  assert.deepEqual(staleOdmSessions(otherCase, { tmpdir, ignoreCase: false, exists: () => false }), [], "elsewhere it does");
 });
 
 test("Grok Build runs in dontAsk with an agent profile naming only ODM's tools", () => {

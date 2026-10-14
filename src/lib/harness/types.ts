@@ -34,6 +34,9 @@ export type HarnessModel = {
   // it (Claude Code's "opus" stands for whichever Opus model it currently
   // runs): what the catalog is asked about it.
   catalogId?: string;
+  // The efforts this model offers, where the program lists them (opencode's
+  // variants); one it lacks runs at the model's own default.
+  efforts?: string[];
 };
 
 export type HarnessAuth = {
