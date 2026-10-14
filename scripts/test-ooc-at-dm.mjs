@@ -38,6 +38,9 @@ await test("Only table talk since the DM last spoke, one line naming the DM, mak
   assert.equal(oocQuestionPending([dm, note, ask]), false, "an End Turn's note since makes it a real turn");
   assert.equal(oocQuestionPending([ask, dm]), false, "already answered");
   assert.equal(oocAnswer("(ooc) Yes, with a DC 12 Athletics check."), "(ooc) Yes, with a DC 12 Athletics check.");
+  assert.equal(oocAnswer("OOC: The bell is out of reach."), "(ooc) The bell is out of reach.", "Codex's own label");
+  assert.equal(oocAnswer("(ooc) OOC - not yet."), "(ooc) not yet.");
+  assert.equal(oocAnswer("Ooch, that's a long way down."), "(ooc) Ooch, that's a long way down.");
 });
 
 async function settle(campaignId) {

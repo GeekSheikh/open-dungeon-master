@@ -44,9 +44,10 @@ export function oocQuestionPending(history: readonly Line[]): boolean {
 }
 
 // The DM's answer is stored as table talk too, so the transcript, the prompt
-// and the page all read it as an aside.
+// and the page all read it as an aside. A model that labels its own answer
+// ("OOC: ...", seen from Codex) does not get the label twice.
 export function oocAnswer(text: string): string {
-  const answer = text.trim().replace(/^\(ooc\)\s*/i, "");
+  const answer = text.trim().replace(/^(?:\(ooc\)\s*)?(?:ooc\s*[:\-]\s*)?/i, "");
   return `${OOC_PREFIX} ${answer}`;
 }
 
