@@ -158,15 +158,18 @@ try {
   });
   const found = (checkpoints, models) => ({ url: "http://127.0.0.1:8188", checkpoints, models, hardware: null });
 
-  await test("the scan fills an open ComfyUI choice from what that ComfyUI has, measured models first", () => {
+  await test("the scan fills an open ComfyUI choice only when it is obvious: the measured recommendation, or the one thing there", () => {
     const blank = { url: "", checkpoint: "", preset: "checkpoint" };
     // Only a catalog model installed: that model.
     assert.deepEqual(comfyFromScan(blank, found([], [report("z_turbo")])), { url: "http://127.0.0.1:8188", checkpoint: "", preset: "z_turbo" });
-    // A checkpoint beats an unmeasured model...
-    assert.deepEqual(comfyFromScan(blank, found(["sdxl.safetensors"], [report("z_turbo")])), {
-      url: "http://127.0.0.1:8188", checkpoint: "sdxl.safetensors", preset: "checkpoint",
-    });
-    // ...but not one this hardware was measured recommending.
+    // Only a checkpoint: that checkpoint.
+    assert.deepEqual(comfyFromScan(blank, found(["sdxl.safetensors"], [])), { url: "http://127.0.0.1:8188", checkpoint: "sdxl.safetensors", preset: "checkpoint" });
+    // A checkpoint and an unmeasured model, or two checkpoints: nothing is taken for being first.
+    assert.deepEqual(comfyFromScan(blank, found(["sdxl.safetensors"], [report("z_turbo")])), { url: "http://127.0.0.1:8188", checkpoint: "", preset: "checkpoint" });
+    assert.deepEqual(comfyFromScan(blank, found(["a.safetensors", "b.safetensors"], [])), { url: "http://127.0.0.1:8188", checkpoint: "", preset: "checkpoint" });
+    // A model this hardware failed to run is not a choice at all.
+    assert.equal(comfyFromScan(blank, found(["sdxl.safetensors"], [report("z_turbo", { verdict: "fails" })])).checkpoint, "sdxl.safetensors");
+    // A model this hardware was measured recommending is the obvious pick.
     assert.equal(
       comfyFromScan(blank, found(["sdxl.safetensors"], [report("qwen_image_21_turbo", { verdict: "recommended" }), report("z_turbo")])).preset,
       "qwen_image_21_turbo",
@@ -229,14 +232,17 @@ try {
     assert.deepEqual(patches.picturesPatch({ kind: "comfyui", url: "http://127.0.0.1:8188", checkpoint: "a.safetensors", preset: "z_turbo" }).images, {
       defaultBackend: "comfyui", comfyUrl: "http://127.0.0.1:8188", comfyCheckpoint: "a.safetensors", comfyWorkflowPreset: "z_turbo",
     });
-    assert.deepEqual(patches.picturesPatch({ kind: "openai", apiKey: "" }), { images: { defaultBackend: "openai", openaiBaseUrl: "" } });
-    assert.equal(patches.picturesPatch({ kind: "openai", apiKey: "sk-i" }).images.openaiApiKey, "sk-i");
+    assert.deepEqual(patches.picturesPatch({ kind: "openai", apiKey: "", model: " my-painter " }), { images: { defaultBackend: "openai", openaiBaseUrl: "", openaiModel: "my-painter" } });
+    assert.equal(patches.picturesPatch({ kind: "openai", apiKey: "sk-i", model: "my-painter" }).images.openaiApiKey, "sk-i");
     assert.deepEqual(patches.picturesPatch({ kind: "agent" }), { images: { defaultBackend: "harness" }, harness: { images: "native" } });
     assert.deepEqual(patches.picturesPatch({ kind: "none" }), { images: { defaultBackend: "", comfyUrl: "" } });
     assert.deepEqual(patches.narrationPatch({ kind: "kokoro", url: "http://127.0.0.1:8880/", voice: "af_heart" }), {
       speech: { ttsProvider: "kokoro", kokoroUrl: "http://127.0.0.1:8880", ttsVoice: "af_heart" },
     });
-    assert.equal("ttsApiKey" in patches.narrationPatch({ kind: "openai", apiKey: "" }).speech, false);
+    assert.equal("ttsApiKey" in patches.narrationPatch({ kind: "openai", apiKey: "", model: "my-voice" }).speech, false);
+    assert.equal(patches.narrationPatch({ kind: "openai", apiKey: "", model: "my-voice" }).speech.ttsModel, "my-voice", "the picked narration model is saved");
+    assert.deepEqual(patches.dictationPatch({ whisperModel: " large-v3 " }), { speech: { sttModel: "large-v3" } }, "only the model the step asked for");
+    assert.deepEqual(patches.dictationPatch({ openaiModel: "my-ears" }), { speech: { sttOpenaiModel: "my-ears" } });
     assert.deepEqual(patches.narrationPatch({ kind: "off" }), { speech: { ttsProvider: "off" } });
     assert.deepEqual(patches.joiningPatch({ signupMode: "invite", publicUrl: "https://keep.example/" }), {
       signupMode: "invite",

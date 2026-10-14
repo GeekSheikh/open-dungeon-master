@@ -114,7 +114,8 @@ local server such as Speaches or openedai-speech. In **Admin > Speech**:
 - **Narration server**: OpenAI-compatible server
 - **Server base URL**: the server's `/v1` address
   (`https://api.openai.com/v1` for OpenAI)
-- **Model name**: the model to ask for (`gpt-4o-mini-tts` on OpenAI)
+- **Model**: picked from the models the server lists. Nothing is read aloud
+  until one is picked
 - **API key**: the server's key. On OpenAI itself, empty falls back to the key
   saved for pictures
 - **Default voice**: used when a campaign names a voice this server lacks
@@ -135,11 +136,14 @@ on the CPU. No separate service, and nothing leaves the machine.
 
 A separate Whisper service is only worth it for a bigger model or a GPU. Any
 server that answers `/v1/audio/transcriptions` works (faster-whisper-server,
-Speaches). Enter its address as **Whisper STT URL**; when it answers, it is
-used ahead of the built-in engine.
+Speaches). Enter its address as **Whisper STT URL** and pick its **Whisper
+model** from the models it lists (blank uses its only model when it lists
+one); when it answers, it is used ahead of the built-in engine. With no model
+it is skipped.
 
-With neither, a saved OpenAI key is used, and after that the browser's or the
-phone's own speech recognition.
+With neither, a saved OpenAI key is used once a **Transcription model** is
+picked for it, and after that the browser's or the phone's own speech
+recognition.
 
 ## In Docker
 

@@ -33,12 +33,14 @@ for (const name of [
 
 register("./lib/register-alias.mjs", import.meta.url);
 
-const { openAiImagesConfigured } = await import("../src/lib/openai-images.ts");
+const { generateOpenAiImage, openAiImagesConfigured } = await import("../src/lib/openai-images.ts");
+const { pickImageSize, readSupportedSizes } = await import("../src/lib/openai-image-size-logic.ts");
 const { imageProducerReady } = await import("../src/lib/image-generate.ts");
 const { saveGlobalConfig } = await import("../src/lib/db/app-settings.ts");
 const { imagesAvailable } = await import("../src/lib/capabilities.ts");
 const { maskStorySettings } = await import("../src/lib/db/settings.ts");
 const { DEFAULT_STORY_SETTINGS } = await import("../src/lib/defaults.ts");
+const { imageVariantsSettled } = await import("../src/lib/image-variants.ts");
 
 let passed = 0;
 function test(name, fn) {
@@ -191,5 +193,87 @@ test("the masked settings tell the panel whether THIS campaign can render", () =
   assert.equal(maskStorySettings({ ...DEFAULT_STORY_SETTINGS }).imagesReady, true);
 });
 
+// ---- the request: the admin's model, or none at all ----
+
+const PIXEL = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
+const requests = [];
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url, init) => {
+  requests.push({ url: String(url), body: JSON.parse(init.body) });
+  return Response.json({ data: [{ b64_json: PIXEL.toString("base64") }] });
+};
+process.chdir(dir);
+const draw = (aspect = "square") => generateOpenAiImage({ prompt: "a quiet harbor", mode: "fast", aspect });
+
+await asyncTest("with no model picked a picture is refused, naming the admin page, and nothing is sent", async () => {
+  saveGlobalConfig({ images: { openaiBaseUrl: "http://images.test/v1", openaiApiKey: "sk-images", openaiModel: "" } });
+  await assert.rejects(draw, /no model picked.*Admin > Image generation/);
+  assert.equal(requests.length, 0, "the images server was asked anyway");
+});
+
+await asyncTest("a picked model is sent as saved, and every model is asked for the same sizes", async () => {
+  saveGlobalConfig({ images: { openaiModel: "my-painter-7" } });
+  const portrait = await draw("portrait");
+  assert.equal(requests.at(-1).url, "http://images.test/v1/images/generations");
+  assert.equal(requests.at(-1).body.model, "my-painter-7");
+  assert.equal(requests.at(-1).body.size, "1024x1536");
+  assert.deepEqual([portrait.width, portrait.height], [1024, 1536]);
+  await draw("landscape");
+  assert.equal(requests.at(-1).body.size, "1536x1024");
+  assert.equal(requests.at(-1).body.output_format, "webp");
+});
+
+// ---- sizes: learnt from the refusal, never from the model's name ----
+
+// OpenAI's answer to a size the model does not take, as recorded on 2026-10-13 (gpt-image-1, 640x480).
+const RECORDED_SIZE_REFUSAL = "Invalid size '640x480'. Supported sizes are 1024x1024, 1024x1536, 1536x1024, and auto.";
+const size = (text) => {
+  const [width, height] = text.split("x").map(Number);
+  return { size: text, width, height };
+};
+
+test("the refusal's list is read, and a size picked for the shape by orientation, then ratio, then area", () => {
+  assert.deepEqual(readSupportedSizes(RECORDED_SIZE_REFUSAL), [size("1024x1024"), size("1024x1536"), size("1536x1024")], "auto is not a size");
+  assert.equal(readSupportedSizes("Invalid value for quality."), null);
+  const tall = [size("1024x1024"), size("1024x1792"), size("1792x1024"), size("512x768")];
+  assert.equal(pickImageSize("portrait", tall)?.size, "512x768", "2:3 itself beats a larger 4:7");
+  assert.equal(pickImageSize("portrait", [size("1024x1792"), size("896x1792")])?.size, "1024x1792", "the nearer ratio");
+  assert.equal(pickImageSize("landscape", [size("1792x1024"), size("1536x1024"), size("768x512")])?.size, "1536x1024", "equal ratio: the larger area");
+  assert.equal(pickImageSize("square", tall)?.size, "1024x1024");
+  const squareOnly = [size("512x512"), size("1024x1024")];
+  assert.equal(pickImageSize("portrait", squareOnly)?.size, "1024x1024", "no portrait size: the largest square");
+  assert.equal(pickImageSize("landscape", squareOnly)?.size, "1024x1024");
+  assert.equal(pickImageSize("square", [size("1024x1792")]), null, "no square at all: nothing to pick");
+  assert.equal(pickImageSize("portrait", [size("1792x1024")]), null, "no portrait and no square");
+});
+
+const takes = ["1024x1024", "1024x1792", "1792x1024"];
+const sizeRequests = [];
+globalThis.fetch = async (url, init) => {
+  const body = JSON.parse(init.body);
+  sizeRequests.push(body.size);
+  if (!takes.includes(body.size)) {
+    return Response.json(
+      { error: { message: `Invalid size '${body.size}'. Supported sizes are ${takes.join(", ")}, and auto.`, type: "image_generation_user_error", param: "size", code: "invalid_value" } },
+      { status: 400 },
+    );
+  }
+  return Response.json({ data: [{ b64_json: PIXEL.toString("base64") }] });
+};
+
+await asyncTest("a refused size is learnt from the answer, retried once, and asked for straight away next time", async () => {
+  saveGlobalConfig({ images: { openaiModel: "my-painter-8" } });
+  const first = await draw("portrait");
+  assert.deepEqual(sizeRequests, ["1024x1536", "1024x1792"]);
+  assert.deepEqual([first.width, first.height], [1024, 1792], "the picture is described at the size it was made");
+  sizeRequests.length = 0;
+  await draw("portrait");
+  await draw("landscape");
+  assert.deepEqual(sizeRequests, ["1024x1792", "1792x1024"], "one refusal per model, not per picture");
+});
+
+globalThis.fetch = realFetch;
+await imageVariantsSettled();
+process.chdir(os.tmpdir());
 removeTempDir(dir);
 console.log(`test-openai-images: ${passed} passed`);

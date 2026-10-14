@@ -1,8 +1,22 @@
 // Dictation: how spoken words join what is already written, the take's
-// limits, the recorder format the button asks for, and the level meter.
+// limits, the recorder format the button asks for, the level meter, and
+// which engine the server listens with.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import fs, { readFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { register } from "node:module";
+import { removeTempDir } from "./lib/remove-temp-dir.mjs";
+
+// The Whisper model is a saved setting, so the transcript checks read a
+// throwaway database, never the developer's own.
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), "odm-dictation-"));
+process.env.SQLITE_DB_PATH = path.join(dir, "test.sqlite");
+process.env.DB_ENCRYPTION_KEY = randomBytes(32).toString("hex");
+for (const name of ["STT_URL", "STT_MODEL", "STT_OPENAI_MODEL"]) {
+  delete process.env[name];
+}
 
 register("./lib/register-alias.mjs", import.meta.url);
 
@@ -18,7 +32,10 @@ const {
   pickRecorderType,
 } = await import("../src/lib/dictation.ts");
 const { decodeWav, encodeWav, splitForUpload, SPEECH_CHUNK_SECONDS, SPEECH_SAMPLE_RATE } = await import("../src/lib/speech-wav.ts");
-const { pickSttBackend, sttWantsWav, whisperSwitchedOff } = await import("../src/lib/stt-logic.ts");
+const { pickSttBackend, sttWantsWav, whisperNeedsModel, whisperSwitchedOff } = await import("../src/lib/stt-logic.ts");
+const { sttAvailable, sttInputs, transcribeAudio } = await import("../src/lib/stt.ts");
+const { saveGlobalConfig } = await import("../src/lib/db/app-settings.ts");
+const { forgetSoleModelsForTests } = await import("../src/lib/model-registry/discovery.ts");
 const { sttProbeUrl } = await import("../src/lib/capabilities.ts");
 
 let passed = 0;
@@ -103,7 +120,7 @@ test("the capability probe asks Whisper for its model list", () => {
 });
 
 test("the server's engine: Whisper, then built-in, then OpenAI", () => {
-  const base = { explicitWhisperUrl: "", whisperReachable: false, builtinInstalled: false, openAiKey: "" };
+  const base = { explicitWhisperUrl: "", whisperReachable: false, whisperModel: "large-v3", builtinInstalled: false, openAiKey: "", openAiModel: "my-ears" };
   assert.equal(pickSttBackend(base), "none");
   assert.equal(pickSttBackend({ ...base, openAiKey: "sk-test" }), "openai");
   assert.equal(pickSttBackend({ ...base, openAiKey: "  " }), "none");
@@ -120,6 +137,60 @@ test("the server's engine: Whisper, then built-in, then OpenAI", () => {
   assert.equal(sttWantsWav("whisper"), false);
   assert.equal(sttWantsWav("openai"), false);
 });
+
+test("an engine with no model picked is skipped for the next one", () => {
+  const base = { explicitWhisperUrl: "", whisperReachable: true, whisperModel: "", builtinInstalled: false, openAiKey: "", openAiModel: "" };
+  assert.equal(pickSttBackend({ ...base, builtinInstalled: true }), "builtin", "a Whisper that answers, with no model: built-in");
+  assert.equal(pickSttBackend({ ...base, explicitWhisperUrl: "http://stt.lan:9000", openAiKey: "sk-test", openAiModel: "my-ears" }), "openai", "then OpenAI");
+  assert.equal(pickSttBackend({ ...base, openAiKey: "sk-test" }), "none", "OpenAI with no model is skipped too");
+  assert.equal(pickSttBackend({ ...base, openAiKey: "sk-test", openAiModel: "  " }), "none");
+  assert.equal(pickSttBackend(base), "none");
+  assert.equal(whisperNeedsModel(base), true, "the admin panel is told the server needs its model");
+  assert.equal(whisperNeedsModel({ ...base, whisperModel: "large-v3" }), false);
+  assert.equal(whisperNeedsModel({ ...base, whisperReachable: false }), false, "no server, nothing to pick");
+});
+
+// The Whisper service's model: the one picked (saved, else STT_MODEL), else
+// the only one the service lists. STT_URL names the service for the
+// voice-chat transcript and for push-to-talk alike.
+process.env.STT_URL = "http://stt.test:8870";
+const realFetch = globalThis.fetch;
+let listed = ["large-v3", "small"];
+let listings = 0;
+const sent = [];
+globalThis.fetch = async (url, init) => {
+  if (String(url).endsWith("/v1/models")) {
+    listings += 1;
+    return Response.json({ data: listed.map((id) => ({ id })) });
+  }
+  sent.push({ url: String(url), model: init.body.get("model") });
+  return Response.json({ text: "The bridge is out." });
+};
+const noProbe = async () => assert.fail("an address the admin named is not probed");
+saveGlobalConfig({ speech: { sttModel: "" } });
+assert.equal(await sttAvailable(), false, "two models and none picked: transcription is not configured");
+assert.deepEqual(await transcribeAudio(new Blob(["ring"])), { error: "This server has no transcription service configured." });
+assert.equal(sent.length, 0, "nothing was sent without a model");
+assert.equal(pickSttBackend(await sttInputs(noProbe)), "none", "push-to-talk skips it too");
+assert.equal(whisperNeedsModel(await sttInputs(noProbe)), true);
+assert.equal(listings, 1, "the service's answer, several models, is remembered, not asked again on every check");
+// A few minutes later (the memory cleared), the service runs one model.
+forgetSoleModelsForTests();
+listed = ["large-v3"];
+assert.equal(await sttAvailable(), true, "the service's only model is used");
+assert.deepEqual(await transcribeAudio(new Blob(["ring"])), { text: "The bridge is out." });
+assert.deepEqual(sent.at(-1), { url: "http://stt.test:8870/v1/audio/transcriptions", model: "large-v3" });
+assert.equal(pickSttBackend(await sttInputs(noProbe)), "whisper");
+process.env.STT_MODEL = "env-model";
+await transcribeAudio(new Blob(["ring"]));
+assert.equal(sent.at(-1).model, "env-model", "STT_MODEL is picked over the listed one");
+saveGlobalConfig({ speech: { sttModel: "saved-model" } });
+await transcribeAudio(new Blob(["ring"]));
+assert.equal(sent.at(-1).model, "saved-model", "the saved model wins");
+globalThis.fetch = realFetch;
+delete process.env.STT_URL;
+delete process.env.STT_MODEL;
+passed += 1;
 
 test("the page's engine follows the server, then the device", () => {
   assert.equal(pickDictationEngine(null, true), "upload");
@@ -197,4 +268,5 @@ test("a long take goes up in parts, cut at a pause", () => {
   assert.ok(encodeWav(parts[0]).length < 8 * 1024 * 1024);
 });
 
+removeTempDir(dir);
 console.log(`dictation: ${passed} checks passed`);
