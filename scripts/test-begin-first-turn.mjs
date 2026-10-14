@@ -139,6 +139,7 @@ await test("Quick Start: the starter route, a ready-made hero, Begin, and the op
   const world = await openWorld({ status: "lobby" });
   const created = await send(world, world.owner, "starter", "POST", { solo: true });
   assert.equal(created.status, 201, JSON.stringify(created.json));
+  assert.equal(created.json.campaign.role, "owner", "the starter told its creator they are a player");
   const campaignId = created.json.campaign.id;
   assert.equal(campaigns.getCampaignById(campaignId).status, "lobby");
 
@@ -161,6 +162,8 @@ await test("Quick Start: the starter route, a ready-made hero, Begin, and the op
   assert.equal(dm.length, 1, `expected one opening narration, found ${dm.length}`);
   assert.ok(dm[0].seq > kickoff[0].seq);
   assert.ok(model.requests.some(isTurnRequest), "the opening turn never asked the model");
+  // The premise has them arrive at dusk, and the opening turn is told so.
+  assert.match(JSON.stringify(model.requests.find(isTurnRequest).messages), /Date and time: Midweek, Greening 1, year 1 \(18:00\), evening/);
   model.close();
   world.close();
 });

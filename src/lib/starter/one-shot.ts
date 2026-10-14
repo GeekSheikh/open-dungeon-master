@@ -1,6 +1,6 @@
-import { createCampaign, getCampaignById, setDmOutline, type Campaign } from "@/lib/db/campaigns";
-import { setClock } from "@/lib/db/clock";
-import { defaultClock, toInstant } from "@/lib/dm/calendar";
+import { createCampaign, getCampaignForUser, setDmOutline, type Campaign } from "@/lib/db/campaigns";
+import { getClock, setClockInstant } from "@/lib/db/clock";
+import { MINUTES_PER_DAY, MINUTES_PER_HOUR } from "@/lib/dm/calendar";
 
 // The starter one-shot: a table that opens in ten minutes for people who
 // have never played. One evening, level 1, a village, a crypt, a twist.
@@ -29,6 +29,9 @@ export const STARTER_ONE_SHOT = {
   ].join("\n\n"),
 };
 
+// Six in the evening, the hour the premise opens on.
+export const STARTER_HOUR = 18;
+
 export function createStarterCampaign(userId: string, options: { solo: boolean }): Campaign {
   const campaign = createCampaign(userId, {
     title: STARTER_ONE_SHOT.title,
@@ -50,11 +53,11 @@ export function createStarterCampaign(userId: string, options: { solo: boolean }
   // "You arrive at dusk": the clock says so too. A new campaign's clock opens
   // at eight in the morning, and the DM narrates the hour the clock shows, so
   // the premise and the opening scene disagreed until a model thought to
-  // pass the day itself.
-  const clock = defaultClock();
-  setClock(campaign.id, { ...clock, instant: toInstant(clock.calendar, { month: 4, day: 1, hour: STARTER_HOUR }) });
-  return getCampaignById(campaign.id) ?? campaign;
+  // pass the day itself. Only the hour moves: the day and the calendar stay
+  // the ones the campaign opened with.
+  const opened = getClock(campaign.id).instant;
+  setClockInstant(campaign.id, opened - (opened % MINUTES_PER_DAY) + STARTER_HOUR * MINUTES_PER_HOUR);
+  // Read back as the owner sees it, so the starter route reports the same
+  // role POST /api/campaigns does.
+  return getCampaignForUser(campaign.id, userId) ?? campaign;
 }
-
-// Six in the evening, the hour the premise opens on.
-export const STARTER_HOUR = 18;
