@@ -263,7 +263,8 @@ export async function readReply(
 
 // The narrator's asides in prose no reply read covers and that goes to the
 // table as it is: the forced final call's and the rescue's after it
-// (src/lib/dm/turn.ts). Asides alone are asked, since nothing else found
+// (src/lib/dm/turn.ts), a reroll's take (renarrate.ts) and a continuation
+// (continue-scene.ts). Asides alone are asked, since nothing else found
 // there could still run.
 export async function readAsides(
   campaign: Campaign,
