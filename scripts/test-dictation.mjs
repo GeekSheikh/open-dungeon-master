@@ -1,6 +1,7 @@
 // Dictation: how spoken words join what is already written, the take's
 // limits, the recorder format the button asks for, and the level meter.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { register } from "node:module";
 
 register("./lib/register-alias.mjs", import.meta.url);
@@ -127,6 +128,18 @@ test("the page's engine follows the server, then the device", () => {
   assert.equal(pickDictationEngine({ configured: true, wantsWav: true }, true), "upload-wav");
   assert.equal(pickDictationEngine({ configured: false }, true), "native");
   assert.equal(pickDictationEngine({ configured: false }, false), "none");
+});
+
+// With no engine at all, both mic buttons stay hidden, as Admin > Speech
+// tells the admin. DictateField always did; the composer's push-to-talk
+// showed a mic that could only fail.
+test("both mic buttons hide when there is no engine", () => {
+  const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  assert.match(read("src/lib/use-dictation.ts"), /available: engine !== "none"/);
+  assert.match(read("src/components/DictateField.tsx"), /const shown = dictation\.available;/);
+  const pushToTalk = read("src/app/campaigns/[campaignId]/PushToTalk.tsx");
+  assert.match(pushToTalk, /\bavailable \} = useDictation\(/);
+  assert.match(pushToTalk, /if \(!available\) \{\s*return null;\s*\}/);
 });
 
 test("WAV goes out and comes back as the same samples", () => {
