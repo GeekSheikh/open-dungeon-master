@@ -86,7 +86,8 @@ export function getCurrentLocation(campaignId: string): CampaignLocation | null 
 // than replacing them: away from a place the model never sees its recorded
 // exits, so what it passes on the way back is a fresh guess that would drop
 // the routes already known. update_location remains the way to revise them.
-function withNewNames(known: string[], added: string[]): string[] {
+// Names are compared folded, as places are (getLocationByName).
+export function withNewNames(known: string[], added: string[]): string[] {
   const seen = new Set(known.map(foldName));
   const merged = [...known];
   for (const name of added) {

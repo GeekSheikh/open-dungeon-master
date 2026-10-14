@@ -124,10 +124,12 @@ import {
 import { enqueueLocationMap } from "@/lib/dm/maps";
 import {
   getCurrentLocation,
+  getLocationByName,
   listLocations,
   setLocationLinks,
   updateCurrentLocationDetails,
   upsertCurrentLocation,
+  withNewNames,
 } from "@/lib/db/locations";
 import { sceneIds } from "@/lib/ambience/catalog";
 import { compactHistoryInBackground } from "@/lib/dm/compaction";
@@ -1835,12 +1837,19 @@ export function handleLocationCall(
   let location;
   let previousLayout = "";
   let movedToNewLocation = false;
+  // A return that left out the layout, as the location rule asks, to a place
+  // that has one on record: the model is told how the place was left, since
+  // away from it GAME STATE shows only the current place's layout and its
+  // narration of the return would otherwise invent the room anew. (A place
+  // known only as somebody's route has a row but no layout yet.)
+  let returnedTo = false;
   if (toolName === "move_party") {
     const name = typeof args.name === "string" ? args.name.trim() : "";
     if (!name) {
       return { error: "move_party needs a location name." };
     }
     const previous = getCurrentLocation(campaign.id);
+    const onRecord = getLocationByName(campaign.id, name);
     location = upsertCurrentLocation({
       campaignId: campaign.id,
       name,
@@ -1848,6 +1857,11 @@ export function handleLocationCall(
       connections,
     });
     movedToNewLocation = !previous || previous.id !== location.id;
+    returnedTo =
+      movedToNewLocation &&
+      onRecord?.id === location.id &&
+      onRecord.layoutDescription.trim() !== "" &&
+      !layoutDescription?.trim();
     // Somewhere unwritten, with the world simulation on, gets its people
     // before the model narrates it (docs/vtt-parity-implementation-plan.md
     // 12.1). Anywhere already peopled is left as it was.
@@ -1857,7 +1871,7 @@ export function handleLocationCall(
     }
     // Keep the old area linked to the new one so routes stay consistent.
     if (previous && previous.id !== location.id) {
-      const merged = [...new Set([...location.connections, previous.name])];
+      const merged = withNewNames(location.connections, [previous.name]);
       if (merged.length !== location.connections.length) {
         location =
           updateCurrentLocationDetails(campaign.id, { connections: merged }) ?? location;
@@ -1902,10 +1916,14 @@ export function handleLocationCall(
     void enqueueLocationMap(campaign, location.id);
   }
 
+  const recorded = location.layoutDescription.trim();
   return {
     ok: true,
     location: location.name,
-    note: "Recorded. Continue the scene.",
+    note:
+      returnedTo && recorded
+        ? `Recorded. The party is back at ${location.name}, as it was left: ${recorded} Continue the scene.`
+        : "Recorded. Continue the scene.",
     // Consumed by advance() as the chapter-break and inline-map signals,
     // then stripped before the result reaches the model.
     ...(movedToNewLocation

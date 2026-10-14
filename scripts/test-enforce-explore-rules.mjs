@@ -324,5 +324,18 @@ await test("A return through move_party that leaves out the layout keeps the pla
   assert.deepEqual(getCurrentLocation(world.campaignId).connections, ["Cellar Stairs"], "update_location no longer revises the routes");
 });
 
+await test("A return through move_party tells the model the layout the place was left with, and the place left behind joins its routes once, whatever its case.", async () => {
+  const quiet = { visionClear: false };
+  await world.invoke("move_party", { ...quiet, name: "Salt Market", layoutDescription: "Stalls in two rows under a tarred canvas, the weighhouse at the far end.", connections: ["harbour gate"] });
+  const fresh = await world.invoke("move_party", { ...quiet, name: "Harbour Gate", layoutDescription: "A squat gatehouse over the quay road." });
+  assert.equal(fresh.result.note, "Recorded. Continue the scene.", "a first visit was told of a layout it just gave");
+  // Folded like place names: "harbour gate" is already a route of the
+  // market, so going back adds no second copy of it.
+  const back = await world.invoke("move_party", { ...quiet, name: "salt market" });
+  assert.match(back.result.note, /back at Salt Market, as it was left: Stalls in two rows under a tarred canvas/, `the return was not told its layout: ${back.result.note}`);
+  const routes = getCurrentLocation(world.campaignId).connections;
+  assert.equal(routes.filter((route) => /^harbour gate$/i.test(route)).length, 1, `the place left behind was added again under another case: ${JSON.stringify(routes)}`);
+});
+
 world.close();
 finish();
