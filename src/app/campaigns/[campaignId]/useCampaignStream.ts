@@ -8,6 +8,7 @@ import { createStreamWatchdog } from "@/app/campaigns/[campaignId]/streamWatchdo
 import {
   appendDmDraft,
   clearDmDraft,
+  replaceDmDraft,
   setDmDraftSeq,
   resetLiveStores,
   setVoiceSpeaking,
@@ -1051,6 +1052,8 @@ const EPHEMERAL_EVENTS = [
   "dm_status",
   "utility_calls",
   "dm_delta",
+  // The turn withheld text it had streamed: the draft shows what it kept.
+  "dm_draft_reset",
   // A player answered the streaming passage: where it will be written.
   "dm_draft_seq",
   "media_status",
@@ -1469,6 +1472,8 @@ export function useCampaignStream(campaignId: string) {
           // the draft bubble and the voice dock alone (liveStore.ts).
           if (eventType === "dm_delta") {
             appendDmDraft(String(payload.text ?? ""));
+          } else if (eventType === "dm_draft_reset") {
+            replaceDmDraft(String(payload.text ?? ""));
           } else if (eventType === "dm_draft_seq") {
             setDmDraftSeq(typeof payload.seq === "number" ? payload.seq : null);
           } else if (eventType === "voice_speaking") {

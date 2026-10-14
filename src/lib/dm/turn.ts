@@ -772,6 +772,25 @@ function offersTool(tools: unknown[], name: string): boolean {
   return tools.some((tool) => (tool as { function?: { name?: string } })?.function?.name === name);
 }
 
+const squashed = (text: string) => text.replace(/\s+/g, " ").trim();
+
+// Each call's text reaches the table's draft bubble as it streams
+// (dm_delta), before the turn has read it. Some of it is then withheld from
+// the narration: the narrator's asides or a reply that was only a plan,
+// text beside an attack, a fight or a blow told in prose alone and sent
+// back, a card the prose played without its tool, a loop cut to its first
+// copy, a call that failed partway. The draft would show that text, run
+// into the next call's, until the turn ended. So when what a call streamed
+// is not what it left in the narration (the parts from keptFrom on), the
+// table is sent the narration kept so far to show in its place, possibly
+// nothing. A client that does not know the event ignores it.
+function resetDraftIfWithheld(campaignId: string, turn: DmTurn, shown: string, keptFrom: number) {
+  if (!shown.trim() || squashed(turn.narrationParts.slice(keptFrom).join(" ")) === squashed(shown)) {
+    return;
+  }
+  publishEphemeral(campaignId, "dm_draft_reset", { text: turn.narrationParts.join("\n\n").trim() });
+}
+
 async function runAdvance(context: TurnContext, turn: DmTurn) {
   const { campaign, sheets, sheetsById } = context;
   const campaignId = campaign.id;
@@ -822,8 +841,20 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
   // One shot at a reply that was only the model's plan, not narration (the
   // reader's aside claims: src/lib/dm/claims-logic.ts).
   let planNudged = false;
+  // What the current call streamed to the draft, and how many narration
+  // parts the turn held before it. Settled once the call's text is kept or
+  // withheld for good: before the next call (a correction sends the model
+  // straight back), before its tools run, and when the loop ends.
+  let shown = "";
+  let shownFrom = turn.narrationParts.length;
+  const settleDraft = () => {
+    resetDraftIfWithheld(campaignId, turn, shown, shownFrom);
+    shown = "";
+    shownFrom = turn.narrationParts.length;
+  };
 
   while (turn.callIndex < MAX_MODEL_CALLS) {
+    settleDraft();
     const finalCall = turn.callIndex === MAX_MODEL_CALLS - 1;
     // Rebuilt each iteration (see dmTurnTools).
     const inEncounter = Boolean(getActiveEncounter(campaignId));
@@ -832,6 +863,7 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
     // stream. Withheld trailing text is flushed after the call completes.
     const filter = createStreamingArtifactFilter();
     const batcher = createDeltaBatcher((text) => {
+      shown += text;
       narrationShown(campaignId, turn.id);
       publishEphemeral(campaignId, "dm_delta", { text });
     });
@@ -1396,6 +1428,9 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
       saveDmTurn(turn);
       break;
     }
+    // Text beside an attack is withheld now, before the dice: a pc_attack
+    // can park for a player's physical roll and leave the draft up for long.
+    settleDraft();
 
     setDmStatus(campaignId, "rolling");
 
@@ -1454,6 +1489,7 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
     saveDmTurn(turn);
     setDmStatus(campaignId, "narrating");
   }
+  settleDraft();
 
   // A private exchange (whispers only) is allowed to end without narration
   // (finalize() writes nothing to the table for it), so an empty reply there
@@ -1611,7 +1647,10 @@ async function narrateAfterToolLeak(context: TurnContext, turn: DmTurn) {
   const { campaign, sheets } = context;
   const campaignId = campaign.id;
   const filter = createStreamingArtifactFilter();
+  let shown = "";
+  const shownFrom = turn.narrationParts.length;
   const batcher = createDeltaBatcher((text) => {
+    shown += text;
     narrationShown(campaignId, turn.id);
     publishEphemeral(campaignId, "dm_delta", { text });
   });
@@ -1651,6 +1690,7 @@ async function narrateAfterToolLeak(context: TurnContext, turn: DmTurn) {
     turn.narrationParts.push(narration);
   }
   saveDmTurn(turn);
+  resetDraftIfWithheld(campaignId, turn, shown, shownFrom);
   // Other rescue errors retain the existing empty-turn fallback. A stopped
   // repetition is different: the model produced a harmful partial stream,
   // so finalize must leave this turn failed and available for retry. (A
