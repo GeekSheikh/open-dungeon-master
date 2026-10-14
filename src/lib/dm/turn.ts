@@ -40,7 +40,6 @@ import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { fulfillAutoImage } from "@/lib/dm/images";
 import { imagesAvailable } from "@/lib/capabilities";
 import { imageProducerReady } from "@/lib/image-generate";
-import { isPlanNote, PLAN_NOTE_CORRECTION } from "@/lib/dm/plan-note";
 import { enqueueNarrationAudio } from "@/lib/tts";
 import { requestDmMessage } from "@/lib/dm/model";
 import { releaseHarnessConversation } from "@/lib/harness/bridge";
@@ -61,8 +60,8 @@ import {
   unrolledFigure,
   unrolledDamagePrompt,
 } from "@/lib/dm/engine-boundary";
-import type { PartRead } from "@/lib/dm/claims-logic";
-import { readReply, registeringNames } from "@/lib/dm/claims";
+import { withoutAsides, type PartRead } from "@/lib/dm/claims-logic";
+import { readAsides, readReply, registeringNames } from "@/lib/dm/claims";
 import { modelTextLines } from "@/lib/dm/speech-lines";
 import type { SpokenLine } from "@/lib/dm/speech";
 import { markToolError } from "@/lib/dm/tool-errors";
@@ -820,8 +819,8 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
   // that ended the loop came back empty (see narrateAfterToolLeak).
   let emptyRetried = false;
   let lastReplyEmpty = false;
-  // One shot at a reply that was the model's plan, not narration
-  // (src/lib/dm/plan-note.ts).
+  // One shot at a reply that was only the model's plan, not narration (the
+  // reader's aside claims: src/lib/dm/claims-logic.ts).
   let planNudged = false;
 
   while (turn.callIndex < MAX_MODEL_CALLS) {
@@ -910,11 +909,14 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
     const salvage = salvageTextualToolCalls(extractStoryText(jsonSalvage.text));
     // The reply's prose, read once by the claims reader (src/lib/dm/claims.ts)
     // for the rolls it asks in words, a fight it announces, a blow it lands,
-    // who speaks its quoted lines and, with the guard on, what it claims.
-    // Not read on the forced final call, where nothing found could run; nor
-    // when the reply already rolls (no double dice); nor beside an attack,
-    // whose text is dropped below. Kept prose left unread is read by the
-    // guard at the end of the turn.
+    // who speaks its quoted lines, the narrator's asides to itself and, with
+    // the guard on, what it claims. Not read on the forced final call, where
+    // nothing found could run (only its asides are read, below); nor when
+    // the reply already rolls (no double dice); nor beside an attack, whose
+    // text is dropped below. Kept prose left unread is read by the guard at
+    // the end of the turn. So an aside beside request_roll stays: that text
+    // is the line setting up the roll, and reading it would cost a call on
+    // every roll for a sentence the follow-up narrates past.
     const structuredCalls = [
       ...extractToolCalls(message?.tool_calls),
       ...xmlSalvage.calls,
@@ -976,16 +978,26 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
     // Hand-written "[roll:...]" markers rolled nothing (real markers are
     // appended by finalize() from actual roll ids); drop them before the
     // text is persisted so players never see dead bookkeeping tokens.
-    const narration = (visibleText ?? "").replace(fakeRollMarkerRegex(), "").trim();
+    const prose = (visibleText ?? "").replace(fakeRollMarkerRegex(), "").trim();
+    // The narrator's asides ("I'll check how the table records that before
+    // she answers") are the model talking to itself, not the story: the
+    // sentences the reader quoted as asides are cut from what the table
+    // reads, and the echoed message keeps the reply whole for the model's
+    // own context. The final call's prose was not read above, so its asides
+    // are read on their own: it goes to the table as it is.
+    const narration = withoutAsides(
+      prose,
+      read ? claims : finalCall && prose ? await readAsides(campaign, sheets, turn, prose) : [],
+    );
+    // Nothing of the story left: the reply was only the model's plan. Beside
+    // tool calls nothing of it is kept, and the turn owes the narration of
+    // what those calls did (needsFollowUp below); with none, it is sent back
+    // once (planNudged). On the final call it is simply not kept.
+    const planOnly = Boolean(prose) && !narration;
+    const planBesideCalls = planOnly && toolCalls.length > 0 && !finalCall;
     // On the last call the tools never run (toolChoice "none"; a leaked call
     // is dropped), so its prose is the only narration there will be.
-    // A plan written beside tool calls ("I'll check how the table records
-    // that before she answers") is the model talking to itself, not the
-    // story: it stays in the echoed message for the model's own context and
-    // never reaches the table. A turn left with no narration is asked for it
-    // after the loop, as an empty last reply is.
-    const planBesideCalls = toolCalls.length > 0 && !finalCall && isPlanNote(narration);
-    if (narration && (!calledAttackTool || finalCall) && !planBesideCalls) {
+    if (narration && (!calledAttackTool || finalCall)) {
       turn.narrationParts.push(narration);
       if (read) {
         partReads.set(narration, read);
@@ -1260,6 +1272,9 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
       // use the answer.
       recallCalls.length > 0 ||
       searchLoreCalls.length > 0 ||
+      // A reply that was only a plan beside its calls told the table
+      // nothing of them, whatever the turn already narrated.
+      planBesideCalls ||
       ((locationCalls.length > 0 ||
         eventCalls.length > 0 ||
         whisperCalls.length > 0 ||
@@ -1270,20 +1285,13 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
     if (!needsFollowUp) {
       saveDmTurn(turn);
       // A note to itself ("I will set the landing first") is not narration
-      // and ends nothing: the players would read it as the story. Hold it
-      // back and send the model once to do what it planned and narrate.
-      if (
-        !finalCall &&
-        !planNudged &&
-        !toolCalls.length &&
-        narration &&
-        turn.narrationParts[turn.narrationParts.length - 1] === narration &&
-        isPlanNote(narration)
-      ) {
+      // and ends nothing; none of it was kept. Send the model once to do
+      // what it planned and narrate. A model that plans again keeps no
+      // narration, so the turn ends on the empty-turn line, not the plan.
+      if (!finalCall && !planNudged && !toolCalls.length && planOnly) {
         planNudged = true;
-        turn.narrationParts.pop();
         turn.conversation.push({ role: "assistant", content: visibleText || "" });
-        turn.conversation.push({ role: "user", content: PLAN_NOTE_CORRECTION });
+        turn.conversation.push({ role: "user", content: planCorrection(turn.callIndex === MAX_MODEL_CALLS - 1) });
         saveDmTurn(turn);
         continue;
       }
@@ -1580,8 +1588,20 @@ function cardPlayed(
 const TOOLS_CLOSED_PROMPT =
   "[System] Tools are closed for this turn: nothing you call now will run. Narrate the moment to the table in prose, from what has already resolved, and do not describe the outcome of anything that did not. If you need something from a player, ask it in the narration.";
 
+// Sent once a turn when a reply was only a plan. It was streamed, so it
+// does not claim the players never saw it, and it leaves the table's tone
+// to the system prompt. When the next call is the last one its tools are
+// closed, so it does not send the model to them.
+function planCorrection(toolsClosed: boolean): string {
+  return `[System] That reply was a note about what you plan to do, not narration for the table. ${
+    toolsClosed
+      ? "Tools are closed for this turn: narrate the moment to the players from what has already resolved"
+      : "Do it now: call the tools the scene needs, then narrate the moment to the players"
+  }, ending on what they decide next. Never describe your own next steps to the table.`;
+}
+
 async function narrateAfterToolLeak(context: TurnContext, turn: DmTurn) {
-  const { campaign } = context;
+  const { campaign, sheets } = context;
   const campaignId = campaign.id;
   const filter = createStreamingArtifactFilter();
   const batcher = createDeltaBatcher((text) => {
@@ -1615,7 +1635,11 @@ async function narrateAfterToolLeak(context: TurnContext, turn: DmTurn) {
   const failure = error
     ? ((await error.json().catch(() => null)) as { code?: string; error?: string } | null)
     : null;
-  const narration = error ? "" : stripToolText(extractStoryText(message?.content)).trim();
+  const prose = error ? "" : stripToolText(extractStoryText(message?.content)).trim();
+  // Read for the narrator's asides like the final call: a reply that was
+  // only a plan keeps nothing, and finalize writes the empty-turn line
+  // rather than the plan. There is no second rescue.
+  const narration = prose ? withoutAsides(prose, await readAsides(campaign, sheets, turn, prose)) : "";
   if (narration) {
     turn.narrationParts.push(narration);
   }
