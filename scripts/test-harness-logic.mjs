@@ -634,6 +634,44 @@ test("opencode carries over only the providers and default models from the admin
   assert.deepEqual(legacyOnly.provider, { old: {} });
 });
 
+test("the admin's opencode config is read as opencode reads it: a byte order mark, comments and trailing commas, strings untouched", () => {
+  const llama = { name: "Llama, }", settings: { baseURL: "http://a//b/*c*/" } };
+  assert.deepEqual(adminOpencodeConfig(`\uFEFF${JSON.stringify({ providers: { llama } })}`).providers, { llama }, "Windows PowerShell writes a BOM");
+  assert.deepEqual(adminOpencodeConfig(JSON.stringify({ providers: { a: { name: "x, }", list: "[1, ]" } } })).providers, { a: { name: "x, }", list: "[1, ]" } });
+  const jsonc = `{
+    "providers": {
+      "llama": ${JSON.stringify(llama)}, // the local one
+      /* none yet */
+    },
+    "model": "llama/qwen", /* the default */
+  }`;
+  assert.deepEqual(adminOpencodeConfig(jsonc), { provider: {}, providers: { llama }, model: "llama/qwen" });
+  assert.throws(() => adminOpencodeConfig("[1, 2]"), /does not hold a JSON object/);
+});
+
+test("a broken opencode config is reported by line and column, never with any of its text: it holds API keys", () => {
+  const lines = [
+    "{",
+    "  // keys below, and a comment that takes up room: /* \"quoted\" */",
+    '  "providers": { "a": { "apiKey": "sk-live-SECRET1234567890", "x": undefined } },',
+    "}",
+  ];
+  const broken = lines.join("\n");
+  let message = "";
+  try {
+    adminOpencodeConfig(broken);
+  } catch (error) {
+    message = error.message;
+  }
+  assert.equal(message, `it is not valid JSON at line 3, column ${lines[2].indexOf("undefined") + 1}`);
+  // JSON.parse's own message for this text quotes the key's last characters.
+  assert.throws(() => JSON.parse(broken.replace(/\/\/.*/, "")), /90/);
+  const atStart = "\uFEFF{\n  \"model\": \"a/b\"\n  \"providers\": {}\n}";
+  assert.throws(() => adminOpencodeConfig(atStart), { message: "it is not valid JSON at line 3, column 3" });
+  assert.throws(() => adminOpencodeConfig('{ "a": "unterminated'), { message: "it is not valid JSON at line 1, column 8" });
+  assert.throws(() => adminOpencodeConfig(""), { message: "it is not valid JSON at line 1, column 1" });
+});
+
 // GET /api/model on 2.0.27, trimmed.
 const OPENCODE_MODELS = [
   { id: "claude-sonnet-5-5", providerID: "anthropic", variants: [{ id: "low" }, { id: "medium" }, { id: "high" }, { id: "xhigh" }, { id: "max" }], limit: { context: 1000000, output: 128000 } },

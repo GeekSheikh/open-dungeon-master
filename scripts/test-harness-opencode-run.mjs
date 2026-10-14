@@ -153,5 +153,21 @@ await test("a model ODM names is asked for as named, with its effort as the mode
   assert.deepEqual(sessionCreated().body.model, { providerID: "zeta", id: "m1" }, "an effort the model lacks is not sent");
 });
 
+await test("a broken admin config fails the check and the run with its file, line and column, and none of what it holds", async () => {
+  const lines = ["{", '  "providers": { "a": { "apiKey": "sk-live-SECRET1234567890", "x": undefined } }', "}"];
+  const file = path.join(adminConfigDir, "opencode.json");
+  const expected = `${file} could not be read: it is not valid JSON at line 2, column ${lines[1].indexOf("undefined") + 1}.`;
+  fs.writeFileSync(file, lines.join("\n"));
+  await assert.rejects(opencodeAdapter.probe(program, env), { message: expected });
+  const { error } = await run({ admin: lines.join("\n"), scenario: { models: [ALPHA] } });
+  assert.equal(error?.message, expected);
+  assert.ok(!expected.includes("SECRET") && !expected.includes("undefined"));
+});
+
+await test("an admin config saved with a byte order mark is read", async () => {
+  await run({ admin: `\uFEFF${JSON.stringify(adminConfig)}`, scenario: { models: [EXO, ALPHA, ZETA], defaultModel: ZETA } });
+  assert.equal(logged().find((entry) => entry.start).start.config.model, "zeta/m1");
+});
+
 removeTempDir(dir);
 console.log(`opencode run: ${passed} checks passed`);

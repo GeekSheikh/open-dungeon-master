@@ -213,10 +213,31 @@ export function opencodeVersion(output: string): { version: string; supported: b
 }
 
 // opencode.jsonc allows comments and trailing commas; JSON.parse does not.
+// Each comment becomes spaces (its line breaks kept) and each trailing comma
+// one space, so a position in the result is the same line and column in the
+// file. Strings pass through untouched.
 function stripJsonc(text: string): string {
   let out = "";
+  // Where the last comma went, until the next token says whether it trails.
+  let comma = -1;
   for (let at = 0; at < text.length; at += 1) {
     const char = text[at];
+    if (char === "/" && (text[at + 1] === "/" || text[at + 1] === "*")) {
+      const line = text[at + 1] === "/";
+      const close = line ? text.indexOf("\n", at) : text.indexOf("*/", at + 2);
+      const end = close < 0 ? text.length : line ? close : close + 2;
+      out += text.slice(at, end).replace(/[^\r\n]/g, " ");
+      at = end - 1;
+      continue;
+    }
+    if (char === " " || char === "\t" || char === "\n" || char === "\r") {
+      out += char;
+      continue;
+    }
+    if ((char === "}" || char === "]") && comma >= 0) {
+      out = `${out.slice(0, comma)} ${out.slice(comma + 1)}`;
+    }
+    comma = char === "," ? out.length : -1;
     if (char === '"') {
       const end = /"(?:[^"\\]|\\.)*"/y;
       end.lastIndex = at;
@@ -226,25 +247,105 @@ function stripJsonc(text: string): string {
       }
       out += string[0];
       at += string[0].length - 1;
-    } else if (char === "/" && text[at + 1] === "/") {
-      const next = text.indexOf("\n", at);
-      at = next < 0 ? text.length : next - 1;
-    } else if (char === "/" && text[at + 1] === "*") {
-      const next = text.indexOf("*/", at + 2);
-      at = next < 0 ? text.length : next + 1;
     } else {
       out += char;
     }
   }
-  return out.replace(/,(\s*[}\]])/g, "$1");
+  return out;
 }
+
+// Where JSON text stops being JSON, as a line and column, or null when that
+// cannot be told.
+function jsonErrorPosition(json: string): { line: number; column: number } | null {
+  const STRING = /"(?:[^"\\\u0000-\u001f]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*"/y;
+  const LITERAL = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null/y;
+  let at = 0;
+  const skip = () => {
+    while (json[at] === " " || json[at] === "\t" || json[at] === "\n" || json[at] === "\r") {
+      at += 1;
+    }
+  };
+  const take = (pattern: RegExp) => {
+    pattern.lastIndex = at;
+    const match = pattern.exec(json);
+    at += match ? match[0].length : 0;
+    return Boolean(match);
+  };
+  const value = (): boolean => {
+    skip();
+    const open = json[at];
+    if (open !== "{" && open !== "[") {
+      return take(open === '"' ? STRING : LITERAL);
+    }
+    const close = open === "{" ? "}" : "]";
+    at += 1;
+    skip();
+    if (json[at] === close) {
+      at += 1;
+      return true;
+    }
+    for (;;) {
+      if (close === "}") {
+        skip();
+        if (!take(STRING)) {
+          return false;
+        }
+        skip();
+        if (json[at] !== ":") {
+          return false;
+        }
+        at += 1;
+      }
+      if (!value()) {
+        return false;
+      }
+      skip();
+      if (json[at] === close) {
+        at += 1;
+        return true;
+      }
+      if (json[at] !== ",") {
+        return false;
+      }
+      at += 1;
+    }
+  };
+  try {
+    if (value()) {
+      skip();
+    }
+  } catch {
+    // Nested too deep to follow.
+    return null;
+  }
+  const lines = json.slice(0, at).split("\n");
+  return { line: lines.length, column: lines[lines.length - 1].length + 1 };
+}
+
+// Says where a config file stops being JSON, and nothing of what it holds.
+class OpencodeConfigError extends Error {}
 
 const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 
-// What one global config file gives a run (AdminOpencodeConfig).
+// What one global config file gives a run (AdminOpencodeConfig). opencode
+// itself reads a file that starts with a byte order mark, as Windows
+// PowerShell writes one, so it is skipped here too.
 export function adminOpencodeConfig(text: string): AdminOpencodeConfig {
-  const config = record(JSON.parse(stripJsonc(text)));
+  const json = stripJsonc(text.startsWith("\uFEFF") ? text.slice(1) : text);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    // JSON.parse's own message quotes the text around the mistake, and the
+    // file holds API keys.
+    const at = jsonErrorPosition(json);
+    throw new OpencodeConfigError(`it is not valid JSON${at ? ` at line ${at.line}, column ${at.column}` : ""}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new OpencodeConfigError("it does not hold a JSON object");
+  }
+  const config = parsed as Record<string, unknown>;
   return {
     provider: record(config.provider),
     providers: record(config.providers),
@@ -267,7 +368,11 @@ function readAdminConfig(env: Record<string, string>): AdminOpencodeConfig {
     try {
       read = adminOpencodeConfig(readFileSync(file, "utf8"));
     } catch (error) {
-      throw new Error(`${file} could not be read: ${error instanceof Error ? error.message : String(error)}`);
+      const why =
+        error instanceof OpencodeConfigError
+          ? error.message
+          : `it could not be opened (${(error as NodeJS.ErrnoException).code ?? "unknown error"})`;
+      throw new Error(`${file} could not be read: ${why}.`);
     }
     admin = {
       ...admin,
