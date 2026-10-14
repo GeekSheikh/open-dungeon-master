@@ -10,10 +10,13 @@
 // holding only the config ODM writes there, so the admin's plugins, MCP
 // servers and global AGENTS.md never join it; only the providers and default
 // models from their global config are carried over, so a model they set up
-// there still runs. opencode keeps every
-// session, transcript included, in its own store: the run deletes its
-// session when it closes, and the next run deletes any that a killed server,
-// or a killed ODM, left behind.
+// there still runs. opencode keeps every session, transcript included, in its
+// own store: the run deletes its session when it closes, and the next run
+// deletes any that a killed server, or a killed ODM, left behind. That takes
+// them off opencode's session list. It does not take everything: opencode
+// lists each run's temp folder among its projects and has no way to remove
+// one, and its database file can keep deleted text in pages SQLite has freed
+// but not yet reused (docs/agent-harness.md).
 //
 // The server speaks HTTP with basic auth and streams events over SSE. Each
 // run gets its own server on a free loopback port and a random password, and
