@@ -35,7 +35,7 @@ Back to the [README](../README.md). Prefer containers? See
 ## Quick start
 
 ```bash
-git clone <this repo> && cd open-dungeon-master
+git clone --depth 1 https://github.com/Lebbitheplow/open-dungeon-master.git && cd open-dungeon-master
 npm install
 npm run setup        # database key, content pack, memory model, production build
 npm run start:lan    # 0.0.0.0:3005 so your party can reach it on the LAN
