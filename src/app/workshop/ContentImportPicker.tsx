@@ -22,7 +22,8 @@ import type { ImportSourceSummary } from "@/app/workshop/types";
 // decides which ones this person may copy out of
 // (src/lib/db/import-sources.ts).
 //
-// Used in two places with one difference. In the lobby a campaign already
+// Used in two places with one difference. In the lobby (and the table's
+// Setup tab, once play has begun) a campaign already
 // exists, so the picker asks the server what the import WOULD do and shows
 // the collisions and overwrites. At campaign creation there is no campaign
 // yet, so there is nothing to collide with: a fresh table is empty, and the

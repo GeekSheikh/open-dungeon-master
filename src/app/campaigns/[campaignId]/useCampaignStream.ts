@@ -1080,6 +1080,9 @@ const EPHEMERAL_EVENTS = [
   // Who has the campaign open right now. Worthless after the fact, like the
   // voice roster, so it is never replayed.
   "presence",
+  // Prep came in from a workshop mid-campaign. Contentless: the handler
+  // reloads the snapshot, and a reconnect resyncs anyway.
+  "prep_imported",
 ];
 const EPHEMERAL_EVENT_SET = new Set(EPHEMERAL_EVENTS);
 // Every type the stream listens for; an event outside it never reaches the
@@ -1481,6 +1484,10 @@ export function useCampaignStream(campaignId: string) {
           // A rewind mass-deletes state that incremental events cannot
           // express; reload everything from the snapshot endpoint.
           if (eventType === "campaign_rewound") {
+            resync();
+          }
+          // Imported prep lands in a dozen tables at once; the same reload.
+          if (eventType === "prep_imported") {
             resync();
           }
           if (eventType === "side_activity") {

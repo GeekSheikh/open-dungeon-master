@@ -68,6 +68,9 @@ export const EVENT_AUDIENCE: Readonly<Record<string, Audience>> = {
   chapter_closed: TABLE,
   campaign_rewound: TABLE,
   campaign_updated: TABLE,
+  // Prep brought in from a workshop: a contentless ping; each seat reloads
+  // its own snapshot.
+  prep_imported: TABLE,
   // The fight: the public encounter projection, the floor, the board ping
   // (the board itself is fetched per seat), rolls that wait on someone.
   encounter_updated: TABLE,

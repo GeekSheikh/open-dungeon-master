@@ -273,7 +273,9 @@ export function HelpDialog({
           </li>
           <li>
             <span className="text-stone-300">Setup:</span> campaign settings, invites and game
-            toggles.
+            toggles. Whoever steers the story can bring in more prep from a workshop here at any
+            point, and the owner or the DM can end the campaign, which saves everyone&apos;s
+            progress back to their characters.
           </li>
         </ul>
         <p>
