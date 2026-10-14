@@ -40,6 +40,7 @@ import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { fulfillAutoImage } from "@/lib/dm/images";
 import { imagesAvailable } from "@/lib/capabilities";
 import { imageProducerReady } from "@/lib/image-generate";
+import { isPlanNote, PLAN_NOTE_CORRECTION } from "@/lib/dm/plan-note";
 import { enqueueNarrationAudio } from "@/lib/tts";
 import { requestDmMessage } from "@/lib/dm/model";
 import { releaseHarnessConversation } from "@/lib/harness/bridge";
@@ -817,6 +818,9 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
   // that ended the loop came back empty (see narrateAfterToolLeak).
   let emptyRetried = false;
   let lastReplyEmpty = false;
+  // One shot at a reply that was the model's plan, not narration
+  // (src/lib/dm/plan-note.ts).
+  let planNudged = false;
 
   while (turn.callIndex < MAX_MODEL_CALLS) {
     const finalCall = turn.callIndex === MAX_MODEL_CALLS - 1;
@@ -973,7 +977,13 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
     const narration = (visibleText ?? "").replace(fakeRollMarkerRegex(), "").trim();
     // On the last call the tools never run (toolChoice "none"; a leaked call
     // is dropped), so its prose is the only narration there will be.
-    if (narration && (!calledAttackTool || finalCall)) {
+    // A plan written beside tool calls ("I'll check how the table records
+    // that before she answers") is the model talking to itself, not the
+    // story: it stays in the echoed message for the model's own context and
+    // never reaches the table. A turn left with no narration is asked for it
+    // after the loop, as an empty last reply is.
+    const planBesideCalls = toolCalls.length > 0 && !finalCall && isPlanNote(narration);
+    if (narration && (!calledAttackTool || finalCall) && !planBesideCalls) {
       turn.narrationParts.push(narration);
       if (read) {
         partReads.set(narration, read);
@@ -1251,6 +1261,24 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
 
     if (!needsFollowUp) {
       saveDmTurn(turn);
+      // A note to itself ("I will set the landing first") is not narration
+      // and ends nothing: the players would read it as the story. Hold it
+      // back and send the model once to do what it planned and narrate.
+      if (
+        !finalCall &&
+        !planNudged &&
+        !toolCalls.length &&
+        narration &&
+        turn.narrationParts[turn.narrationParts.length - 1] === narration &&
+        isPlanNote(narration)
+      ) {
+        planNudged = true;
+        turn.narrationParts.pop();
+        turn.conversation.push({ role: "assistant", content: visibleText || "" });
+        turn.conversation.push({ role: "user", content: PLAN_NOTE_CORRECTION });
+        saveDmTurn(turn);
+        continue;
+      }
       // A fight announced in prose alone does not exist: no enemies, no
       // initiative, no HP. Hold the announcement back and send the model to
       // start_encounter for real; the follow-up narrates from tool results.
