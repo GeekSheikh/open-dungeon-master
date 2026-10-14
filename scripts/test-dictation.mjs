@@ -217,8 +217,28 @@ assert.equal(await sttAvailable(), false);
 assert.equal(listings, 1, "a service that did not answer was asked again straight away");
 passed += 1;
 
-globalThis.fetch = realFetch;
+// The transcript sends to the address push-to-talk uses, the admin's before
+// STT_URL, so the model picked from that service's list reaches it.
+forgetSoleModelsForTests();
+listed = ["large-v3"];
+saveGlobalConfig({ speech: { sttUrl: "http://admin-stt.test:9000/" } });
+await transcribeAudio(new Blob(["ring"]));
+assert.equal(sent.at(-1).url, "http://admin-stt.test:9000/v1/audio/transcriptions", "the transcript went to STT_URL, not the admin's address");
+// Off in the admin panel is off for the transcript too.
+saveGlobalConfig({ speech: { sttUrl: "off" } });
+assert.equal(await sttAvailable(), false);
+// With nothing named, the transcript stays off: it never dials the default
+// address push-to-talk probes.
+saveGlobalConfig({ speech: { sttUrl: "" } });
 delete process.env.STT_URL;
+const before = sent.length;
+listings = 0;
+assert.equal(await sttAvailable(), false);
+assert.deepEqual(await transcribeAudio(new Blob(["ring"])), { error: "This server has no transcription service configured." });
+assert.equal(sent.length, before);
+assert.equal(listings, 0, "the default address was asked for its models");
+globalThis.fetch = realFetch;
+passed += 1;
 
 test("the page's engine follows the server, then the device", () => {
   assert.equal(pickDictationEngine(null, true), "upload");

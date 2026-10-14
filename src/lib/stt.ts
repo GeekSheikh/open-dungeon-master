@@ -1,15 +1,14 @@
 import { configValue, getGlobalConfig } from "@/lib/app-config";
 import { soleListedModel } from "@/lib/model-registry/discovery";
 import { openAiSpeechConfig } from "@/lib/openai-images";
-import { serverEnv } from "@/lib/server-env";
 import { builtinSpeechInstalled } from "@/lib/stt-builtin";
 import { whisperSwitchedOff, type SttInputs } from "@/lib/stt-logic";
 
 // Speech to text (docs/vtt-parity-implementation-plan.md 13.3): a
-// faster-whisper server speaking the OpenAI transcription shape, named by
-// STT_URL, with the model picked for it in Admin > Speech, or the one model
-// it lists. Off when either is missing; nothing here ever runs without an
-// operator choosing it.
+// faster-whisper server speaking the OpenAI transcription shape, named in
+// Admin > Speech or by STT_URL, with the model picked for it there, or the
+// one model it lists. Off when either is missing; nothing here ever runs
+// without an operator choosing it.
 
 // Where dictation's Whisper service is: the admin's address, STT_URL, or
 // odm-stt's usual one.
@@ -57,10 +56,14 @@ export async function sttInputs(reachable: (url: string) => Promise<boolean>): P
   };
 }
 
+// The voice-chat transcript's Whisper service: the one push-to-talk uses
+// (whisperUrl), so the model picked from that service's list is sent to that
+// service. Only an address the admin or STT_URL named, never the default
+// one, which the transcript has never dialled on its own.
 export function sttUrl(): string {
-  const value = serverEnv("STT_URL", "").replace(/\/+$/, "");
+  const configured = configValue(getGlobalConfig().speech.sttUrl, "STT_URL");
   // "off" is the dictation switch for "no Whisper here" (stt-logic.ts).
-  return value.trim().toLowerCase() === "off" ? "" : value;
+  return whisperSwitchedOff(configured) ? "" : configured.replace(/\/+$/, "");
 }
 
 export async function sttAvailable(): Promise<boolean> {
