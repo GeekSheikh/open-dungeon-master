@@ -95,6 +95,12 @@ export async function fakeModel() {
   const fallback = reply({ text: "The moment settles, and the table waits on the next move." });
 
   function sse(res, entry) {
+    // A held reply (held() below) answers once the test lets it go, so the
+    // turn is still running while the test acts.
+    if (entry.held) {
+      entry.held.then(() => sse(res, { ...entry, held: null }));
+      return;
+    }
     res.writeHead(200, { "Content-Type": "text/event-stream" });
     const deltas = [];
     if (entry.text) {
@@ -242,4 +248,15 @@ export async function fakeModel() {
         .map((message) => ({ id: message.tool_call_id, result: JSON.parse(message.content) })),
     close: () => server.close(),
   };
+}
+
+// A reply the fake model holds back until release() is called: the DM turn
+// waits on it mid-stream, the way a slow model keeps a table waiting, while
+// the test posts what players send in the meantime.
+export function held(entry) {
+  let release = () => {};
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  return { entry: { ...entry, held: gate }, release };
 }
