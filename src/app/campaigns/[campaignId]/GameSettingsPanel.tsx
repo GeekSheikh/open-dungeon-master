@@ -18,7 +18,6 @@ import { GENRE_PRESETS, genrePreset } from "@/lib/genres";
 import type { WorldPackSummary } from "@/lib/worlds/types";
 import { WorldPackGallery } from "@/components/WorldPackGallery";
 import { useTtsVoices, voiceLabel, VoicePicker } from "@/components/VoicePicker";
-import { useCapabilities } from "@/lib/use-capabilities";
 import { NarrationNote } from "@/app/campaigns/[campaignId]/NarrationNote";
 import { CharacterVoices } from "@/app/campaigns/[campaignId]/CharacterVoices";
 import { VoicePreviewButton } from "@/components/VoicePreviewButton";
@@ -131,7 +130,7 @@ export function GameSettingsPanel({
   // A server that cannot transcribe holds the Transcription switch off; the
   // table's stored choice is kept, so transcription added later brings it
   // back.
-  const transcribes = transcribesVoice(useCapabilities());
+  const transcribes = transcribesVoice(capabilities);
   const serverRerollLabel = describeTableReroll(null, serverRerollBelow).toLowerCase();
 
   // Installed world packs, so the lead can switch worlds after creation. An
