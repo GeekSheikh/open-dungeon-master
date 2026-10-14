@@ -101,7 +101,7 @@ and clamped by code.
 ### Memory and retrieval (RAG)
 
 - **Semantic recall and memory index** - MiniLM by default (384-dim) two-phase recall over chapter summaries then verbatim scene chunks, behind the `recall_story` tool.
-- **World lore builder** - lead-authored, embedded canon retrieved per turn, with `search_lore` searching lore, facts, notes, and chapter memory at once.
+- **World lore builder** - lead-authored, embedded canon retrieved per turn, with `search_lore` searching lore, facts, notes, chapter memory and an imported storyboard's prep cards at once, answering with the passage nearest the query; `read_card` opens the whole card behind a beat or a planned event (docs/workshop-portability.md).
 - **House rules and rules manager** - embedded house-rules text plus structured variant toggles, retrieved into the prompt's variant and house-rules blocks.
 - **Per-turn context retrieval** - embeds the current moment once and rides only the most relevant lore and rule chunks into the prompt.
 - **Lore check** - a player-flagged consistency verifier that returns a verdict, citations, and a suggested rewrite.

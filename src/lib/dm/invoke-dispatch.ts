@@ -13,6 +13,7 @@ import { handleAddCompanion, handleDismissCompanion } from "@/lib/dm/companion-t
 import { applyEncounterCall, ENCOUNTER_TOOL_NAMES } from "@/lib/dm/encounter-tools";
 import { handleApplyHazard } from "@/lib/dm/hazard-tools";
 import { handleSearchLore } from "@/lib/dm/lore-search";
+import { handleReadCard } from "@/lib/dm/prep-card-tool";
 import { applyDmMutation, MUTATION_TOOL_NAMES } from "@/lib/dm/mutations";
 import { handleWriteCampaignNote } from "@/lib/dm/note-tools";
 import {
@@ -260,6 +261,8 @@ export async function dispatchAdjudication(
       return handleRecallStory(campaign, rawArguments);
     case "search_lore":
       return handleSearchLore(campaign.id, rawArguments);
+    case "read_card":
+      return handleReadCard(campaign, rawArguments);
     default:
       return { error: `The engine has no action called "${name}".` };
   }

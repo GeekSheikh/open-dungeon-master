@@ -53,8 +53,24 @@ export type WorldLoreEntry = {
 };
 
 export const LORE_TITLE_MAX = 120;
-export const LORE_BODY_MAX = 4_000;
+// The cap a bundle entry travels under too (src/lib/workshop/bundle-schema.ts
+// reads it from here), so an entry that arrived whole stays safe to edit
+// (issue #302). The prompt never carries a whole body: renderLoreForPrompt
+// clips each to an excerpt and search_lore answers with the nearest passage.
+export const LORE_BODY_MAX = 20_000;
 export const LORE_TAGS_MAX = 8;
+
+// What saving a body over the cap would cut, as a sentence for the editor
+// and the route, or "" when it fits. The routes refuse rather than slice.
+export function loreBodyOverflow(body: unknown): string {
+  const text = typeof body === "string" ? body.trim() : "";
+  if (text.length <= LORE_BODY_MAX) {
+    return "";
+  }
+  const lost = text.slice(LORE_BODY_MAX).trim();
+  const shown = lost.length > 60 ? `${lost.slice(0, 60).trimEnd()}...` : lost;
+  return `This entry is ${text.length.toLocaleString("en-US")} characters; the limit is ${LORE_BODY_MAX.toLocaleString("en-US")}. The last ${(text.length - LORE_BODY_MAX).toLocaleString("en-US")} would be lost${shown ? `: "${shown}"` : ""}.`;
+}
 
 export function normalizeLoreInput(input: {
   category?: unknown;

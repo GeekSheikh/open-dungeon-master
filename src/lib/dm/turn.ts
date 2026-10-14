@@ -107,6 +107,8 @@ import { storyContextTokens } from "@/lib/model-client";
 import { restoreMentionedNpcs } from "@/lib/dm/npc-archive";
 import { handleRecallStory } from "@/lib/dm/recall";
 import { handleSearchLore, searchLoreTool } from "@/lib/dm/lore-search";
+import { handleReadCard, readCardTool } from "@/lib/dm/prep-card-tool";
+import { countPrepCards } from "@/lib/db/prep-cards";
 import { handleWriteCampaignNote, writeCampaignNoteTool } from "@/lib/dm/note-tools";
 import { buildTurnRetrieval } from "@/lib/dm/context-retrieval";
 import { estimateTokens, promptWindowTokens } from "@/lib/dm/context-budget";
@@ -506,6 +508,7 @@ export async function startDmTurn(campaignId: string) {
             connections: currentLocation.connections,
           }
         : null,
+      recentPlayerLine: [...history].reverse().find((message) => message.authorType === "player")?.content.slice(0, 400) ?? "",
       visitedLocationNames: listLocations(campaignId)
         .filter((location) => location.visited)
         .map((location) => location.name)
@@ -689,6 +692,8 @@ export function dmTurnTools(
     recordEventTool,
     ...(isStageEnabled(campaign.gameSettings.stages, "recall") ? [recallStoryTool] : []),
     searchLoreTool,
+    // Only a campaign with prep cards can answer it (issue #301).
+    ...(countPrepCards(campaign.id) ? [readCardTool] : []),
     writeCampaignNoteTool,
     sendWhisperTool,
     ...(campaign.storyArc ? [completeBeatTool] : []),
@@ -996,6 +1001,7 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
     const beatCalls = runnable.filter((toolCall) => toolCall.name === "complete_beat");
     const recallCalls = runnable.filter((toolCall) => toolCall.name === "recall_story");
     const searchLoreCalls = runnable.filter((toolCall) => toolCall.name === "search_lore");
+    const readCardCalls = runnable.filter((toolCall) => toolCall.name === "read_card");
     const noteCalls = runnable.filter((toolCall) => toolCall.name === "write_campaign_note");
     const whisperCalls = runnable.filter((toolCall) => toolCall.name === "send_whisper");
     const checkCalls = runnable.filter((toolCall) =>
@@ -1070,6 +1076,10 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
         searchLoreCall.id ?? "search_lore",
         await handleSearchLore(campaignId, searchLoreCall.rawArguments),
       );
+    }
+    const readCardResults = new Map<string, Record<string, unknown>>();
+    for (const readCardCall of readCardCalls) {
+      readCardResults.set(readCardCall.id ?? "read_card", handleReadCard(campaign, readCardCall.rawArguments));
     }
     // Notes deliver as pending suggestions immediately (like whispers); the
     // lead approves them in the notes panel.
@@ -1187,6 +1197,8 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
           return recallResults.get(toolCall.id ?? "recall_story") ?? { ok: true };
         case "search_lore":
           return searchLoreResults.get(toolCall.id ?? "search_lore") ?? { ok: true };
+        case "read_card":
+          return readCardResults.get(toolCall.id ?? "read_card") ?? { ok: true };
         case "write_campaign_note":
           return noteResults.get(toolCall.id ?? "write_campaign_note") ?? { ok: true };
         case "send_whisper":
