@@ -29,8 +29,9 @@ docker compose up -d        # http://localhost:3005
 `:latest` follows the newest release; pin one with `ODM_IMAGE_TAG=0.10.1` in `.env`. The
 compose file pulls from Docker Hub by default; set
 `ODM_IMAGE=ghcr.io/lebbitheplow/open-dungeon-master` in `.env` to use GHCR instead. To
-build the image yourself from a clone rather than pulling it, use
-`docker compose up -d --build`.
+build the image yourself rather than pulling it, clone the repository (the first two
+lines of the [Quick start](install.md#quick-start)) and run `docker compose up -d --build`
+inside it.
 
 Nothing else is required. On first boot the container generates a database encryption
 key, stores it in the data volume, and prints it once:
@@ -101,9 +102,9 @@ in-process event bus, so it cannot be replicated or pointed at a shared volume f
 hosts. See [Storage and the single-writer rule](storage.md).
 
 To move to a newer release: `docker compose pull && docker compose up -d`. The volumes
-carry over. If you build locally instead, `docker compose up -d --build` refreshes the
-content pack from api.open5e.com, so the build needs network; the running container
-never does.
+carry over. A locally built image is updated from the clone instead, with
+`git pull && docker compose up -d --build`. That build refreshes the content pack from
+api.open5e.com, so it needs network; the running container never does.
 
 ## Publishing (maintainers)
 
