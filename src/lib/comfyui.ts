@@ -226,6 +226,24 @@ function promptSlug(prompt: string) {
   );
 }
 
+// The catalog model chosen in Admin > Images, which paints every campaign's
+// pictures; undefined in checkpoint mode, where each campaign's checkpoint
+// does.
+function chosenComfyModel(): ComfyModel | undefined {
+  const preset = getGlobalConfig().images.comfyWorkflowPreset;
+  return preset === CHECKPOINT_PRESET ? undefined : comfyModel(preset);
+}
+
+// Whether ComfyUI has something to paint with: a catalog model, or (in
+// checkpoint mode) the campaign's checkpoint. No file is named in code and
+// none is taken from ComfyUI's list, so with neither generateComfyImage
+// refuses; the readiness checks (src/lib/image-generate.ts,
+// src/lib/capabilities.ts, the stranded-campaign rescue) ask this first, so
+// a table is not promised pictures that all fail.
+export function comfyModelPicked(checkpoint: string | undefined): boolean {
+  return Boolean(chosenComfyModel()) || Boolean((checkpoint ?? "").trim());
+}
+
 export async function generateComfyImage(options: {
   url?: string;
   checkpoint?: string;
@@ -243,12 +261,11 @@ export async function generateComfyImage(options: {
   // A catalog model paints every campaign's pictures; otherwise each
   // campaign's checkpoint does, with the catalog's settings for it when the
   // catalog knows that checkpoint.
-  const preset = getGlobalConfig().images.comfyWorkflowPreset;
-  const presetModel = preset === CHECKPOINT_PRESET ? undefined : comfyModel(preset);
+  const presetModel = chosenComfyModel();
   const checkpoint = (options.checkpoint || "").trim();
   let model: ComfyModel = ANY_CHECKPOINT;
   let files: ModelFiles = {};
-  if (!presetModel && !checkpoint) {
+  if (!comfyModelPicked(checkpoint)) {
     throw new Error("No ComfyUI checkpoint is picked. Choose one, or a model from the catalog, in Admin > Image generation.");
   }
   if (presetModel) {

@@ -87,11 +87,23 @@ export function openAiSpeechConfig(): { baseUrl: string; apiKey: string; model: 
   return { baseUrl, apiKey, model: configValue(getGlobalConfig().speech.sttOpenaiModel, "STT_OPENAI_MODEL") };
 }
 
-// Whether picking the "openai" backend can actually produce anything. The
-// dispatcher checks this before enqueueing, so a backend selected without a
-// key degrades to "request recorded" like the FLUX backends do.
+// Whether picking the "openai" backend can actually produce anything: a key
+// and a model, the admin's pick or OPENAI_IMAGE_MODEL, since none is named
+// in code and generateOpenAiImage refuses without one. Every readiness
+// check asks this (the enqueue gates, /api/capabilities, the campaign's
+// imagesReady, the stranded-campaign rescue), so a backend selected without
+// either degrades to "request recorded" like the FLUX backends do, instead
+// of promising pictures that all fail.
 export function openAiImagesConfigured(story?: TextBackendKey): boolean {
-  return resolveConfig(story).apiKey !== "";
+  const config = resolveConfig(story);
+  return config.apiKey !== "" && config.model !== "";
+}
+
+// A key with no model: the one gap an admin closes by picking from the
+// server's list, so the panels say that rather than "no key".
+export function openAiImagesNeedModel(story?: TextBackendKey): boolean {
+  const config = resolveConfig(story);
+  return config.apiKey !== "" && config.model === "";
 }
 
 // The sizes a server listed for a model when it refused one, kept for the

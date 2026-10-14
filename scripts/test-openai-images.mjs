@@ -7,7 +7,8 @@
 // llama.cpp, LM Studio or OpenRouter must never be posted to api.openai.com.
 //
 // Local image generation is not touched by any of this — ComfyUI stays ready
-// with no key at all — so that is asserted too.
+// with no key at all, once it has a checkpoint — so that is asserted too.
+// Neither backend is ready without a model: none is named in code.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
@@ -59,8 +60,16 @@ test("with nothing configured the OpenAI backend has no producer", () => {
   assert.equal(imageProducerReady(story("openai", "", "")), false);
 });
 
-test("ComfyUI is ready without any key, exactly as before", () => {
-  assert.equal(imageProducerReady(story("comfyui", "", "")), true);
+test("a key without a model is no producer either: no model is named in code", () => {
+  assert.equal(imageProducerReady(story("openai", "https://api.openai.com/v1", "sk-test")), false);
+  // The checks below are about whose key is spent, so a model is picked.
+  saveGlobalConfig({ images: { openaiModel: "my-painter" } });
+  assert.equal(imageProducerReady(story("openai", "https://api.openai.com/v1", "sk-test")), true);
+});
+
+test("ComfyUI is ready without any key once a checkpoint is picked", () => {
+  assert.equal(imageProducerReady({ ...story("comfyui", "", ""), comfyCheckpoint: "any.safetensors" }), true);
+  assert.equal(imageProducerReady({ ...story("comfyui", "", ""), comfyCheckpoint: "" }), false, "no checkpoint and no catalog model");
   // The FLUX workers still have no producer here; their own process drives them.
   assert.equal(imageProducerReady(story("mflux-hs", "", "")), false);
   assert.equal(imageProducerReady(story("sdnq-hs", "", "")), false);
@@ -158,15 +167,19 @@ await asyncTest("a key that is not OpenAI's takes no shortcut", async () => {
 
 await asyncTest("a self-hosted backend still answers to the probe, not the key", async () => {
   // ComfyUI must never shortcut: "ready" for it means something is listening,
-  // which only the capability probe knows.
+  // which only the capability probe knows. A checkpoint is picked for the
+  // campaign and the server alike, so only the probe is left to answer.
+  saveGlobalConfig({ images: { comfyCheckpoint: "any.safetensors" } });
   assert.equal(
     await imagesAvailable({
       imageBackend: "comfyui",
       customBaseUrl: "https://api.openai.com/v1",
       customApiKey: "sk-test",
+      comfyCheckpoint: "any.safetensors",
     }),
     await imagesAvailable(),
   );
+  saveGlobalConfig({ images: { comfyCheckpoint: "" } });
 });
 
 test("the masked settings tell the panel whether THIS campaign can render", () => {

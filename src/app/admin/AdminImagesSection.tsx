@@ -139,6 +139,17 @@ export function comfyModelStatus(discovery: ComfyDiscovery | null, preset: strin
   }`;
 }
 
+// Said under a picture backend whose model is blank. No model is named in
+// code, so it paints nothing until one is picked; an upgrade from a version
+// that named one lands here.
+function NoPictureModel() {
+  return (
+    <p role="status" className="text-[11px] leading-4 text-amber-300 sm:col-span-2" data-needs-model>
+      No model is picked, so nothing is painted until you pick one.
+    </p>
+  );
+}
+
 function ComfyModelField({
   images,
   env,
@@ -176,6 +187,8 @@ function ComfyModelField({
   const selected = preset !== CHECKPOINT_PRESET ? `${PRESET_PREFIX}${preset}` : `${CHECKPOINT_PREFIX}${images.comfyCheckpoint}`;
   const report = current?.models.find((entry) => entry.id === preset);
   const missing = Boolean(current && !current.error && preset !== CHECKPOINT_PRESET && (!report || report.missing.length));
+  // Said once ComfyUI has answered, when there is something to pick from.
+  const unpicked = Boolean(current && !current.error) && preset === CHECKPOINT_PRESET && !images.comfyCheckpoint.trim();
 
   // The picker sits beside the address; the catalog spans the row under both.
   return (
@@ -199,6 +212,7 @@ function ComfyModelField({
           </button>
         </div>
       </div>
+      {unpicked ? <NoPictureModel /> : null}
       {current && !current.error ? (
         <div className="sm:col-span-2">
           <ComfyModelCatalog discovery={current} preset={preset} checkpoint={images.comfyCheckpoint} onPick={onChange} />
@@ -305,6 +319,7 @@ export function AdminImagesSection({
               : "Billed to whoever owns the key. Used only when a campaign's backend is this API."
           }
         />
+        {!images.openaiModel.trim() && !env.openaiImageModel ? <NoPictureModel /> : null}
       </div>
     ),
   };

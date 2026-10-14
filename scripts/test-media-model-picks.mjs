@@ -1,8 +1,11 @@
-// A campaign freezes its settings when it is made, and since PR 298 names no
-// ComfyUI checkpoint, one made before the admin picked a checkpoint froze a
-// blank one, which nothing in the campaign can change. It has to paint with
-// the checkpoint the admin picks later. The real admin settings route and a
-// throwaway database; ComfyUI is a stand-in on a loopback port.
+// No model is named in code (PR 298): pictures, narration and dictation run
+// only with a model picked from what their server lists. Every readiness
+// check has to know that, or tables are promised pictures and narration
+// that all fail: the enqueue gates (imagesAvailable, imageProducerReady),
+// /api/capabilities, a campaign's own imagesReady, the stranded-campaign
+// rescue and the Speech status. And a campaign made before the admin picked
+// a ComfyUI checkpoint has to paint with the one picked later. Real routes
+// and a throwaway database; the backends are stand-ins on loopback ports.
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
@@ -48,8 +51,14 @@ const { createUser } = await import("../src/lib/db/users.ts");
 const { mintSession } = await import("../src/lib/auth.ts");
 const { createCampaign, getCampaignById, updateStorySettings } = await import("../src/lib/db/campaigns.ts");
 const { saveGlobalConfig } = await import("../src/lib/db/app-settings.ts");
+const { maskStorySettings } = await import("../src/lib/db/settings.ts");
 const settingsRoute = await import("../src/app/api/admin/settings/route.ts");
-const { generateStoryImage } = await import("../src/lib/image-generate.ts");
+const { openAiImagesConfigured, openAiImagesNeedModel } = await import("../src/lib/openai-images.ts");
+const { imageProducerReady, generateStoryImage } = await import("../src/lib/image-generate.ts");
+const { capabilitiesSnapshot, imagesAvailable } = await import("../src/lib/capabilities.ts");
+const { rescueStrandedCampaigns } = await import("../src/lib/image-backend-rescue.ts");
+const { sttStatus } = await import("../src/lib/stt-backend.ts");
+const { forgetSoleModelsForTests } = await import("../src/lib/model-registry/discovery.ts");
 
 let passed = 0;
 async function test(name, fn) {
@@ -58,7 +67,9 @@ async function test(name, fn) {
   console.log(`ok - ${name}`);
 }
 
-// A ComfyUI that takes the prompt it is sent.
+// A ComfyUI that answers its liveness check, and a speech server whose model
+// list the test sets.
+let speechModels = ["only-voice"];
 const prompts = [];
 const server = http.createServer((request, response) => {
   let body = "";
@@ -74,6 +85,7 @@ const server = http.createServer((request, response) => {
       // Enough to see what was asked for; the picture itself is not needed.
       return send(500, { error: "stand-in" });
     }
+    if (request.url === "/speech/v1/models") return send(200, { data: speechModels.map((id) => ({ id })) });
     send(404, {});
   });
 });
@@ -91,6 +103,7 @@ try {
     saveGlobalConfig({ images: { defaultBackend: "comfyui", comfyUrl: base, comfyCheckpoint: "", comfyWorkflowPreset: "checkpoint" } });
     const early = table("Made early");
     assert.equal(getCampaignById(early.id).settings.comfyCheckpoint, "", "nothing is picked yet");
+    assert.equal(imageProducerReady(getCampaignById(early.id).settings), false, "no checkpoint: nothing to paint with");
     const own = table("Own checkpoint");
     updateStorySettings(own.id, { comfyCheckpoint: "own.safetensors" });
 
@@ -98,11 +111,131 @@ try {
     assert.equal(response.status, 200);
     const settings = getCampaignById(early.id).settings;
     assert.equal(settings.comfyCheckpoint, "mine.safetensors", "the admin's pick reaches a campaign that had none");
+    assert.equal(imageProducerReady(settings), true);
     assert.equal(getCampaignById(own.id).settings.comfyCheckpoint, "own.safetensors", "a campaign's own checkpoint stays its own");
 
     prompts.length = 0;
     await assert.rejects(generateStoryImage(settings, { prompt: "a quiet harbor", mode: "fast", aspect: "square" }));
     assert.match(JSON.stringify(prompts.at(-1)), /mine\.safetensors/, "the picture was asked of the admin's checkpoint");
+  });
+
+  await test("ComfyUI with no checkpoint and no catalog model is not ready anywhere, however well it answers", async () => {
+    saveGlobalConfig({ images: { defaultBackend: "comfyui", comfyUrl: base, comfyCheckpoint: "", comfyWorkflowPreset: "checkpoint" } });
+    const blank = getCampaignById(table("No pick").id).settings;
+    assert.equal(blank.comfyCheckpoint, "");
+    const images = (await capabilitiesSnapshot()).images;
+    assert.equal(images.configured, false, "pictures are not promised");
+    assert.equal(images.needsModel, true, "the admin is told a model is missing");
+    assert.equal(await imagesAvailable(), false);
+    assert.equal(await imagesAvailable(blank), false);
+    assert.equal(await imagesAvailable({ ...blank, comfyUrl: base }), false, "a campaign's own ComfyUI address does not make up for it");
+    assert.equal(imageProducerReady(blank), false);
+    assert.equal(maskStorySettings(blank).imagesNeedModel, true);
+    // A campaign with a checkpoint of its own paints on the server's ComfyUI.
+    assert.equal(await imagesAvailable({ ...blank, comfyCheckpoint: "own.safetensors" }), true);
+    assert.equal(await imagesAvailable({ ...blank, comfyUrl: base, comfyCheckpoint: "own.safetensors" }), true);
+
+    // A catalog model paints every campaign's pictures without a checkpoint.
+    saveGlobalConfig({ images: { comfyWorkflowPreset: "z_turbo" } });
+    assert.equal((await capabilitiesSnapshot()).images.configured, true);
+    assert.equal(imageProducerReady(blank), true);
+    assert.equal(maskStorySettings(blank).imagesNeedModel, false);
+    saveGlobalConfig({ images: { comfyWorkflowPreset: "checkpoint", comfyCheckpoint: "mine.safetensors" } });
+    assert.equal((await capabilitiesSnapshot()).images.configured, true);
+    assert.equal((await capabilitiesSnapshot()).images.needsModel, false);
+    assert.equal(await imagesAvailable(), true);
+  });
+
+  await test("OpenAI pictures need a model as well as a key; OPENAI_IMAGE_MODEL counts", async () => {
+    saveGlobalConfig({ images: { defaultBackend: "openai", openaiApiKey: "sk-images", openaiModel: "" } });
+    const campaign = getCampaignById(table("OpenAI pictures").id).settings;
+    assert.equal(campaign.imageBackend, "openai");
+    assert.equal(openAiImagesConfigured(), false);
+    assert.equal(openAiImagesNeedModel(), true);
+    const images = (await capabilitiesSnapshot()).images;
+    assert.equal(images.configured, false);
+    assert.equal(images.reachable, false);
+    assert.equal(images.needsModel, true);
+    assert.equal(imageProducerReady(campaign), false);
+    assert.equal(await imagesAvailable(), false);
+    const masked = maskStorySettings(campaign);
+    assert.equal(masked.imagesReady, false);
+    assert.equal(masked.imagesNeedModel, true, "the panel says a model is missing, not a key");
+
+    process.env.OPENAI_IMAGE_MODEL = "env-painter";
+    assert.equal(openAiImagesConfigured(), true);
+    assert.equal(imageProducerReady(campaign), true);
+    assert.equal((await capabilitiesSnapshot()).images.configured, true);
+    delete process.env.OPENAI_IMAGE_MODEL;
+    saveGlobalConfig({ images: { openaiModel: "my-painter" } });
+    assert.equal(openAiImagesConfigured(), true);
+    assert.equal(openAiImagesNeedModel(), false);
+    assert.equal(maskStorySettings(campaign).imagesReady, true);
+    // No key at all is not "needs a model".
+    saveGlobalConfig({ images: { openaiApiKey: "" } });
+    assert.equal(openAiImagesNeedModel(), false);
+    assert.equal(maskStorySettings(campaign).imagesNeedModel, false);
+  });
+
+  await test("the rescue moves no campaign onto a backend with no model, nor counts one without as able to paint", async () => {
+    // A table stranded on a ComfyUI that is not there.
+    const stranded = table("The Old Road");
+    updateStorySettings(stranded.id, { imageBackend: "comfyui", comfyUrl: "http://127.0.0.1:9", comfyCheckpoint: "a.safetensors" });
+    saveGlobalConfig({ images: { defaultBackend: "openai", openaiApiKey: "sk-images", openaiModel: "" } });
+    let moves = await rescueStrandedCampaigns();
+    assert.ok(!moves.some((move) => move.id === stranded.id), "moved onto OpenAI pictures with no model");
+    saveGlobalConfig({ images: { openaiModel: "my-painter" } });
+    moves = await rescueStrandedCampaigns();
+    assert.ok(moves.some((move) => move.id === stranded.id), "a backend that can paint takes it");
+
+    // A ComfyUI that answers but has nothing picked is no target either.
+    const keyless = table("No key");
+    updateStorySettings(keyless.id, { imageBackend: "openai" });
+    saveGlobalConfig({ images: { defaultBackend: "comfyui", comfyUrl: base, comfyCheckpoint: "", comfyWorkflowPreset: "checkpoint", openaiApiKey: "" } });
+    moves = await rescueStrandedCampaigns();
+    assert.ok(!moves.some((move) => move.id === keyless.id), "moved onto a ComfyUI with no checkpoint");
+  });
+
+  await test("OpenAI-kind narration is ready only with a model: picked, TTS_MODEL, or a local server's only one", async () => {
+    saveGlobalConfig({ speech: { ttsProvider: "openai", ttsBaseUrl: "https://api.openai.com/v1", ttsModel: "", ttsApiKey: "sk-voice" } });
+    let tts = (await capabilitiesSnapshot()).tts;
+    assert.equal(tts.configured, false, "OpenAI with a key and no model reads nothing aloud");
+    assert.equal(tts.needsModel, true);
+    process.env.TTS_MODEL = "env-voice";
+    tts = (await capabilitiesSnapshot()).tts;
+    assert.equal(tts.configured, true);
+    assert.equal(tts.needsModel, false);
+    delete process.env.TTS_MODEL;
+
+    // A server of the host's own runs its only listed model for a blank.
+    forgetSoleModelsForTests();
+    speechModels = ["only-voice"];
+    saveGlobalConfig({ speech: { ttsBaseUrl: `${base}/speech`, ttsApiKey: "" } });
+    tts = (await capabilitiesSnapshot()).tts;
+    assert.equal(tts.configured, true, "the server's only model runs a blank field");
+    assert.equal(tts.needsModel, false);
+    forgetSoleModelsForTests();
+    speechModels = ["voice-a", "voice-b"];
+    tts = (await capabilitiesSnapshot()).tts;
+    assert.equal(tts.configured, false, "several models and none picked");
+    assert.equal(tts.needsModel, true);
+    saveGlobalConfig({ speech: { ttsModel: "voice-a" } });
+    assert.equal((await capabilitiesSnapshot()).tts.configured, true);
+    saveGlobalConfig({ speech: { ttsProvider: "off", ttsModel: "" } });
+  });
+
+  await test("Admin > Speech hears that an OpenAI key would take dictation but has no model picked", async () => {
+    saveGlobalConfig({ images: { openaiApiKey: "sk-images" }, speech: { sttOpenaiModel: "" } });
+    let status = await sttStatus();
+    assert.equal(status.active, "none");
+    assert.equal(status.openai.needsModel, true);
+    saveGlobalConfig({ speech: { sttOpenaiModel: "my-ears" } });
+    status = await sttStatus();
+    assert.equal(status.active, "openai");
+    assert.equal(status.openai.needsModel, false);
+    // Without a key there is nothing to pick a model for.
+    saveGlobalConfig({ images: { openaiApiKey: "" }, speech: { sttOpenaiModel: "" } });
+    assert.equal((await sttStatus()).openai.needsModel, false);
   });
 } finally {
   server.close();

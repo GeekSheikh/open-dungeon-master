@@ -7,7 +7,7 @@
 
 import { probeReachable, sttProbeUrl } from "@/lib/capabilities";
 import { sttInputs } from "@/lib/stt";
-import { pickSttBackend, whisperNeedsModel, type SttBackend } from "@/lib/stt-logic";
+import { openAiSttNeedsModel, pickSttBackend, whisperNeedsModel, type SttBackend } from "@/lib/stt-logic";
 
 const probe = (url: string) => probeReachable(sttProbeUrl(url));
 
@@ -21,9 +21,16 @@ export type SttStatus = {
   // A Whisper service answers (or is named), but no model is picked for it
   // and it does not list exactly one, so dictation skips it.
   whisper: { needsModel: boolean };
+  // An OpenAI key would take dictation, as nothing free listens, but no
+  // transcription model is picked for it.
+  openai: { needsModel: boolean };
 };
 
 export async function sttStatus(): Promise<SttStatus> {
   const inputs = await sttInputs(probe);
-  return { active: pickSttBackend(inputs), whisper: { needsModel: whisperNeedsModel(inputs) } };
+  return {
+    active: pickSttBackend(inputs),
+    whisper: { needsModel: whisperNeedsModel(inputs) },
+    openai: { needsModel: openAiSttNeedsModel(inputs) },
+  };
 }

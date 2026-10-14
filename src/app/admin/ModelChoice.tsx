@@ -45,6 +45,9 @@ export type ModelChoiceProps = {
   // the admin panel, which anyone returns to, never fills one. A function
   // decides from the listing (a Whisper service's only model runs a blank).
   preselect?: boolean | ((choices: ModelChoices) => boolean);
+  // Told each listing as it lands (null when it failed), for a section that
+  // says something about what a blank runs.
+  onListing?: (choices: ModelChoices | null) => void;
 };
 
 export function modelTone(model: RegistryModel | undefined): string {
@@ -75,7 +78,7 @@ export function modelLine(model: RegistryModel | undefined): string {
 }
 
 export function ModelChoiceField(props: ModelChoiceProps) {
-  const { label, hint, role, provider, baseUrl = "", apiKey = "", harnessId, value, onChange, blankLabel, narrow, preselect } = props;
+  const { label, hint, role, provider, baseUrl = "", apiKey = "", harnessId, value, onChange, blankLabel, narrow, preselect, onListing } = props;
   const [choices, setChoices] = useState<ModelChoices | null>(null);
   const [loading, setLoading] = useState(false);
   const [typing, setTyping] = useState(false);
@@ -88,10 +91,12 @@ export function ModelChoiceField(props: ModelChoiceProps) {
   // be after a pick.
   const picked = useRef(value);
   const fills = useRef(preselect);
+  const told = useRef(onListing);
   useEffect(() => {
     picked.current = value;
     fills.current = preselect;
-  }, [value, preselect]);
+    told.current = onListing;
+  }, [value, preselect, onListing]);
 
   const load = useCallback(async () => {
     const ticket = (latest.current += 1);
@@ -106,12 +111,16 @@ export function ModelChoiceField(props: ModelChoiceProps) {
       if (ticket === latest.current) {
         const listed = data && Array.isArray(data.models) ? data : null;
         setChoices(listed);
+        told.current?.(listed);
         const rule = fills.current;
         const fill = typeof rule === "function" ? Boolean(listed && rule(listed)) : rule;
         if (fill && !picked.current.trim() && listed?.recommended) onChange(listed.recommended);
       }
     } catch {
-      if (ticket === latest.current) setChoices(null);
+      if (ticket === latest.current) {
+        setChoices(null);
+        told.current?.(null);
+      }
     } finally {
       if (ticket === latest.current) setLoading(false);
     }

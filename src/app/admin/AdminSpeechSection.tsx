@@ -8,6 +8,7 @@ import { PageSection } from "@/components/PageShell";
 import { BuiltinSpeechCard } from "@/app/admin/BuiltinSpeechCard";
 import { ModelChoiceField } from "@/app/admin/ModelChoice";
 import { BLANK, SPEECH_MODELS, fromEnv } from "@/app/admin/model-blanks";
+import type { ModelChoices } from "@/lib/model-registry/registry";
 import { whisperSwitchedOff } from "@/lib/stt-logic";
 import {
   Field,
@@ -73,6 +74,9 @@ export function AdminSpeechSection({
   // The paid dictation fallback is drawn once opened, so its picker does not
   // ask OpenAI with the saved key for an admin who never uses it.
   const [openAiDictation, setOpenAiDictation] = useState(false);
+  // What the narration server listed last, which says whether a blank model
+  // runs its only one.
+  const [narrationListing, setNarrationListing] = useState<ModelChoices | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // What "Auto" means on this server right now.
@@ -88,6 +92,15 @@ export function AdminSpeechSection({
   const openaiAt = speech.ttsBaseUrl.trim() || env.ttsBaseUrl || "https://api.openai.com/v1";
   const official = host(openaiAt) === "api.openai.com";
   const whisperAt = speech.sttUrl.trim() || env.sttUrl;
+  // No model is named in code: an OpenAI-kind server with none picked reads
+  // nothing aloud, unless it is the host's own and lists exactly one.
+  const soleNarrationModel =
+    narrationListing?.reachable === true && narrationListing.models.filter((model) => model.listed).length === 1;
+  const narrationNeedsModel =
+    provider === "openai" &&
+    !speech.ttsModel.trim() &&
+    !env.ttsModel &&
+    (official || (narrationListing?.reachable === true && !soleNarrationModel));
 
   async function test() {
     setTesting(true);
@@ -184,6 +197,7 @@ export function AdminSpeechSection({
               onChange={(ttsModel) => set({ ttsModel })}
               narrow={SPEECH_MODELS.narration}
               blankLabel={env.ttsModel ? fromEnv(env.ttsModel, "TTS_MODEL") : official ? BLANK.narration : BLANK.narrationServer}
+              onListing={setNarrationListing}
             />
             <SecretField
               label="API key"
@@ -222,6 +236,11 @@ export function AdminSpeechSection({
           </Field>
         )}
       </div>
+      {narrationNeedsModel ? (
+        <p role="status" className="mt-3 text-xs text-amber-300" data-needs-model>
+          No narration model is picked, so nothing is read aloud until you pick one.
+        </p>
+      ) : null}
       <p className="mt-3 text-xs leading-5 text-stone-400">
         {provider === "off"
           ? "No passage is read aloud and no text is sent anywhere. Campaigns that have Narration on are told it is off here."

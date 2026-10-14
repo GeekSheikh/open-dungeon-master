@@ -1,4 +1,5 @@
-import { openAiImagesConfigured } from "@/lib/openai-images";
+import { comfyModelPicked } from "@/lib/comfyui";
+import { openAiImagesConfigured, openAiImagesNeedModel } from "@/lib/openai-images";
 import { configuredDefaultStorySettings } from "@/lib/runtime-defaults";
 import { isDeviceWorld } from "@/lib/server-env";
 import { isLocalTextModelId, isTextProvider } from "@/lib/text-models";
@@ -192,6 +193,10 @@ export type MaskedStorySettings = Omit<StorySettings, "customApiKey" | "utilityA
   // about. Only meaningful for key-gated backends; a self-hosted one is
   // reported ready and its liveness still comes from the capability probe.
   imagesReady: boolean;
+  // THIS campaign's picture backend has nothing to paint with until an admin
+  // picks a model: OpenAI with a key and no model, or ComfyUI in checkpoint
+  // mode with no checkpoint, the campaign's or the server's.
+  imagesNeedModel: boolean;
   // True on a world an app hosts, where the backend fields follow the device
   // and the panel shows them instead of editing them.
   deviceManaged: boolean;
@@ -213,6 +218,10 @@ export function maskStorySettings(
     hasCustomApiKey: customApiKey !== "",
     hasUtilityApiKey: utilityApiKey !== "",
     imagesReady: settings.imageBackend === "openai" ? openAiImagesConfigured(settings) : true,
+    imagesNeedModel:
+      settings.imageBackend === "openai"
+        ? openAiImagesNeedModel(settings)
+        : settings.imageBackend === "comfyui" && !comfyModelPicked(settings.comfyCheckpoint),
     deviceManaged: isDeviceWorld(),
     serverManaged: !isDeviceWorld() && !viewer.isAdmin,
   };

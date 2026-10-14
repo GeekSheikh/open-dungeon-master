@@ -1,5 +1,6 @@
 import { configValue, getGlobalConfig } from "@/lib/app-config";
-import { openAiImagesConfigured } from "@/lib/openai-images";
+import { comfyModelPicked } from "@/lib/comfyui";
+import { openAiImagesConfigured, openAiImagesNeedModel } from "@/lib/openai-images";
 import { sttInputs } from "@/lib/stt";
 import { pickSttBackend, sttWantsWav, whisperSwitchedOff, type SttBackend } from "@/lib/stt-logic";
 import { configuredDefaultStorySettings } from "@/lib/runtime-defaults";
@@ -10,7 +11,7 @@ import { harnessConfig, probeHarness } from "@/lib/harness/status";
 import { isHarnessId } from "@/lib/harness/types";
 import { harnessImagesReady } from "@/lib/harness/images";
 import type { StorySettings } from "@/lib/types";
-import { isOpenAiHost, ttsBackend, type TtsBackend, type TtsProvider } from "@/lib/tts-backend";
+import { isOpenAiHost, narrationModel, ttsBackend, type TtsBackend, type TtsProvider } from "@/lib/tts-backend";
 
 // What this server can actually do, derived from the same resolution the DM
 // path uses (configuredDefaultStorySettings, admin settings, env), not from
@@ -28,12 +29,16 @@ export type Capabilities = {
   story: { configured: boolean; reachable: boolean; model: string };
   utility: { configured: boolean };
   // openaiPlace: where the OpenAI-kind image backend sends its requests,
-  // "local" or the host's name (see `place` below).
-  images: { configured: boolean; reachable: boolean; backend: string; openaiPlace: string };
+  // "local" or the host's name (see `place` below). needsModel: the backend
+  // is there (a key, or a ComfyUI that answers) but no model is picked, so
+  // nothing is painted until an admin picks one; configured is then false.
+  images: { configured: boolean; reachable: boolean; backend: string; openaiPlace: string; needsModel: boolean };
   // provider: the kind of speech server (src/lib/tts-backend.ts). place: where
   // passages are sent, "local" for this machine or its own network, else the
   // host's name, so a table can see whether narration leaves the building.
-  tts: { configured: boolean; reachable: boolean; provider: TtsProvider; place: string };
+  // needsModel: an OpenAI-kind server is there, but no model is picked and
+  // it does not list exactly one, so nothing is read aloud.
+  tts: { configured: boolean; reachable: boolean; provider: TtsProvider; place: string; needsModel: boolean };
   // backend: which engine /api/stt will use; wantsWav: whether the browser
   // must send 16 kHz WAV instead of its own recording (the built-in engine).
   stt: { configured: boolean; backend: SttBackend; wantsWav: boolean };
@@ -89,25 +94,30 @@ export function utilityConfigured(settings: Pick<StorySettings, "utilityModel">)
 }
 
 // Images follow the same rule as speech: the key-gated OpenAI backend needs
-// its key, and a self-hosted backend counts when the admin or env named a
-// URL for it or when something answers at the shipped default. A bare
-// default with nothing listening is the "no image AI on this server" case
-// that every upload-or-paint control needs to know about, so that it can
-// offer the upload alone instead of a paint button that fails.
+// its key and its model (openAiReady, src/lib/openai-images.ts), and a
+// self-hosted backend counts when the admin or env named a URL for it or
+// when something answers at the shipped default. A bare default with
+// nothing listening is the "no image AI on this server" case that every
+// upload-or-paint control needs to know about, so that it can offer the
+// upload alone instead of a paint button that fails. ComfyUI also needs a
+// model or checkpoint picked (comfyPicked): none is named in code, so
+// without one it paints nothing however well it answers.
 export function imagesConfigured(
   backend: string,
-  hasOpenaiKey: boolean,
+  openAiReady: boolean,
   explicitUrl: string,
   defaultReachable: boolean,
+  comfyPicked = true,
 ): boolean {
   if (backend === "openai") {
-    return hasOpenaiKey;
+    return openAiReady;
   }
   // The agent program's own pictures: ready means seen working here.
   if (backend === "harness") {
     return harnessImagesReady();
   }
-  return Boolean(explicitUrl.trim()) || defaultReachable;
+  const there = Boolean(explicitUrl.trim()) || defaultReachable;
+  return backend === "comfyui" ? there && comfyPicked : there;
 }
 
 // Where a cheap liveness GET goes for the image backend. ComfyUI exposes
@@ -288,7 +298,7 @@ export async function probeReachable(
 // creations costs one probe, not one per character.
 export async function imagesAvailable(
   settings?: Pick<StorySettings, "imageBackend" | "customBaseUrl" | "customApiKey"> &
-    Partial<Pick<StorySettings, "comfyUrl">>,
+    Partial<Pick<StorySettings, "comfyUrl" | "comfyCheckpoint">>,
 ): Promise<boolean> {
   // A campaign holding its own OpenAI key answers for itself. The snapshot
   // below describes the SERVER's default backend, which on a
@@ -305,6 +315,13 @@ export async function imagesAvailable(
   if (settings?.imageBackend === "harness") {
     return harnessImagesReady();
   }
+  // A ComfyUI campaign paints with its own checkpoint (or the catalog model
+  // chosen for every campaign); with neither, nothing is painted wherever
+  // ComfyUI runs.
+  const comfy = settings?.imageBackend === "comfyui";
+  if (comfy && !comfyModelPicked(settings.comfyCheckpoint)) {
+    return false;
+  }
   // A campaign pointed at its own ComfyUI asked for pictures by name, the
   // same as an address in the admin panel (imagesConfigured): its failures
   // are worth showing, so it is not second-guessed by the server's probe.
@@ -312,7 +329,10 @@ export async function imagesAvailable(
     return true;
   }
   try {
-    return (await capabilitiesSnapshot()).images.configured;
+    const images = (await capabilitiesSnapshot()).images;
+    // The campaign's own checkpoint was asked about above; of the server's
+    // ComfyUI, only whether it is there counts.
+    return images.configured || (comfy && images.backend === "comfyui" && images.needsModel);
   } catch {
     // A failed snapshot must not turn into a lost render on a host that has
     // an image backend; the old unconditional behavior is the fallback.
@@ -367,11 +387,21 @@ export async function capabilitiesSnapshot(): Promise<Capabilities> {
   // Asked of the backend's own resolver rather than re-listed here, so the
   // key a table lends from its OpenAI text model counts the same way at the
   // creator as it does at render time (src/lib/openai-images.ts).
-  const hasOpenaiImageKey = openAiImagesConfigured();
+  const openAiImagesReady = openAiImagesConfigured();
   const explicitImageUrl =
     settings.imageBackend === "comfyui"
       ? configValue(cfg.images.comfyUrl, "COMFYUI_URL")
       : serverEnv("FLUX_WORKER_URL");
+  const comfyPicked = comfyModelPicked(settings.comfyCheckpoint);
+  const comfyThere = settings.imageBackend === "comfyui" && (Boolean(explicitImageUrl.trim()) || imagesReachable);
+  // An OpenAI-kind narration server's model: picked, TTS_MODEL, or the only
+  // one a server of the host's own lists. Asked of such a server only while
+  // its probe (the same model list) answers, so one that is down costs
+  // nothing here.
+  const speechModel =
+    speech.provider === "openai" && (isOpenAiHost(speech.v1) || ttsReachable) ? await narrationModel(speech) : speech.model;
+  const narrationNeedsModel =
+    speech.provider === "openai" && !speechModel && (isOpenAiHost(speech.v1) ? speech.apiKey !== "" : ttsReachable);
 
   return {
     story: { configured, reachable: storyReachable, model: configured ? storyModelName(settings) : "" },
@@ -379,25 +409,28 @@ export async function capabilitiesSnapshot(): Promise<Capabilities> {
     images: {
       configured: imagesConfigured(
         settings.imageBackend,
-        hasOpenaiImageKey,
+        openAiImagesReady,
         explicitImageUrl,
         imagesReachable,
+        comfyPicked,
       ),
       reachable:
         settings.imageBackend === "openai"
-          ? hasOpenaiImageKey
+          ? openAiImagesReady
           : settings.imageBackend === "harness"
             ? harnessImagesReady()
             : imagesReachable,
       backend: settings.imageBackend,
       openaiPlace: backendPlace(configValue(cfg.images.openaiBaseUrl, "OPENAI_IMAGE_BASE_URL", "https://api.openai.com/v1")),
+      needsModel: settings.imageBackend === "openai" ? openAiImagesNeedModel() : comfyThere && !comfyPicked,
     },
     tts: {
-      // Off is off. OpenAI itself is ready when it has a key, like the
-      // image backend; a server with an address counts as configured when
-      // the admin or env named it, or when the default one answers.
+      // Off is off. An OpenAI-kind server with no model it can be asked for
+      // reads nothing aloud. OpenAI itself is ready when it has a key, like
+      // the image backend; a server with an address counts as configured
+      // when the admin or env named it, or when the default one answers.
       configured:
-        speech.provider === "off"
+        speech.provider === "off" || (speech.provider === "openai" && !speechModel)
           ? false
           : isOpenAiHost(speech.v1)
             ? speech.apiKey !== ""
@@ -410,6 +443,7 @@ export async function capabilitiesSnapshot(): Promise<Capabilities> {
       reachable: speech.provider !== "off" && (isOpenAiHost(speech.v1) ? speech.apiKey !== "" : ttsReachable),
       provider: speech.provider,
       place: backendPlace(speech.v1),
+      needsModel: narrationNeedsModel,
     },
     // Whisper (an explicit URL, or the default address answering) with its
     // model, then the built-in engine, then an OpenAI key with its model:

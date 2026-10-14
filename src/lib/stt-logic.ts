@@ -60,6 +60,14 @@ export function whisperNeedsModel(input: Pick<SttInputs, "explicitWhisperUrl" | 
   return whisperFound(input) && !input.whisperModel.trim();
 }
 
+// OpenAI would be the one to listen (a key, and nothing free does), but no
+// transcription model is picked, so the server has no ears at all. Upgrading
+// from a version that named one turns dictation off this way, so the admin
+// panel says so rather than only "nothing yet".
+export function openAiSttNeedsModel(input: SttInputs): boolean {
+  return pickSttBackend(input) === "none" && Boolean(input.openAiKey.trim()) && !input.openAiModel.trim();
+}
+
 // The built-in engine reads 16 kHz WAV; the others take the recorder's Opus.
 export function sttWantsWav(backend: SttBackend): boolean {
   return backend === "builtin";
