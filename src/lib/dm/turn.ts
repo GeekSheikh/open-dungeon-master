@@ -1050,7 +1050,13 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
     // Location bookkeeping is synchronous and cheap; maps render async on
     // the media queue when vision allows.
     const locationResults = new Map<string, Record<string, unknown>>();
-    const picturesAvailable = locationCalls.length > 0 && (await imagesAvailable(campaign.settings));
+    // Asked only when a map could be drawn at all, so a table with maps off
+    // or no image backend never waits on a probe.
+    const picturesAvailable =
+      locationCalls.length > 0 &&
+      campaign.gameSettings.mapsEnabled &&
+      imageProducerReady(campaign.settings) &&
+      (await imagesAvailable(campaign.settings));
     for (const locationCall of locationCalls) {
       const result = handleLocationCall(campaign, locationCall.name, locationCall.rawArguments, picturesAvailable);
       if (result.movedToNewLocation) {
@@ -1797,7 +1803,7 @@ export function handleLocationCall(
   campaign: Campaign,
   toolName: string,
   rawArguments: string,
-  picturesAvailable = true,
+  picturesAvailable: boolean,
 ): Record<string, unknown> {
   let args: {
     name?: unknown;

@@ -58,6 +58,7 @@ import {
   handleRequestPlayerInput,
 } from "@/lib/dm/turn";
 import { imagesAvailable } from "@/lib/capabilities";
+import { imageProducerReady } from "@/lib/image-generate";
 import { handleGenerateImage } from "@/lib/dm/images";
 import { handleRequestRoll } from "@/lib/dm/invoke-roll";
 import { handleSplitDamage } from "@/lib/dm/split-damage";
@@ -223,7 +224,11 @@ export async function dispatchAdjudication(
       return handleDismissCompanion(campaign, rawArguments, sheets);
     case "move_party":
     case "update_location": {
-      const result = handleLocationCall(campaign, name, rawArguments, await imagesAvailable(campaign.settings));
+      const pictures =
+        campaign.gameSettings.mapsEnabled &&
+        imageProducerReady(campaign.settings) &&
+        (await imagesAvailable(campaign.settings));
+      const result = handleLocationCall(campaign, name, rawArguments, pictures);
       // Bookkeeping the model's turn uses to link its narration to a map;
       // a person's narration is a separate message, so it goes no further.
       delete result.movedToNewLocation;

@@ -294,51 +294,59 @@ export async function probeReachable(
 }
 
 // The producer-side question every portrait and map enqueue asks before it
-// promises a picture: is there an image backend on this server at all? Cached
-// through the same probe window as the endpoint, so a burst of character
-// creations costs one probe, not one per character.
+// promises a picture: can this campaign's backend paint right now? Without
+// settings it is asked of the server's default (portraits, covers). Only the
+// image backend is probed, never the whole capabilities snapshot: a DM turn
+// asks this before handling its location calls, and the story, speech and
+// dictation probes it has no use for could hold the turn for seconds. The
+// probe is cached for the same window as the endpoint, so a burst of
+// character creations costs one probe, not one per character.
 export async function imagesAvailable(
   settings?: Pick<StorySettings, "imageBackend" | "customBaseUrl" | "customApiKey"> &
     Partial<Pick<StorySettings, "comfyUrl" | "comfyCheckpoint">>,
 ): Promise<boolean> {
-  // A campaign holding its own OpenAI key answers for itself. The snapshot
-  // below describes the SERVER's default backend, which on a
-  // bring-your-own-key host is "none at all", and would refuse a render the
-  // campaign can perfectly well pay for. Only the key-gated backend may take
-  // this shortcut: a self-hosted one's readiness is liveness, and only the
-  // probe knows that.
-  if (settings?.imageBackend === "openai" && openAiImagesConfigured(settings)) {
-    return true;
+  const campaign = settings ?? configuredDefaultStorySettings();
+  // The OpenAI backend is key-gated: a campaign holding its own key, or
+  // lending its OpenAI text model's, answers for itself, and with neither
+  // (or no model picked) it cannot paint whatever the server's default is.
+  if (campaign.imageBackend === "openai") {
+    return openAiImagesConfigured(campaign);
   }
-  // So does a campaign set to the agent program's pictures, which the
-  // server's default backend says nothing about: its readiness is the
-  // agent's own (installed, switched on, a test picture seen here).
-  if (settings?.imageBackend === "harness") {
+  // The agent program's pictures: its readiness is the agent's own
+  // (installed, switched on, a test picture seen here).
+  if (campaign.imageBackend === "harness") {
     return harnessImagesReady();
   }
-  // A ComfyUI campaign paints with its own checkpoint (or the catalog model
-  // chosen for every campaign); with neither, nothing is painted wherever
-  // ComfyUI runs.
-  const comfy = settings?.imageBackend === "comfyui";
-  if (comfy && !comfyModelPicked(settings.comfyCheckpoint)) {
-    return false;
+  const cfg = getGlobalConfig();
+  if (campaign.imageBackend === "comfyui") {
+    // A ComfyUI campaign paints with its own checkpoint (or the catalog
+    // model chosen for every campaign); with neither, nothing is painted
+    // wherever ComfyUI runs.
+    if (!comfyModelPicked(campaign.comfyCheckpoint)) {
+      return false;
+    }
+    // It paints at its own address (generateStoryImage), which is the
+    // admin's, copied in when the campaign was made. An address the admin or
+    // env still names asked for pictures by name (imagesConfigured): its
+    // failures are worth showing, so it is not second-guessed. Any other
+    // address, the shipped default or one the admin has since changed or
+    // cleared, counts only if something answers there.
+    const named = trimSlashes(configValue(cfg.images.comfyUrl, "COMFYUI_URL"));
+    const own = trimSlashes(campaign.comfyUrl ?? "") || named || "http://127.0.0.1:8188";
+    if (named && own === named) {
+      return true;
+    }
+    return probeReachable(imagesProbeUrl("comfyui", own, ""));
   }
-  // A campaign pointed at its own ComfyUI asked for pictures by name, the
-  // same as an address in the admin panel (imagesConfigured): its failures
-  // are worth showing, so it is not second-guessed by the server's probe.
-  if (settings?.imageBackend === "comfyui" && settings.comfyUrl?.trim()) {
-    return true;
+  if (campaign.imageBackend === "mflux-hs" || campaign.imageBackend === "sdnq-hs") {
+    const named = serverEnv("FLUX_WORKER_URL").trim();
+    return Boolean(named) || probeReachable(imagesProbeUrl(campaign.imageBackend, "", "http://127.0.0.1:7869"));
   }
-  try {
-    const images = (await capabilitiesSnapshot()).images;
-    // The campaign's own checkpoint was asked about above; of the server's
-    // ComfyUI, only whether it is there counts.
-    return images.configured || (comfy && images.backend === "comfyui" && images.needsModel);
-  } catch {
-    // A failed snapshot must not turn into a lost render on a host that has
-    // an image backend; the old unconditional behavior is the fallback.
-    return true;
-  }
+  return false;
+}
+
+function trimSlashes(url: string): string {
+  return url.trim().replace(/\/+$/, "");
 }
 
 // Whether the chosen agent program is installed, allowed to run here and

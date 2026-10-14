@@ -206,19 +206,23 @@ check("the DM's maps and scene pictures are gated on imagesAvailable", () => {
   const dispatch = readFileSync(path.join(root, "src/lib/dm/invoke-dispatch.ts"), "utf8");
   const images = readFileSync(path.join(root, "src/lib/dm/images.ts"), "utf8");
   // Maps: the synchronous location handler takes the answer from its callers.
-  assert.match(turn, /export function handleLocationCall\([^)]*picturesAvailable = true,?\s*\)/);
+  // The answer is required, so a caller cannot forget it and queue against
+  // a backend that is not there; behaviour: scripts/test-no-pictures-turn.mjs.
+  assert.match(turn, /export function handleLocationCall\([^)]*picturesAvailable: boolean,?\s*\)/);
   assert.match(turn, /mapsEnabled &&\s*picturesAvailable &&/);
   assert.match(turn, /await imagesAvailable\(campaign\.settings\)\)/);
   assert.match(turn, /handleLocationCall\(campaign, locationCall\.name, locationCall\.rawArguments, picturesAvailable\)/);
-  assert.match(dispatch, /handleLocationCall\(campaign, name, rawArguments, await imagesAvailable\(campaign\.settings\)\)/);
+  assert.match(dispatch, /await imagesAvailable\(campaign\.settings\)\)/);
+  assert.match(dispatch, /handleLocationCall\(campaign, name, rawArguments, pictures\)/);
   // Scene pictures: the turn's own picture goes through the gated door, and a
   // dropped one is marked not needed so its placeholder does not outlive it.
   assert.match(turn, /void fulfillAutoImage\(campaignId, message\.id, message\.imageRequest/);
   assert.doesNotMatch(turn, /fulfillMessageImage\(/);
   assert.match(images, /if \(await imagesAvailable\(settings\)\) \{\s*return fulfillMessageImage\(/);
   assert.match(images, /setMessageImageRequest\(messageId, \{ \.\.\.request, needed: false \}\)/);
-  // A campaign's own ComfyUI address answers like the admin panel's.
-  assert.match(source, /settings\?\.imageBackend === "comfyui" && settings\.comfyUrl\?\.trim\(\)\) \{\s*return true;/);
+  // A campaign's ComfyUI address counts while the admin still names it, and
+  // is probed otherwise; the whole snapshot is never run for this question.
+  assert.match(source, /if \(named && own === named\) \{\s*return true;/);
 });
 
 check("speech is configured by an explicit URL or a live default", () => {
