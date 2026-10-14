@@ -51,6 +51,12 @@ export function normalizeSettings(
     typeof merged.comfyUrl === "string" ? merged.comfyUrl.trim().slice(0, 500) : "";
   merged.comfyCheckpoint =
     typeof merged.comfyCheckpoint === "string" ? merged.comfyCheckpoint.trim().slice(0, 300) : "";
+  // A campaign made before the admin picked a checkpoint froze a blank one,
+  // and nothing in the campaign can pick one. It paints with the server's
+  // pick, read now, so the admin's choice in Admin > Images reaches it.
+  if (!merged.comfyCheckpoint) {
+    merged.comfyCheckpoint = defaultSettings.comfyCheckpoint;
+  }
 
   if (merged.imageMode !== "fast" && merged.imageMode !== "slow") {
     merged.imageMode = defaultSettings.imageMode;
