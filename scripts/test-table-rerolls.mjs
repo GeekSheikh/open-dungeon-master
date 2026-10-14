@@ -198,6 +198,15 @@ await test("A table that follows the server's rule is not a fresh throw: where t
     assert.deepEqual(totals(again), [10, 9, 9, 8, 8, 7]);
   }
 
+  // Following the server hands back the library's six, but still only to
+  // someone who sits at the table.
+  const outsider = world.addUser("outsider");
+  world.signIn(outsider);
+  const outsiderRoll = await call(rollsRoute, "POST", { kind: "abilities", campaignId: tables[0] });
+  assert.equal(outsiderRoll.status, 404, "a table that follows the server rolled for someone not at it");
+  const outsiderOpen = await rollsRoute.GET(new Request(`http://test/?campaignId=${tables[0]}`));
+  assert.equal(outsiderOpen.status, 404, "a table that follows the server answered someone not at it");
+
   // The six were thrown in the library (as an app built before tables had
   // rules still throws them) and the character is made at a table.
   world.signIn(fisher);
