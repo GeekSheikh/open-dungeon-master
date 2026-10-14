@@ -108,6 +108,30 @@ await test("A backend error after the turn granted gold parks it as failed with 
   world.close();
 });
 
+await test("A backend error is written to the server log with its status and the backend's own words, which stay out of the table's notice.", async () => {
+  const { world, kara, model } = await table();
+  model.script([failure(500, "CUDA out of memory while allocating KV cache on gpu-box-7.internal")]);
+  const logged = [];
+  const realError = console.error;
+  console.error = (...args) => {
+    logged.push(args.map(String).join(" "));
+  };
+  try {
+    await model.turn(world, "I look for the sexton.", kara.id);
+  } finally {
+    console.error = realError;
+  }
+  const line = logged.find((entry) => entry.includes("[dm-turn]"));
+  assert.ok(line, `the failed call was not logged: ${JSON.stringify(logged)}`);
+  assert.match(line, /\(500\)/, "the log line lost the status");
+  assert.match(line, /CUDA out of memory/, "the log line lost what the backend said");
+  const [notice] = notices(world);
+  assert.ok(notice, "the table was not told the DM stopped");
+  assert.doesNotMatch(notice.content, /CUDA|gpu-box/, "the backend's words reached the table");
+  model.close();
+  world.close();
+});
+
 await test("Only the lead can retry a halted turn.", async () => {
   const { world, kara, model } = await table();
   const brom = world.addHero({ name: "Brom", class: "cleric", level: 1 });

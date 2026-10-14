@@ -860,8 +860,15 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
 
     if (error) {
       batcher.flush();
-      const payload = (await error.json().catch(() => null)) as { error?: string } | null;
+      const payload = (await error.json().catch(() => null)) as { error?: string; detail?: string } | null;
       failed = payload?.error || "The Dungeon Master could not reach the model backend.";
+      // The table reads one line; the server log keeps the status and what
+      // the backend itself said (out of memory, a crash), so an operator can
+      // tell a blip from a server that is down. The backend's words stay out
+      // of the notice: they can name internal hosts.
+      console.error(
+        `[dm-turn] call ${turn.callIndex}: the model call failed (${error.status}): ${failed}${payload?.detail ? ` The backend said: ${payload.detail}` : ""}`,
+      );
       break;
     }
 
