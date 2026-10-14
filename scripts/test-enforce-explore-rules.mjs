@@ -29,7 +29,7 @@ const world = await openWorld({ campaign: { maxPlayers: 30 } });
 const kit = await combatKit(world);
 const { listRecentRolls } = await import("../src/lib/db/rolls.ts");
 const { getClock, setClockInstant } = await import("../src/lib/db/clock.ts");
-const { upsertCurrentLocation } = await import("../src/lib/db/locations.ts");
+const { upsertCurrentLocation, getCurrentLocation, listLocations } = await import("../src/lib/db/locations.ts");
 const { speedFor } = await import("../src/lib/srd/index.ts");
 
 const profs = (extra = {}) => ({
@@ -273,18 +273,55 @@ await test("The narrator's rules name the tools and arguments these rows now run
   }
 });
 
-await test("The location rule puts move_party in the reply that narrates the arrival, after a roll, beside travel or before a question, and on the way back too.", async () => {
+await test("The location rule puts move_party in the reply that narrates the arrival, after a roll, beside travel or before a question, and on the way back too, under the listed name and without a new layout.", async () => {
   const { dmSystemText } = await import("../src/lib/dm/prompt.ts");
-  const text = dmSystemText(false);
+  const lines = dmSystemText(false).split("\n");
+  const rule = lines.find((line) => line.startsWith("- Keep the party's location current")) ?? "";
+  assert.ok(rule, "the prompt has no location rule");
   for (const phrase of [
     "The call belongs in the reply whose narration has them arrive, whatever else that reply does",
     "narrating a roll that got them there",
     "travel covers the distance, never the place",
     "a question to the players",
     "Going back to an area they left is a move too",
+    "give move_party the name GAME STATE already lists for it",
+    "leave out the layout, which the server keeps",
   ]) {
-    assert.ok(text.includes(phrase), `the location rule never says "${phrase}"`);
+    assert.ok(rule.includes(phrase), `the location rule never says "${phrase}"`);
   }
+  // The pacing rule above it names the waypoint tools; an arrival there is
+  // move_party too, or a model following it would rewrite the place it left.
+  const pacing = lines.find((line) => line.startsWith("- Story pacing runs on the arc")) ?? "";
+  assert.ok(pacing.includes("call move_party when the party arrives somewhere (update_location when they reach a new part of where they already are)"), "the pacing rule does not keep update_location to the place the party is in");
+  assert.equal(pacing.includes("move_party or update_location when the party arrives"), false, "the pacing rule still offers update_location for an arrival");
+  const { worldTools } = await import("../src/lib/dm/world-tools.ts");
+  const travel = worldTools.find((tool) => tool.function.name === "travel");
+  assert.ok(travel.function.description.includes("It moves no one on the map: when the leg ends somewhere the story names, that place is a move_party call."), "travel's description does not send the arrival to move_party");
+});
+
+await test("A return through move_party that leaves out the layout keeps the place's recorded layout and routes, routes it passes are added to the known ones, and travel in between moves no one.", async () => {
+  const quiet = { visionClear: false };
+  const first = await world.invoke("move_party", { ...quiet, name: "The Rusted Flagon", layoutDescription: "A low taproom, the hearth on the north wall, the door east to the street.", connections: ["Market Square", "Back Alley"] });
+  assert.equal(first.ok, true, first.error);
+  // The place the party came from joins the routes too.
+  const recorded = getCurrentLocation(world.campaignId).connections;
+  assert.deepEqual(recorded.slice(0, 2), ["Market Square", "Back Alley"]);
+  await world.invoke("travel", { hours: 2, pace: "normal", characterIds: [walker.id] });
+  assert.equal(getCurrentLocation(world.campaignId).name, "The Rusted Flagon", "travel moved the party on the map");
+  await world.invoke("move_party", { ...quiet, name: "Old Quay", layoutDescription: "Stone steps down to black water." });
+  const back = await world.invoke("move_party", { ...quiet, name: "the rusted flagon" });
+  assert.equal(back.ok, true, back.error);
+  const flagon = getCurrentLocation(world.campaignId);
+  assert.equal(flagon.name, "The Rusted Flagon", "the return made a new place");
+  assert.equal(flagon.layoutDescription, "A low taproom, the hearth on the north wall, the door east to the street.");
+  assert.deepEqual(flagon.connections, [...recorded, "Old Quay"], `the routes became ${JSON.stringify(flagon.connections)}`);
+  await world.invoke("move_party", { ...quiet, name: "Old Quay" });
+  await world.invoke("move_party", { ...quiet, name: "The Rusted Flagon", connections: ["Cellar Stairs", "market square"] });
+  const routes = getCurrentLocation(world.campaignId).connections;
+  assert.deepEqual(routes, [...recorded, "Old Quay", "Cellar Stairs"], `routes passed on a return replaced the known ones: ${JSON.stringify(routes)}`);
+  assert.equal(listLocations(world.campaignId).filter((place) => /rusted flagon/i.test(place.name)).length, 1);
+  await world.invoke("update_location", { ...quiet, layoutDescription: "The taproom, its east door now barred.", connections: ["Cellar Stairs"] });
+  assert.deepEqual(getCurrentLocation(world.campaignId).connections, ["Cellar Stairs"], "update_location no longer revises the routes");
 });
 
 world.close();

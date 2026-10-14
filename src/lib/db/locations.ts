@@ -82,6 +82,23 @@ export function getCurrentLocation(campaignId: string): CampaignLocation | null 
   return row ? mapLocation(row) : null;
 }
 
+// Moving to a place already on record (usually a return) adds routes rather
+// than replacing them: away from a place the model never sees its recorded
+// exits, so what it passes on the way back is a fresh guess that would drop
+// the routes already known. update_location remains the way to revise them.
+function withNewNames(known: string[], added: string[]): string[] {
+  const seen = new Set(known.map(foldName));
+  const merged = [...known];
+  for (const name of added) {
+    const folded = foldName(name);
+    if (!seen.has(folded)) {
+      seen.add(folded);
+      merged.push(name);
+    }
+  }
+  return merged;
+}
+
 // Create-or-update by name, mark it current + visited, clear other currents.
 export function upsertCurrentLocation(input: {
   campaignId: string;
@@ -105,7 +122,9 @@ export function upsertCurrentLocation(input: {
         `,
       ).run(
         input.layoutDescription?.trim() || existing.layoutDescription,
-        JSON.stringify(input.connections ?? existing.connections),
+        JSON.stringify(
+          input.connections ? withNewNames(existing.connections, input.connections) : existing.connections,
+        ),
         now,
         existing.id,
       );
