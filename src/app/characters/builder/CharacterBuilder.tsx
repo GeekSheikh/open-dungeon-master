@@ -456,7 +456,9 @@ function CharacterBuilderForm({
       <Wizard
         title={state.name.trim() || "New character"}
         variant="diamonds"
-        wipe
+        // The wipe paces a first build; an edit of a stored character moves
+        // between steps at once.
+        wipe={!initial}
         goldTitles
         notice={notice}
         aside={
