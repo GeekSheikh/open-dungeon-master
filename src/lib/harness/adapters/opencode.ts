@@ -24,6 +24,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { onWindows } from "../../host-platform.ts";
 import { parseJsonLine, runProgram, spawnProgram } from "../process.ts";
 import type {
   HarnessAdapter,
@@ -52,6 +53,11 @@ const STALE_AFTER_MS = HARNESS_MAX_RUN_MS + 10 * 60_000;
 // stops with its reason: about six seconds of its backoff on 2.0.27, where
 // the turn would otherwise wait out its whole timeout.
 const TRANSPORT_TRIES = 3;
+
+// opencode 2's own installer: the address opencode 1.19 itself uses for the
+// jump to 2.x. Its npm package is @opencode/cli; `opencode-ai` is 1.x.
+const INSTALL_HINT = "curl -fsSL https://opencode.ai/v2/install | bash";
+const INSTALL_HINT_WINDOWS = "npm install -g @opencode/cli";
 const NO_MODEL_MESSAGE = "opencode has no model it can use outside its own app. Connect a provider with `opencode auth login`.";
 
 type Effect = "allow" | "ask" | "deny";
@@ -551,8 +557,11 @@ async function waitFor<T>(check: () => Promise<T | null>): Promise<T | null> {
   return null;
 }
 
+// opencode 1.19 reaches 2.x with `upgrade --major`; plain `upgrade` keeps it
+// on 1.x.
 function unsupportedMessage(version: string | undefined) {
-  return `${version ? `opencode ${version} is installed` : "This opencode is older than 2.x"}; Open Dungeon Master drives opencode 2.x. Update it with \`opencode upgrade\`.`;
+  const install = onWindows() ? INSTALL_HINT_WINDOWS : INSTALL_HINT;
+  return `${version ? `opencode ${version} is installed` : "This opencode is older than 2.x"}; Open Dungeon Master drives opencode 2.x. Upgrade with \`opencode upgrade --major\` (opencode 1.19 or later), or install it with \`${install}\`.`;
 }
 
 type OpencodeApi = <T>(method: string, route: string, body?: unknown, missing?: T) => Promise<T>;
@@ -618,8 +627,9 @@ async function startServer(options: {
     if (response.status === 404 && missing !== undefined) {
       return missing;
     }
-    // opencode 1.x answers its 2.x API's paths with its web app's page: the
-    // run stops at its first request, before any prompt.
+    // opencode 1.x answers the routes it shares with 2.x (the session list
+    // among them) with JSON, and those it lacks, ODM's agent first, with its
+    // web app's page: the run stops there, before any session or prompt.
     if (response.headers.get("content-type")?.includes("text/html")) {
       throw new Error(unsupportedMessage(undefined));
     }
@@ -837,9 +847,11 @@ export async function startOpencode(options: HarnessStartOptions, config: unknow
 export const opencodeAdapter: HarnessAdapter = {
   id: "opencode",
   label: "opencode",
-  binaryNames: ["opencode"],
-  installHint: "curl -fsSL https://opencode.ai/install | bash",
-  installHintWindows: "npm install -g opencode-ai",
+  // opencode 2's npm package installs it as `opencode2` too, which is 2.x
+  // wherever a 1.x `opencode` is still installed as well.
+  binaryNames: ["opencode2", "opencode"],
+  installHint: INSTALL_HINT,
+  installHintWindows: INSTALL_HINT_WINDOWS,
   signInHint: "opencode auth login",
   lockdown: "removed",
   paints: false,

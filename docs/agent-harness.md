@@ -73,7 +73,8 @@ Claude Code and opencode cannot paint.
 - **The Docker image:** only with the program installed inside the
   container; a container cannot start programs on its host. Build the image
   with `AGENT_PROGRAMS=@openai/codex` in `.env` (`docker compose up -d
-  --build`; `@anthropic-ai/claude-code` and `opencode-ai` work the same way),
+  --build`; `@anthropic-ai/claude-code` and `@opencode/cli` work the same way;
+  npm's `opencode-ai` is opencode 1.x, which is not supported),
   then sign in once with `docker compose exec open-dungeon-master codex login
   --device-auth`. The sign-in lives in the `odm-home` volume and survives
   updates. The image carries the system CA store for this: Codex is a native
