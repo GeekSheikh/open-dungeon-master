@@ -1060,8 +1060,8 @@ export function SessionView({
                         </Link>
                       }
                     >
-                      Everyone&apos;s progress went back to their characters. The story stays here to
-                      read.
+                      Characters from a library took their progress home with them. The story stays
+                      here to read.
                     </SessionBanner>
                   ) : null}
                   {/* The plan the party is coordinating (issue 254), above the

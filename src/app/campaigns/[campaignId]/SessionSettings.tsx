@@ -131,8 +131,8 @@ export function SessionSettings({
   );
 }
 
-// Closing the book. The route writes every player's progress back to their
-// library character (level, XP, gold, gear, spells), refuses new turns, and
+// Closing the book. The route writes each sheet's progress back to the
+// library character it came from (level, XP, gold, gear, spells), refuses new turns, and
 // shuts the room code; the transcript stays to be read. There is no way back
 // to "active", so the confirm says so plainly.
 function EndCampaign({ campaignId, title, ended }: { campaignId: string; title: string; ended: boolean }) {
@@ -146,7 +146,8 @@ function EndCampaign({ campaignId, title, ended }: { campaignId: string; title: 
           <Flag className="size-3.5" /> This campaign has ended
         </p>
         <p className="mt-1 text-xs text-stone-500">
-          Everyone&apos;s progress went back to their characters. The story stays here to read.
+          Characters from a library took their progress home with them. The story stays here to
+          read.
         </p>
       </div>
     );
@@ -154,7 +155,7 @@ function EndCampaign({ campaignId, title, ended }: { campaignId: string; title: 
 
   async function end() {
     const ok = await appConfirm(
-      `End "${title}" for everyone? Each player's level, XP, gold, gear and spells are saved back to their character, and the story stays here to read, but nobody can play on and the room code stops working. This cannot be undone.`,
+      `End "${title}" for everyone? Every character brought in from a library takes its level, XP, gold, gear and spells home, and the story stays here to read, but nobody can play on and the room code stops working. This cannot be undone.`,
       { title: "End the campaign", actionLabel: "End the campaign", tone: "danger" },
     );
     if (!ok) {
@@ -184,8 +185,8 @@ function EndCampaign({ campaignId, title, ended }: { campaignId: string; title: 
     <div className="reveal mt-3 rounded-lg border border-red-900/50 bg-stone-950/40 p-3">
       <p className="mb-1 text-xs font-medium text-stone-400">End the campaign</p>
       <p className="mb-2 text-xs text-stone-500">
-        When the story is done: saves everyone&apos;s progress back to their characters and closes
-        the table. The transcript stays readable.
+        When the story is done: library characters take their progress home, and the table
+        closes. The transcript stays readable.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <button
