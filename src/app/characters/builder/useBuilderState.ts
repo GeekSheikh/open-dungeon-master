@@ -49,6 +49,7 @@ export function useBuilderState({
   initialFeatDescs,
   initialLevel,
   fixedLevel,
+  startLevel,
   races,
   classes,
   backgrounds,
@@ -61,6 +62,10 @@ export function useBuilderState({
   // The level the stored character reached (its library row's level).
   initialLevel?: number;
   fixedLevel?: number;
+  // "Level up" from the library: the stored character opens one level up,
+  // and each step asks for what the new level brings. Ignored for a
+  // multiclass split, whose level the builder does not move.
+  startLevel?: number;
   races: RaceOption[];
   classes: ClassOption[];
   backgrounds: BackgroundOption[];
@@ -69,7 +74,9 @@ export function useBuilderState({
   const [name, setName] = useState(initial?.name ?? "");
   const [alignment, setAlignment] = useState(initial?.alignment ?? "N");
   // A stored character opens at its own level, never at 1.
-  const [level, setLevel] = useState(fixedLevel ?? (initial ? storedLevel : 1));
+  const [level, setLevel] = useState(
+    fixedLevel ?? (initial ? (startLevel && !levelLocked ? Math.max(storedLevel, startLevel) : storedLevel) : 1),
+  );
   const [raceId, setRaceId] = useState(initial?.race ?? "");
   const [classId, setClassId] = useState(initial?.class ?? "");
   const [subclass, setSubclass] = useState(initial?.subclass ?? "");

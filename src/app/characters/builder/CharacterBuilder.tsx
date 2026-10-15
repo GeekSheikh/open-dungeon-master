@@ -134,6 +134,7 @@ function CharacterBuilderForm({
   worldPackId,
   initial,
   initialLevel,
+  startLevel,
   submitLabel,
   onSubmit,
   busy,
@@ -161,6 +162,8 @@ function CharacterBuilderForm({
   // it earned up to there with no recorded pick were taken in play and are
   // already in its scores.
   initialLevel?: number;
+  // Open a stored character this many levels up ("Level up" in the library).
+  startLevel?: number;
   submitLabel: string;
   onSubmit: (result: BuilderResult) => void;
   busy: boolean;
@@ -201,7 +204,7 @@ function CharacterBuilderForm({
     ...(initial?.feats ?? []),
     ...(initial?.asiChoices ?? []).flatMap((choice) => (choice.mode === "feat" ? [choice.feat] : [])),
   ]);
-  const state = useBuilderState({ initial, initialFeatDescs, initialLevel, fixedLevel, races, classes, backgrounds });
+  const state = useBuilderState({ initial, initialFeatDescs, initialLevel, fixedLevel, startLevel, races, classes, backgrounds });
   // No stand-in for a race or class the player has not chosen: the first
   // row used to be shown as if picked ("Continue as Aarakocra"), so the
   // step's own "Pick a race." could never hold. The background keeps its
