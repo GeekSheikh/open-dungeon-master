@@ -634,6 +634,7 @@ export function Lobby({ state, refresh }: { state: CampaignState; refresh: () =>
         <CompanionBuilderDialog
           campaignId={campaign.id}
           genre={campaign.gameSettings.genre}
+          worldPackId={campaign.gameSettings.worldPack}
           level={campaign.startingLevel}
           humanDm={humanDmTable}
           onClose={() => setBuildingCompanion(false)}
