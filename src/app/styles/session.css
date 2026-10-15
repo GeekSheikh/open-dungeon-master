@@ -163,6 +163,9 @@ button:hover > .rail-glyph { filter: none; opacity: 1; }
   color: var(--color-stone-200);
 }
 .session-bubble-ooc { font-style: italic; color: var(--color-stone-500); border-style: dashed; }
+/* The DM's out-of-character answer sits on the DM's side, its corner turned
+   to match. */
+.session-bubble-dm { border-radius: 1rem 1rem 1rem 0.3rem; }
 .session-speaker {
   font-family: var(--font-display, serif);
   font-size: 0.72rem;

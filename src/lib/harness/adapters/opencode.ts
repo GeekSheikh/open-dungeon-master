@@ -37,7 +37,7 @@ import type {
   HarnessModel,
   HarnessStartOptions,
 } from "../types.ts";
-import { HARNESS_MAX_RUN_MS } from "../types.ts";
+import { HARNESS_MAX_RUN_MS, isHarnessEffort } from "../types.ts";
 
 const AGENT = "odm-dm";
 const TITLE = "Open Dungeon Master";
@@ -190,12 +190,9 @@ type OpencodeModelInfo = {
   limit: { context: number };
 };
 
-const EFFORTS: ReadonlySet<string> = new Set(["low", "medium", "high", "xhigh", "max"]);
-
 // Free models opencode's own service offers refuse to answer anything that
 // is not opencode's own app, so they are not offered. Every model says which
-// efforts it has, an empty list included: the admin card warns when the
-// chosen one is not among them.
+// efforts it has, an empty list included: the admin card offers only those.
 export function opencodeModels(models: readonly OpencodeModelInfo[]): HarnessModel[] {
   return models
     .filter((model) => model.providerID !== "opencode")
@@ -203,7 +200,7 @@ export function opencodeModels(models: readonly OpencodeModelInfo[]): HarnessMod
     // (src/lib/model-registry/catalog.ts enrichHarnessModels).
     .map((model) => {
       const id = `${model.providerID}/${model.id}`;
-      const efforts = model.variants.map((variant) => variant.id).filter((variant) => EFFORTS.has(variant));
+      const efforts = model.variants.map((variant) => variant.id).filter(isHarnessEffort);
       return {
         id,
         label: id,
@@ -878,6 +875,7 @@ export const opencodeAdapter: HarnessAdapter = {
     // what a run can use.
     const cwd = mkdtempSync(path.join(os.tmpdir(), "odm-opencode-probe-"));
     let models: HarnessModel[];
+    let defaultEfforts: HarnessModel["efforts"];
     try {
       const server = await startServer({
         binary,
@@ -887,7 +885,13 @@ export const opencodeAdapter: HarnessAdapter = {
         onExit: () => undefined,
       });
       try {
-        models = opencodeModels((await server.api<{ data: OpencodeModelInfo[] }>("GET", "/api/model")).data);
+        const listed = (await server.api<{ data: OpencodeModelInfo[] }>("GET", "/api/model")).data;
+        models = opencodeModels(listed);
+        // The model a run on the program's default gets: its efforts are what
+        // a blank model offers.
+        const programDefault = await server.api<{ data: OpencodeModelInfo | null } | null>("GET", "/api/model/default", undefined, null);
+        const defaultId = opencodeDefaultModel(listed, programDefault?.data ?? null);
+        defaultEfforts = models.find((model) => model.id === defaultId)?.efforts;
       } finally {
         server.program.kill();
       }
@@ -904,6 +908,7 @@ export const opencodeAdapter: HarnessAdapter = {
       version: version.version,
       auth: models.length ? { state: "ready", kind: "api-key" } : { state: "signed-out" },
       models,
+      defaultEfforts,
       lockdownProven: true,
       message: models.length ? undefined : NO_MODEL_MESSAGE,
     };

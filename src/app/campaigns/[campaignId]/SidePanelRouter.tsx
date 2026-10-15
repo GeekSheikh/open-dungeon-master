@@ -451,6 +451,7 @@ export function SidePanelRouter({
                 onOpenSettings={onOpenTab ? () => onOpenTab("settings") : undefined}
                 humanDmTable={humanDmTable}
                 companionGenre={campaign?.gameSettings?.genre}
+                companionWorldPack={campaign?.gameSettings?.worldPack}
                 companionLevel={(() => {
                   const levels = sheets
                     .filter((sheet) => !sheet.isCompanion)

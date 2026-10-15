@@ -24,7 +24,21 @@ const { buildChildEnv, leaksServerSecret } = await import("../src/lib/harness/ch
 const { claudeAdapter, claudeArgs, CLAUDE_ENV, CLAUDE_MCP_PREFIX, parseClaudeModels, withCacheBoundary } = await import(
   "../src/lib/harness/adapters/claude.ts"
 );
-const { codexAdapter, codexArgs, ignoredCodexSettings, userCodexMcpServers } = await import("../src/lib/harness/adapters/codex.ts");
+const { effortChoices, withOfferedEffort } = await import("../src/lib/harness/effort-choices.ts");
+const {
+  codexAdapter,
+  codexArgs,
+  codexEffort,
+  codexHomeTrouble,
+  codexModel,
+  codexTokenTotal,
+  codexTurnUsage,
+  directCatalog,
+  ignoredCodexSettings,
+  parseCodexCatalog,
+  prepareCodexHome,
+  userCodexMcpServers,
+} = await import("../src/lib/harness/adapters/codex.ts");
 const {
   opencodeAdapter,
   opencodeConfig,
@@ -189,7 +203,7 @@ test("Claude Code is started with no built-in tools and only ODM's MCP server", 
 test("Claude Code's models are the ones its initialize answer lists", () => {
   // Claude Code 2.1.296's answer on a Pro sign-in, trimmed to its models.
   const recorded = JSON.parse(fs.readFileSync(new URL("./fixtures/claude-initialize.json", import.meta.url), "utf8"));
-  const models = parseClaudeModels(recorded.response.response.models);
+  const { models, defaultEfforts } = parseClaudeModels(recorded.response.response.models);
   assert.deepEqual(
     models.map((model) => model.id),
     ["opus", "claude-fable-5-1[1m]", "sonnet", "haiku"],
@@ -207,12 +221,21 @@ test("Claude Code's models are the ones its initialize answer lists", () => {
     "each carries the model it stands for, which the catalog judges (light by price, never by name)",
   );
   assert.ok(models.every((model) => model.cheap === undefined), "light is left to the catalog");
-  const [variant] = parseClaudeModels([
+  const everyEffort = ["low", "medium", "high", "xhigh", "max"];
+  assert.ok(models.every((model) => JSON.stringify(model.efforts) === JSON.stringify(everyEffort)), "each with the effort levels it lists");
+  assert.deepEqual(defaultEfforts, everyEffort, "its own default's levels: what a blank model offers");
+  const efforts = (entry) => parseClaudeModels([{ value: "sonnet", ...entry }]).models[0].efforts;
+  assert.deepEqual(efforts({ supportsEffort: false }), [], "a model that takes no effort has none");
+  assert.deepEqual(efforts({ supportsEffort: true, supportedEffortLevels: ["low", "high", "ultra"] }), ["low", "high"], "levels ODM has no setting for are not offered");
+  assert.equal(efforts({}), undefined, "an older Claude Code that does not say lists none");
+  const {
+    models: [variant],
+  } = parseClaudeModels([
     { value: "opus[1m]", resolvedModel: "claude-opus-5-5", displayName: "Opus (1M context)", description: "Opus 5.5 · For long sessions" },
   ]);
   assert.equal(variant.label, "Opus (1M context)", "a variant keeps its own name, so it reads apart from the alias");
   assert.throws(() => parseClaudeModels(undefined), /no model list/, "an answer without a model list is an error, not an empty list");
-  assert.deepEqual(parseClaudeModels([{ displayName: "Nameless" }]), [], "an entry --model could not take is skipped");
+  assert.deepEqual(parseClaudeModels([{ displayName: "Nameless" }]), { models: [] }, "an entry --model could not take is skipped");
 });
 
 const CACHE_BOUNDARY = "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__";
@@ -513,7 +536,7 @@ test("a real DM turn reaches Claude Code with the boundary on its own line, dire
 });
 
 test("Codex is started with its shell, web, apps and sub-agents off, read-only, never approving", () => {
-  const args = codexArgs({ mcpUrl: "http://127.0.0.1:3005/api/mcp", images: false, disableServers: ["github"] });
+  const args = codexArgs({ mcpUrl: "http://127.0.0.1:3005/api/mcp", images: false, disableServers: ["github"], catalogPath: "/run/codex-home/catalog.json" });
   const overrides = args.filter((_, index) => args[index - 1] === "-c");
   for (const expected of [
     "features.shell_tool=false",
@@ -528,6 +551,16 @@ test("Codex is started with its shell, web, apps and sub-agents off, read-only, 
     "features.view_image=false",
     "agents.enabled=false",
     'web_search="disabled"',
+    // Checked on 0.162.1 on 2026-10-14 against the request Codex sends: each
+    // removes a tool or a block of Codex's own from what the model is sent.
+    "features.goals=false",
+    "features.plugins=false",
+    "skills.include_instructions=false",
+    "include_permissions_instructions=false",
+    "include_collaboration_mode_instructions=false",
+    "include_environment_context=false",
+    // ODM's tools straight in the request rather than behind a search.
+    'model_catalog_json="/run/codex-home/catalog.json"',
     'sandbox_mode="read-only"',
     'approval_policy="never"',
     "mcp_servers.github.enabled=false",
@@ -540,7 +573,9 @@ test("Codex is started with its shell, web, apps and sub-agents off, read-only, 
   }
   assert.equal(args[0], "app-server");
   assert.ok(!overrides.includes("tools.view_image=false"), "the key Codex ignores must not come back");
-  assert.ok(codexArgs({ mcpUrl: null, images: true, disableServers: [] }).includes("features.image_generation=true"));
+  const probeArgs = codexArgs({ mcpUrl: null, images: true, disableServers: [], catalogPath: null });
+  assert.ok(probeArgs.includes("features.image_generation=true"));
+  assert.ok(!probeArgs.some((arg) => arg.startsWith("model_catalog_json=")), "the probe lists Codex's own catalog");
   // Codex's own report of a setting it does not recognise, as the probe sees it.
   assert.deepEqual(
     ignoredCodexSettings(
@@ -553,6 +588,146 @@ test("Codex is started with its shell, web, apps and sub-agents off, read-only, 
     userCodexMcpServers('[mcp_servers.github]\ncommand = "x"\n\n[mcp_servers."linear"]\n[mcp_servers.odm]\n[profiles.fast]'),
     ["github", "linear"],
   );
+});
+
+// Two entries of `codex debug models` on 0.162.1, cut to the fields read here
+// and one that must pass through untouched.
+const CODEX_CATALOG = JSON.stringify({
+  models: [
+    {
+      slug: "gpt-6.1-sol",
+      supported_reasoning_levels: ["low", "medium", "high", "xhigh", "max", "ultra"].map((effort) => ({ effort, description: effort })),
+      truncation_policy: { mode: "tokens", limit: 10000 },
+      experimental_supported_tools: ["send_user_message_async", "clock"],
+      supports_search_tool: true,
+      tool_mode: "code_mode_only",
+    },
+    {
+      slug: "gpt-5.5",
+      supported_reasoning_levels: ["low", "medium", "high", "xhigh"].map((effort) => ({ effort, description: effort })),
+      truncation_policy: { mode: "tokens", limit: 10000 },
+    },
+  ],
+});
+
+test("Codex's own catalog is handed back with every model in direct tool mode, nothing else changed", () => {
+  const models = parseCodexCatalog(CODEX_CATALOG);
+  const direct = JSON.parse(directCatalog(models));
+  assert.equal(direct.models.length, 2);
+  for (const [at, model] of direct.models.entries()) {
+    const original = JSON.parse(CODEX_CATALOG).models[at];
+    assert.deepEqual(model, { ...original, tool_mode: "direct", supports_search_tool: false, experimental_supported_tools: [] });
+  }
+  assert.throws(() => parseCodexCatalog(JSON.stringify({ models: [] })), /no models/);
+  assert.throws(() => parseCodexCatalog(JSON.stringify({ models: [{ display_name: "x" }] })), /no models/);
+});
+
+test("Codex runs at the admin's Effort when the model offers it, never clamped, and at its own default otherwise", () => {
+  const models = parseCodexCatalog(CODEX_CATALOG);
+  assert.equal(codexEffort(models, "gpt-6.1-sol", "xhigh"), "xhigh");
+  assert.equal(codexEffort(models, "gpt-6.1-sol", "max"), "max");
+  assert.equal(codexEffort(models, "gpt-5.5", "high"), "high");
+  assert.equal(codexEffort(models, "gpt-5.5", "max"), null, "gpt-5.5 has no max");
+  assert.equal(codexEffort(models, "gpt-6.1-sol", ""), null, "the program's default sends none");
+  // The adapter checks against the model the thread runs on, the program's
+  // default included; one missing from the catalog has no efforts to check.
+  assert.equal(codexEffort(models, "gpt-unknown", "high"), null);
+  // A recorded `model/list` entry: the card learns the same efforts, without
+  // the levels ODM has no setting for.
+  assert.deepEqual(
+    codexModel({
+      id: "gpt-6.1-sol",
+      model: "gpt-6.1-sol",
+      displayName: "GPT-6.1-Sol",
+      supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"].map((reasoningEffort) => ({ reasoningEffort, description: reasoningEffort })),
+      defaultReasoningEffort: "low",
+      serviceTiers: [{ id: "priority", name: "Fast", description: "2x speed, increased usage" }],
+    }),
+    { id: "gpt-6.1-sol", label: "GPT-6.1-Sol", fast: true, efforts: ["low", "medium", "high", "xhigh", "max"] },
+  );
+  assert.deepEqual(codexModel({ model: "gpt-5.5", supportedReasoningEfforts: [] }), { id: "gpt-5.5", label: "gpt-5.5", fast: false, efforts: [] });
+});
+
+test("the Effort picker offers what the chosen models list, as the model pickers list what the program reports", () => {
+  const all = ["", "low", "medium", "high", "xhigh", "max"];
+  const codex = {
+    models: [
+      { id: "gpt-6.1-sol", label: "GPT-6.1-Sol", efforts: ["low", "medium", "high", "xhigh", "max"] },
+      { id: "gpt-5.5", label: "GPT-5.5", efforts: ["low", "medium", "high", "xhigh"] },
+    ],
+    defaultEfforts: ["low", "medium", "high", "xhigh", "max"],
+  };
+  const pick = (model, utilityModel = "") => effortChoices(codex, { model, utilityModel });
+  assert.deepEqual(pick("gpt-6.1-sol"), all);
+  assert.deepEqual(pick("gpt-5.5"), all.slice(0, 5));
+  // One Effort serves both models: what both list.
+  assert.deepEqual(pick("gpt-6.1-sol", "gpt-5.5"), all.slice(0, 5));
+  // A blank story model is the program's own default; a blank bookkeeping
+  // model is the story model.
+  assert.deepEqual(pick(""), all);
+  assert.deepEqual(pick("", "gpt-5.5"), all.slice(0, 5));
+  assert.deepEqual(effortChoices({ ...codex, defaultEfforts: ["low"] }, { model: "", utilityModel: "" }), ["", "low"]);
+  // A model whose efforts are not known narrows nothing; the run checks it.
+  assert.deepEqual(pick("gpt-gone"), all);
+  assert.deepEqual(effortChoices({ models: [{ id: "haiku", label: "Haiku" }] }, { model: "", utilityModel: "haiku" }), all);
+  // An opencode model with no variants offers only its own default.
+  assert.deepEqual(effortChoices({ models: [{ id: "llama/qwen", label: "llama/qwen", efforts: [] }] }, { model: "llama/qwen", utilityModel: "" }), [""]);
+  // A model change keeps the effort only where the new models offer it.
+  const config = { model: "gpt-5.5", utilityModel: "", effort: "max" };
+  assert.deepEqual(withOfferedEffort(codex, config), { ...config, effort: "" });
+  assert.equal(withOfferedEffort(codex, { ...config, effort: "xhigh" }).effort, "xhigh");
+  assert.equal(withOfferedEffort(codex, { ...config, model: "" }).effort, "max", "the default model lists it");
+});
+
+test("A Codex turn reports the tokens it spent, cached prompt and reasoning included as Codex counts them", () => {
+  // `thread/tokenUsage/updated` as Codex sent it over two model calls in one
+  // turn (the second one partly cached) and one call in the next.
+  const update = (inputTokens, cachedInputTokens, outputTokens, reasoningOutputTokens) => ({
+    threadId: "t1",
+    turnId: "u1",
+    tokenUsage: {
+      total: { totalTokens: inputTokens + outputTokens, inputTokens, cachedInputTokens, cacheWriteInputTokens: 0, outputTokens, reasoningOutputTokens },
+      last: { totalTokens: 0, inputTokens: 0, cachedInputTokens: 0, cacheWriteInputTokens: 0, outputTokens: 0, reasoningOutputTokens: 0 },
+      modelContextWindow: 272000,
+    },
+  });
+  const start = { inputTokens: 0, outputTokens: 0 };
+  const first = codexTokenTotal(update(1000, 0, 5, 3));
+  const afterTurn1 = codexTokenTotal(update(3000, 400, 10, 6));
+  assert.deepEqual(first, { inputTokens: 1000, outputTokens: 5 });
+  assert.deepEqual(codexTurnUsage(start, afterTurn1), { inputTokens: 3000, outputTokens: 10 });
+  const afterTurn2 = codexTokenTotal(update(7000, 2800, 18, 9));
+  assert.deepEqual(codexTurnUsage(afterTurn1, afterTurn2), { inputTokens: 4000, outputTokens: 8 });
+  assert.equal(codexTokenTotal({ tokenUsage: {} }), null);
+});
+
+test("A Codex run's home links the admin's sign-in and config, and none of their instructions or skills", () => {
+  const admin = path.join(dir, "codex-admin");
+  const run = path.join(dir, "codex-run", "codex-home");
+  fs.mkdirSync(path.join(admin, "skills", "mine"), { recursive: true });
+  fs.writeFileSync(path.join(admin, "AGENTS.md"), "Speak like a pirate.");
+  fs.writeFileSync(path.join(admin, "AGENTS.override.md"), "Speak like a parrot.");
+  fs.writeFileSync(path.join(admin, "skills", "mine", "SKILL.md"), "---\nname: mine\n---");
+  fs.writeFileSync(path.join(admin, "auth.json"), '{"tokens":{"refresh_token":"old"}}');
+  fs.writeFileSync(path.join(admin, "config.toml"), 'model = "gpt-5.5"');
+  prepareCodexHome(admin, run);
+  assert.deepEqual(fs.readdirSync(run).sort(), ["auth.json", "config.toml"]);
+  // Codex refreshes the sign-in by rewriting the file in place: the admin's
+  // own copy must get the new tokens.
+  fs.writeFileSync(path.join(run, "auth.json"), '{"tokens":{"refresh_token":"new"}}');
+  assert.equal(fs.readFileSync(path.join(admin, "auth.json"), "utf8"), '{"tokens":{"refresh_token":"new"}}');
+  // Removing the run folder leaves the admin's files where they were.
+  fs.rmSync(path.join(dir, "codex-run"), { recursive: true, force: true });
+  assert.ok(fs.existsSync(path.join(admin, "auth.json")));
+  assert.ok(fs.existsSync(path.join(admin, "config.toml")));
+  // An admin with no Codex home of their own (an API key in the environment).
+  const bare = path.join(dir, "codex-run-bare", "codex-home");
+  prepareCodexHome(path.join(dir, "no-such-home"), bare);
+  assert.deepEqual(fs.readdirSync(bare), []);
+  // When the link cannot be made, the card says why and what to do.
+  const crossDrive = Object.assign(new Error("EXDEV: cross-device link not permitted, link 'D:\\codex\\auth.json'"), { code: "EXDEV" });
+  assert.match(codexHomeTrouble(crossDrive), /another drive than the temp folder .*EXDEV.*Move CODEX_HOME/);
+  assert.match(codexHomeTrouble(Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" })), /failed here \(EPERM/);
 });
 
 test("opencode 2's agent denies everything but ODM's tools, with ODM's MCP server outside Code Mode", () => {

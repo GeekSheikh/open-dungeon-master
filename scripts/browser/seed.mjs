@@ -59,6 +59,12 @@ for (let index = 1; index <= 44; index += 1) {
     say(`Passage ${index}. The rain drums on the slate roof of the old mill while the goblins argue in the yard below. Lantern light spills across the wet stones, and somewhere a chain rattles against a post as the wind turns.`, { authorType: "dm", speech: [] });
   }
 }
+// Table talk put to the DM and its out-of-character answer (PR 314): the
+// chronicle reads the answer as a line, never as a passage.
+const oocQuestion = "@DM can Tavi see the dog from the east wall?";
+const oocAnswer = "Not from there: the dog sleeps under the cart, out of sight until you round the corner.";
+say(`(ooc) ${oocQuestion}`, { authorType: "player", userId: world.owner.id, characterId: tavi.id });
+say(`(ooc) ${oocAnswer}`, { authorType: "dm", speech: [] });
 const systemLine =
   "Keep to the shadows along the east wall, wait for the second goblin to turn his back, and only then go for the lantern. If the dog wakes, we scatter and meet at the ford before dawn.";
 say(`${LEAD_NOTE_PREFIX}${systemLine}`, { authorType: "system" });
@@ -435,6 +441,8 @@ const ids = {
     ...Object.fromEntries(Object.entries(closing).map(([viewport, id]) => [id, `Closing Table (${viewport})`])),
   },
   systemLine,
+  oocQuestion,
+  oocAnswer,
   paragraphs: paragraphs.map((text) => text.replace(/[*_]/g, "")),
 };
 getDatabase().pragma("wal_checkpoint(TRUNCATE)");

@@ -38,7 +38,7 @@ The program never sees the server's database key or any provider key.
 | --- | --- | --- |
 | Claude Code | `claude -p`, stream JSON | removed (`--tools ""`), checked every turn |
 | opencode 2.x | `opencode serve`, HTTP | removed (deny-all agent, checked before every run); its own config folder, with only your providers and default model carried over; each run's session deleted from opencode's session list (below); checked on 2.0.27 |
-| Codex | `codex app-server`, JSON-RPC | boxed in: shell, image viewer and sub-agents off, read-only, approvals refused; its patch tool has no switch. A setting the installed Codex no longer recognises is named on the admin card |
+| Codex | `codex app-server`, JSON-RPC | boxed in: shell, web search, image viewer, sub-agents, goals, clock, plugins and skills off, read-only, approvals refused; ODM's tools offered directly rather than through its code runner; its patch tool, an ask-the-user tool (answered empty) and three readers of ODM's own MCP resources have no switch. Each run gets its own Codex home linking only your sign-in and config, so your `AGENTS.md` and skills stay out, and Codex's stores go with the run; checked on 0.162.1. A setting the installed Codex no longer recognises is named on the admin card |
 | Grok Build | `grok agent stdio`, ACP | boxed in: dontAsk, only ODM tools allowed |
 
 Codex and Grok Build show **(untested)** until a Test the table run passes

@@ -42,6 +42,7 @@ import { imagesAvailable } from "@/lib/capabilities";
 import { imageProducerReady } from "@/lib/image-generate";
 import { enqueueNarrationAudio } from "@/lib/tts";
 import { requestDmMessage } from "@/lib/dm/model";
+import { OOC_ANSWER_INSTRUCTION, OOC_UNANSWERED_PREFIX, oocAnswer, oocQuestionPending } from "@/lib/dm/ooc-question";
 import { releaseHarnessConversation } from "@/lib/harness/bridge";
 import { toMcpTools } from "@/lib/harness/render";
 import { setDmStatus } from "@/lib/dm/status";
@@ -410,10 +411,23 @@ export async function startDmTurn(campaignId: string) {
 
   setDmStatus(campaignId, "thinking");
 
+  // Table talk put to the DM and nothing else since it last spoke: the turn
+  // is an out-of-character answer, which spends nothing a real turn would
+  // (src/lib/dm/ooc-question.ts).
+  //
+  // A spotlight still waiting on other players holds the moves already in
+  // for the turn its last answer wakes, so a question asked meanwhile is
+  // still only a question.
+  const floor = getFloor(campaignId);
+  const spotlightWaiting = floor.mode === "spotlight" && !floor.userIds.every((id) => floor.respondedUserIds.includes(id));
+  const oocOnly = !pendingWhispers.length && oocQuestionPending(history, { heldMoves: spotlightWaiting });
+
   const context = loadContext(campaign);
   // Combat can never wedge on missing initiative: when nothing is pending,
   // stragglers are auto-rolled before the prompt is built.
-  ensureInitiativeProgress(campaign);
+  if (!oocOnly) {
+    ensureInitiativeProgress(campaign);
+  }
   const { summary, coveredCount } = getCampaignSummaryState(campaignId);
   const currentLocation = getCurrentLocation(campaignId);
   // Variant rules always ride; house rules and world lore are retrieved
@@ -438,7 +452,7 @@ export async function startDmTurn(campaignId: string) {
   // before the conversation is persisted below, which is what makes a retry
   // correct: retry-turn.ts replays that stored conversation, so the directive
   // is still in the prompt it re-runs, neither lost nor applied twice.
-  const directorArm = takeDirectorArm(campaignId);
+  const directorArm = oocOnly ? null : takeDirectorArm(campaignId);
   const directorBlock = buildDirectorBlock(directorArm);
   if (directorArm) {
     // Clear the armed badge for every client now that the steer is spent.
@@ -551,7 +565,7 @@ export async function startDmTurn(campaignId: string) {
         pinned: fact.pinned,
         knownBy: fact.knownBy,
       })),
-      directorNotes: consumePendingSparks(campaignId).map((spark) => spark.text),
+      directorNotes: oocOnly ? [] : consumePendingSparks(campaignId).map((spark) => spark.text),
       directorBlock,
       npcs: npcRosterForPrompt(campaignId).map((npc) => ({ ...npc, world: world.npcNotes.get(npc.name) })),
       relationships:
@@ -569,6 +583,10 @@ export async function startDmTurn(campaignId: string) {
       coordinationBlock: coordinationForPrompt(campaignId),
   };
   const conversation = buildDmMessages(promptState, history);
+  if (oocOnly) {
+    await answerOutOfCharacter(campaign, conversation);
+    return;
+  }
 
   const turn = createDmTurn(campaignId, conversation);
   // The narration holds its place from the start, not only once words are on
@@ -1665,6 +1683,44 @@ function cardPlayed(
   }
   const sheet = last.characterId ? context.sheetsById.get(last.characterId) : undefined;
   return { intent: last.intent, characterId: last.characterId, name: sheet?.name ?? "The player" };
+}
+
+// The out-of-character answer to table talk put to the DM: one call with
+// the turn's whole prompt and no tools, written as table talk. It is not a
+// turn (no dm_turns row, nothing to reroll or retry) and runs none of a
+// turn's after-effects. Its place is taken before the call, so a move posted
+// while the DM is answering lands after the answer and is still the newest
+// line for the turn it wakes.
+async function answerOutOfCharacter(campaign: Campaign, conversation: DmTurn["conversation"]) {
+  const campaignId = campaign.id;
+  const seq = allocateSeq(campaignId);
+  try {
+    const { message, error } = await requestDmMessage(
+      campaign.settings,
+      [...conversation, { role: "user", content: OOC_ANSWER_INSTRUCTION }],
+      { tools: [], toolChoice: "none", harness: { campaignId, turn: true }, thinking: false },
+    );
+    const answer = error ? "" : stripToolText(extractStoryText(message?.content)).trim();
+    if (answer) {
+      // No speech: an aside is not read aloud as narration.
+      const inserted = insertCampaignMessage({ campaignId, seq, authorType: "dm", content: oocAnswer(answer).slice(0, 4_000), speech: [] });
+      publishWithSeq(campaignId, allocateSeq(campaignId), "message_added", { message: inserted });
+      return;
+    }
+    // A question that got no answer says so, rather than leaving the player
+    // waiting on one that never comes.
+    const failure = error ? ((await error.json().catch(() => null)) as { error?: string } | null)?.error : "";
+    const notice = insertCampaignMessage({
+      campaignId,
+      seq,
+      authorType: "system",
+      glyph: "cue-bell",
+      content: `${OOC_UNANSWERED_PREFIX}${failure ? ` (${failure.slice(0, 300)})` : ""}. Ask again, or carry on.`,
+    });
+    publishWithSeq(campaignId, allocateSeq(campaignId), "message_added", { message: notice });
+  } finally {
+    setDmStatus(campaignId, "idle");
+  }
 }
 
 // The last call goes out with toolChoice "none", yet some servers still

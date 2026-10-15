@@ -15,6 +15,7 @@ import { HarnessTestPanel } from "@/app/admin/HarnessTestPanel";
 import { SpeedField } from "@/app/admin/SpeedField";
 import { agentSpeedEligibility } from "@/lib/speed-tier";
 import type { SpeedChannel, SpeedNote } from "@/lib/speed-status";
+import { effortChoices, withOfferedEffort } from "@/lib/harness/effort-choices";
 import type { HarnessConfig, HarnessId, HarnessStatus } from "@/lib/harness/types";
 
 type Payload = {
@@ -26,7 +27,34 @@ type Payload = {
 };
 
 const MARKS: Record<HarnessId, string> = { claude: "CC", codex: "Cx", opencode: "oc", grok: "Gk" };
-const EFFORTS = ["", "low", "medium", "high", "xhigh", "max"] as const;
+
+// The efforts the chosen models offer (src/lib/harness/effort-choices.ts). A
+// saved effort they do not list, after the program's list changed, stays
+// shown with the reason it runs at the model's own default.
+function EffortField({
+  status,
+  draft,
+  onChange,
+}: {
+  status: HarnessStatus;
+  draft: HarnessConfig;
+  onChange: (effort: HarnessConfig["effort"]) => void;
+}) {
+  const offered = effortChoices(status, draft);
+  const stale = !offered.includes(draft.effort);
+  return (
+    <SelectField
+      label="Effort"
+      hint={stale ? `The chosen models have no ${draft.effort} setting and run at their own default.` : undefined}
+      value={draft.effort}
+      onChange={onChange}
+      options={(stale ? [...offered, draft.effort] : offered).map((effort) => ({
+        value: effort,
+        label: effort ? effort[0].toUpperCase() + effort.slice(1) : "The program's own default",
+      }))}
+    />
+  );
+}
 
 function statusTone(status: HarnessStatus): { tone: "ready" | "warn" | "off" | "bad"; text: string } {
   if (status.availability !== "ok") return { tone: "off", text: "Not available here" };
@@ -274,7 +302,7 @@ export function AdminHarnessSection({
               <SelectField
                 label="Story model"
                 value={draft.model}
-                onChange={(model) => setDraft({ ...draft, model })}
+                onChange={(model) => setDraft(withOfferedEffort(chosen, { ...draft, model }))}
                 options={[
                   { value: "", label: BLANK.programDefault },
                   ...models.map((model) => ({ value: model.id, label: model.deprecated ? `${model.label} (deprecated)` : model.label })),
@@ -287,7 +315,7 @@ export function AdminHarnessSection({
                 label="Bookkeeping model"
                 hint="Summaries, compaction and Ask. A cheaper model does these well."
                 value={draft.utilityModel}
-                onChange={(utilityModel) => setDraft({ ...draft, utilityModel })}
+                onChange={(utilityModel) => setDraft(withOfferedEffort(chosen, { ...draft, utilityModel }))}
                 options={[
                   { value: "", label: BLANK.utility },
                   ...[...models].sort((a, b) => Number(Boolean(b.cheap)) - Number(Boolean(a.cheap))).map((model) => ({
@@ -318,22 +346,7 @@ export function AdminHarnessSection({
                 </>
               ) : null}
               {chosen.id === "claude" || chosen.id === "codex" || chosen.id === "opencode" ? (
-                <SelectField
-                  label="Effort"
-                  hint={
-                    [...new Set([draft.model, draft.utilityModel || draft.model])]
-                      .flatMap((id) => {
-                        const model = models.find((entry) => entry.id === id);
-                        return draft.effort && model?.efforts && !model.efforts.includes(draft.effort)
-                          ? [`${model.label} has no ${draft.effort} setting and runs at its own default.`]
-                          : [];
-                      })
-                      .join(" ") || undefined
-                  }
-                  value={draft.effort}
-                  onChange={(effort) => setDraft({ ...draft, effort })}
-                  options={EFFORTS.map((effort) => ({ value: effort, label: effort ? effort[0].toUpperCase() + effort.slice(1) : "The program's own default" }))}
-                />
+                <EffortField status={chosen} draft={draft} onChange={(effort) => setDraft({ ...draft, effort })} />
               ) : null}
               <SelectField
                 label="Who may use it"
