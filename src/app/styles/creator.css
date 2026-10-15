@@ -834,7 +834,7 @@ html[data-theme="light"] .roll-tier-5 { color: #6d28d9; text-shadow: none; }
 .pool-tier {
   margin-top: -3px;
   font-family: var(--font-geist-mono), monospace;
-  font-size: 10px;
+  font-size: 0.6875rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   text-shadow: none;
