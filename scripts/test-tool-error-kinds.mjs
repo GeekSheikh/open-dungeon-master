@@ -480,4 +480,29 @@ await test("the same offer twice is dropped while the first waits; a romance ste
   world.close();
 });
 
+await test("a reaction the rules know that the character lacks is the rules, before anything about its target; a name nobody knows lists their features", async () => {
+  const world = await openWorld();
+  const kara = world.addHero(fighter({ level: 5 }));
+  await fightDummies(world, 1, { heroFaces: { [kara.id]: 20 } });
+  for (const feature of ["Riposte", "Warding Flare", "Hellish Rebuke"]) {
+    expect(await aiEncounter(world, "use_reaction", { characterId: kara.id, feature }), "rules", /no reaction called|cannot cast spells/);
+  }
+  expect(await aiEncounter(world, "use_reaction", { characterId: kara.id, feature: "Uncany Dodge" }), "retry", /Kara's features are/);
+  world.close();
+});
+
+await test("an enemy's spell its own state or the target's plane forbids is the DM's to re-pick", async () => {
+  const world = await openWorld();
+  const kara = world.addHero(fighter());
+  const mira = world.addHero(fighter({ name: "Mira" }));
+  const [goblin] = await fightDummies(world, 1, { heroFaces: { [kara.id]: 20, [mira.id]: 19 }, stats: { spells: ["Hold Person"] } });
+  const encounters = await import("../src/lib/db/encounters.ts");
+  await turnTo(world, goblin.id);
+  world.patch(mira.id, { conditions: ["ethereal"] });
+  expect(await ai(world, "cast_at_player", { casterEnemyId: goblin.id, characterId: mira.id, spell: "Hold Person", saveAbility: "wis", dc: 12 }), "retry", /Nothing was spent/);
+  encounters.patchEnemyConditions(goblin.id, ["feebleminded"], {});
+  expect(await ai(world, "cast_at_player", { casterEnemyId: goblin.id, characterId: kara.id, spell: "Hold Person", saveAbility: "wis", dc: 12 }), "retry", /cannot cast/);
+  world.close();
+});
+
 finish();

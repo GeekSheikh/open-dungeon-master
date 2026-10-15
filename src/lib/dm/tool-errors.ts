@@ -12,7 +12,6 @@
 // model reads (retry: true, refused: "rules" | "limit"), so a reworded
 // sentence keeps its kind and an error without one does not compile.
 
-
 export type ToolError = { error: string; retry: true } | { error: string; refused: "rules" | "limit" };
 
 // What a tool handler hands back: an error with its kind, or a result that

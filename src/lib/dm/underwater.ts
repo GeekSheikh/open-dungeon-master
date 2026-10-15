@@ -16,7 +16,6 @@ import { getBattleMapForEncounter, getTokenByRef } from "@/lib/db/battle-maps";
 import { getActiveBoard } from "@/lib/db/encounters";
 import { TERRAIN, tileAt } from "@/lib/battlemap/types";
 import { tilesBetween } from "@/lib/dm/attack-spatial";
-import type { ToolError } from "@/lib/dm/tool-errors";
 
 const MELEE_UNDERWATER = /\b(dagger|javelin|shortsword|spear|trident)s?\b/i;
 const RANGED_UNDERWATER = /\b(crossbow|net|javelin|spear|trident|dart)s?\b/i;
@@ -75,15 +74,16 @@ export function resistLineFor(campaignId: string, enemy: { id: string; stats: { 
 }
 
 // A character's ranged weapon attack from under the water at a target past
-// its normal range: it would miss, so it is refused before anything is
-// spent. Null when the rule does not apply.
-export function underwaterRangeProblem(
+// its normal range "automatically misses" (SRD 5.1, Underwater Combat): the
+// attack is made, and spent, and misses. The reason, or null when the rule
+// does not apply.
+export function underwaterRangeMiss(
   campaignId: string,
   encounterId: string,
   attackerId: string,
   profile: { weapon: string; ranged: boolean; thrown: boolean; rangeTiles: number },
   target: { id: string; displayName: string },
-): ToolError | null {
+): string | null {
   const apart = tilesBetween(encounterId, attackerId, target.id);
   if (apart === null || !isImmersed(campaignId, attackerId)) {
     return null;
@@ -92,5 +92,5 @@ export function underwaterRangeProblem(
   if (!ranged || apart <= profile.rangeTiles) {
     return null;
   }
-  return { error: `Underwater, a ranged weapon attack past the weapon's normal range misses: ${target.displayName} is ${apart * 5} ft away and the ${profile.weapon}'s normal range is ${profile.rangeTiles * 5} ft. Nothing was spent; close the distance or use a melee weapon.`, refused: "rules" };
+  return `Underwater, a ranged weapon attack past the weapon's normal range misses: ${target.displayName} is ${apart * 5} ft away and the ${profile.weapon}'s normal range is ${profile.rangeTiles * 5} ft.`;
 }

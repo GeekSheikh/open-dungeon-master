@@ -7,7 +7,7 @@
 // of cast-tools.ts, which re-exports it; this module imports mutations (for
 // the slot spend) and must never be imported by it.
 
-import { magicImmunityProblem } from "@/lib/dm/monster-traits";
+import { magicImmunityNote } from "@/lib/dm/monster-traits";
 import { describeConditionDuration } from "@/lib/dm/condition-logic";
 import { z } from "zod";
 import { placeSpellZone } from "@/lib/dm/zone-cast";
@@ -36,7 +36,7 @@ import { publishFx, tokenPosition } from "@/lib/dm/fx";
 import { rollEnemySave, settleFailedSave } from "@/lib/dm/forced-save";
 import { charmedBy } from "@/lib/dm/enemy-profile";
 import { spellAuthorsFor } from "@/lib/dm/spell-authors";
-import { spellReachProblem } from "@/lib/dm/cast-reach";
+import { spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
 import { landSpellDamage } from "@/lib/dm/cast-at-enemy-damage";
 import { spellConditionMeta } from "@/lib/dm/spell-effects";
 // What the spell does beyond damage and condition (src/lib/dm/spell-riders.ts).
@@ -273,12 +273,7 @@ export function handleCastAtEnemy(
   if (reach) {
     return reach;
   }
-  // Limited Magic Immunity (the rakshasa): a spell of its level or lower
-  // never touches it (src/lib/dm/monster-traits.ts).
-  const shrugged = magicImmunityProblem(enemy, spellName, args.level ?? facts?.level ?? 0);
-  if (shrugged) {
-    return shrugged;
-  }
+  const ward = spellWardOn({ encounterId: encounter.id, casterId: sheet.id, targetId: enemy.id, targetName: enemy.displayName, facts });
 
   // The cast itself, through the one guard (src/lib/dm/cast-guard.ts): who
   // may cast, what they hold, the slot of the spell's own level when none is
@@ -328,6 +323,13 @@ export function handleCastAtEnemy(
     ...(cast.shares ? { shares: cast.shares } : {}),
     ...(cast.continuing ? { continuing: cast.continuing } : {}),
   };
+  // A ward around the target, or Limited Magic Immunity (the rakshasa,
+  // src/lib/dm/monster-traits.ts): the spell is cast, and spent, and does
+  // nothing to it (SRD 5.1).
+  const noEffect = ward ?? magicImmunityNote(enemy, spellName, slotLevel ?? facts?.level ?? 0);
+  if (noEffect) {
+    return { ok: true, ...base, noEffect, note: `${noEffect} Narrate exactly this.` };
+  }
   const source = { spell: spellName, casterId: sheet.id, slotLevel: slotLevel ?? null };
 
   if (pool) {

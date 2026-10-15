@@ -29,6 +29,8 @@ import { READIED } from "@/lib/dm/object-actions";
 import { handlePcAttack } from "@/lib/dm/pc-attack";
 import { allyOf, noHit, settle, softenFall, spendReaction, type Ctx } from "@/lib/dm/reaction-tools";
 import type { ToolError, ToolResult } from "@/lib/dm/tool-errors";
+import { takeItemCast } from "@/lib/srd/item-cast-credit";
+import { spellHeldProblem } from "@/lib/dm/cast-rules";
 
 // ---- reaction spells ----
 
@@ -63,6 +65,14 @@ export function reactionSpell(ctx: Ctx, spellName: string): ToolResult {
   // Which reaction it is: the published spell a table's workshop copy runs
   // as ("Iron Ward" running as Shield). The copy is cast under its own name.
   const name = spellEngineName(spellName, spellAuthorsFor(campaign)).toLowerCase();
+  // Whether they can cast it at all comes before what it answers: a caster
+  // without the spell is told so, not sent to name its target first. A cast
+  // an item just paid for (src/lib/srd/item-cast-credit.ts) needs no hold.
+  const fromItem = takeItemCast(sheet.id, spellName, { dryRun: true });
+  const unheld = fromItem ? null : spellHeldProblem(sheet, spellName, spellFactsFor(spellName, spellAuthorsFor(campaign)));
+  if (unheld) {
+    return { ...unheld, error: `${unheld.error} Nothing was spent.` };
+  }
 
   // Hellish Rebuke answers the creature that damaged the caster with a DEX
   // save and fire, resolved as cast_at_enemy resolves it (the cast guard

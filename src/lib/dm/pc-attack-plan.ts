@@ -9,7 +9,7 @@
 import { luckPointsLeft } from "@/lib/srd/class-resources";
 import { mergeAdvantage } from "@/lib/dm/condition-logic";
 import { coverFeatName, damageShakesConcentration, elementalAdeptApplies, floorDamageDice, hasSkulker, polearmButtDamage, powerAttackFeat, shotIgnoresCover, shotIgnoresLongRange, spellIgnoresCover, stunningSniperApplies } from "@/lib/srd/feat-combat";
-import { underwaterRangeProblem } from "@/lib/dm/underwater";
+import { underwaterRangeMiss } from "@/lib/dm/underwater";
 import type { Campaign } from "@/lib/db/campaigns";
 import type { DmTurn } from "@/lib/db/dm-turns";
 import { listEnemies, type Encounter, type EncounterEnemy } from "@/lib/db/encounters";
@@ -35,7 +35,7 @@ import { buildAttackProfile, type BuiltAttack } from "@/lib/dm/pc-attack-profile
 import { pickManeuver, type OnHitSpends } from "@/lib/dm/pc-attack-riders";
 import type { ManeuverUse } from "@/lib/dm/maneuver-rules";
 import { attackGeometry, attackSituation } from "@/lib/dm/pc-attack-situation";
-import { globeProblemFor, missileProblem } from "@/lib/dm/zone-rules";
+import { missileDeflection, spellWardFor } from "@/lib/dm/zone-rules";
 import { checkAttackSpell } from "@/lib/dm/pc-attack-spell";
 import { attacksAllowedFor, budgetFor } from "@/lib/dm/turn-budget";
 import { acBreakdownFor } from "@/lib/srd";
@@ -110,6 +110,10 @@ export type AttackPlan = {
   // The features and effects that ride this attack beyond its damage
   // (src/lib/dm/attack-features.ts, attack-onhit.ts).
   extras: AttackExtras;
+  // Why the attack is made, and spent, and misses with no roll (SRD 5.1):
+  // an arrow into a Wind Wall, a shot past normal range underwater, a spell
+  // a ward or the target's own immunity turns. Null for a rolled attack.
+  missesBecause: string | null;
 };
 
 export type AttackExtras = {
@@ -199,16 +203,18 @@ export function planPcAttack(input: {
     thrown: profile.thrown,
     longRangeTiles: profile.longRangeTiles,
   });
-  // Wind Wall turns arrows and bolts shot through it (zone-rules.ts).
-  const blown =
-    rangeError ??
-    (profile.ranged && weaponAttack ? missileProblem(encounter.id, sheet.id, enemy.id, enemy.displayName) : null) ??
-    (kind === "spell" ? globeProblemFor(encounter.id, sheet.id, enemy.id, enemy.displayName, args.spell, args.level) : null) ??
-    // Underwater, a shot past normal range misses (underwater.ts).
-    (weaponAttack ? underwaterRangeProblem(campaign.id, encounter.id, sheet.id, profile, enemy) : null);
-  if (blown) {
-    return { refused: blown };
+  if (rangeError) {
+    return { refused: rangeError };
   }
+  // Attacks the rules make and miss: an arrow or a bolt into a Wind Wall
+  // (zone-rules.ts), a shot past normal range underwater (underwater.ts), a
+  // spell a Globe of Invulnerability or an Antimagic Field turns, or the
+  // target's Limited Magic Immunity (pc-attack-spell.ts).
+  const missesBecause =
+    (profile.ranged && weaponAttack ? missileDeflection(encounter.id, sheet.id, enemy.id, enemy.displayName) : null) ??
+    (weaponAttack ? underwaterRangeMiss(campaign.id, encounter.id, sheet.id, profile, enemy) : null) ??
+    (kind === "spell" ? spellWardFor(encounter.id, sheet.id, enemy.id, enemy.displayName, args.spell, args.level) : null) ??
+    spell.noEffect;
   let geometry = attackGeometry(campaign.id, encounter.id, sheet.id, enemy, profile);
   const { atRange } = geometry;
   const featNotes: string[] = [];
@@ -542,6 +548,7 @@ export function planPcAttack(input: {
     profile,
     castsSpell: spell.castsSpell,
     spellSlotLevel: spell.spellSlotLevel,
+    missesBecause,
     weaponAttack,
     // Curving Shot's reroll is the same arrow.
     ammo: options.featureBonus?.noAmmo ? null : ammo,

@@ -17,7 +17,7 @@ import { getSheetById, patchSheet } from "@/lib/db/sheets";
 import { publishPersisted } from "@/lib/events";
 import { spellFactsFor, type ResolvedSpellMech } from "@/lib/content";
 import { removeConditions } from "@/lib/dm/condition-logic";
-import { spellReachProblem } from "@/lib/dm/cast-reach";
+import { spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
 import { exhaustionPatch } from "@/lib/dm/vitals-logic";
 import { afflictionConditionsFor } from "@/lib/dm/afflictions";
 import type { CharacterSheet, FullPatchSheetInput } from "@/lib/schemas/sheet";
@@ -73,18 +73,14 @@ export function castCure(
   const target = getSheetById(input.target.id) ?? input.target;
   const plan = curePlan(cures, target, input.variant ?? "", (word) => afflictionConditionsFor(campaign.id, target, word));
   const encounter = getActiveEncounter(campaign.id);
+  let ward: string | null = null;
   if (encounter && target.id !== caster.id) {
-    const reach = spellReachProblem({
-      encounterId: encounter.id,
-      casterId: caster.id,
-      casterName: caster.name,
-      targetId: target.id,
-      targetName: target.name,
-      facts: spellFactsFor(resolved.name),
-    });
+    const near = { encounterId: encounter.id, casterId: caster.id, targetId: target.id, targetName: target.name, facts: spellFactsFor(resolved.name) };
+    const reach = spellReachProblem({ ...near, casterName: caster.name });
     if (reach) {
       return reach;
     }
+    ward = spellWardOn(near);
   }
   const paid = cast({
     characterId: caster.id,
@@ -95,6 +91,11 @@ export function castCure(
   });
   if ("error" in paid) {
     return paid;
+  }
+  // A ward around the target: the spell is cast, and spent, and ends
+  // nothing on them.
+  if (ward) {
+    return { ok: true, spell: resolved.name, target: target.name, ended: [], ...(paid.slot ? { slot: paid.slot } : {}), noEffect: ward, note: `${ward} Narrate exactly this.` };
   }
   const fresh = getSheetById(target.id) ?? target;
   const ended = [...plan.conditions, ...(plan.exhaustion ? ["one level of exhaustion"] : [])];

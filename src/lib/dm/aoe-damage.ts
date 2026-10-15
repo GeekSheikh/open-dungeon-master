@@ -2,7 +2,7 @@
 // spell planned by aoe-spell.ts, an enemy's breath or spell by enemy-casting.ts,
 // a trap). Split out of encounter-tools-extra.ts; never imports encounter-tools.
 
-import { magicImmunityProblem } from "@/lib/dm/monster-traits";
+import { magicImmunityNote } from "@/lib/dm/monster-traits";
 import { abilityAreaShape, areaProblem, spellAreaShape } from "@/lib/dm/aoe-shape";
 import { spellFactsFor } from "@/lib/content";
 import { bindsWorthResisting } from "@/lib/dm/legendary-logic";
@@ -38,7 +38,7 @@ import { zoneArgsSchema, zonePlacement } from "@/lib/dm/zone-args";
 import { zoneRowFor } from "@/lib/battlemap/zones-spells";
 import { spellEngineName } from "@/lib/content";
 import { spellAuthorsFor } from "@/lib/dm/spell-authors";
-import { globeProblemFor } from "@/lib/dm/zone-rules";
+import { spellWardFor } from "@/lib/dm/zone-rules";
 import { partsTaken, partsTotal, splitDamageExpression, type DamagePart } from "@/lib/dm/aoe-parts";
 import { castingHold, outOfReach } from "@/lib/dm/spell-planes";
 import { castPrismaticSpray, isPrismaticSpray } from "@/lib/dm/prismatic";
@@ -168,29 +168,33 @@ export function handleAoeDamage(
       return args.casterId ? { error, refused: "rules" } : { error, retry: true };
     }
   }
-  // A Globe of Invulnerability shields the creatures inside it from a spell
-  // cast from outside (src/lib/dm/zone-rules.ts); one that catches nobody
-  // else is refused before anything is spent.
+  // A Globe of Invulnerability or an Antimagic Field keeps the creatures
+  // inside it out of a spell's area from outside (src/lib/dm/zone-rules.ts):
+  // the spell is cast all the same, and catches only the others, or nobody.
   const areaCasterRef = args.casterEnemyId ?? args.casterId;
   const shielded: string[] = [];
   if (args.spell && areaCasterRef) {
     const caster = args.casterEnemyId ? resolveEnemyRef(encounter.id, args.casterEnemyId)?.id : resolveSheetRef(args.casterId ?? "", sheets, sheetsById)?.id;
-    const guard = (id: string, name: string) => (caster ? globeProblemFor(encounter.id, caster, id, name, args.spell, args.level) : null);
-    const blocked = [...enemyTargets.filter((enemy) => guard(enemy.id, enemy.displayName)), ...pcTargets.filter((sheet) => guard(sheet.id, sheet.name))];
-    const refusal = blocked.length === enemyTargets.length + pcTargets.length && blocked[0] ? guard(blocked[0].id, "displayName" in blocked[0] ? blocked[0].displayName : blocked[0].name) : null;
-    if (refusal) {
-      return refusal;
+    const wardOn = (id: string, name: string) => (caster ? spellWardFor(encounter.id, caster, id, name, args.spell, args.level) : null);
+    for (const enemy of [...enemyTargets]) {
+      const ward = wardOn(enemy.id, enemy.displayName);
+      if (ward) {
+        shielded.push(ward);
+        enemyTargets.splice(enemyTargets.indexOf(enemy), 1);
+      }
     }
-    for (const entry of blocked) {
-      shielded.push("displayName" in entry ? entry.displayName : entry.name);
+    for (const target of [...pcTargets]) {
+      const ward = wardOn(target.id, target.name);
+      if (ward) {
+        shielded.push(ward);
+        pcTargets.splice(pcTargets.indexOf(target), 1);
+      }
     }
-    enemyTargets.splice(0, enemyTargets.length, ...enemyTargets.filter((enemy) => !blocked.includes(enemy)));
-    pcTargets.splice(0, pcTargets.length, ...pcTargets.filter((sheet) => !blocked.includes(sheet)));
   }
   // A spell that only lays its area (an enemy's Darkness, a Web with nobody
   // in it yet) catches nobody (src/lib/dm/zone-cast.ts).
   const areaOnly = Boolean(args.spell && zoneRowFor(engineSpell));
-  if (!enemyTargets.length && !pcTargets.length && !areaOnly) {
+  if (!enemyTargets.length && !pcTargets.length && !areaOnly && !shielded.length) {
     return {
       error:
         "aoe_damage needs at least one valid target: enemyIds and/or characterIds from GAME STATE.",
@@ -242,9 +246,10 @@ export function handleAoeDamage(
     // Limited Magic Immunity (the rakshasa): the area washes over it.
     const level = args.level ?? spellFactsFor(planned.spell)?.level ?? 0;
     for (const enemy of [...enemyTargets]) {
-      if (magicImmunityProblem(enemy, planned.spell, level)) {
+      const shrugged = magicImmunityNote(enemy, planned.spell, level);
+      if (shrugged) {
         enemyTargets.splice(enemyTargets.indexOf(enemy), 1);
-        corrections.push(`${enemy.displayName} is unaffected: Limited Magic Immunity turns aside spells of its level or lower.`);
+        corrections.push(shrugged);
       }
     }
     args.damage = planned.damage ?? undefined;
@@ -595,7 +600,7 @@ export function handleAoeDamage(
     ...(enemyConcentration ? { enemyConcentration } : {}),
     ...(area ? { area } : {}),
     ...(beyondReach.length ? { outOfReach: `${beyondReach.join(", ")} ${beyondReach.length === 1 ? "is" : "are"} off the Material Plane; the spell does not touch them.` } : {}),
-    ...(shielded.length ? { globeShielded: `${shielded.join(", ")} stand inside a Globe of Invulnerability; the spell has no effect on them.` } : {}),
+    ...(shielded.length ? { noEffect: shielded.join(" ") } : {}),
     ...encounterOver,
   };
 }

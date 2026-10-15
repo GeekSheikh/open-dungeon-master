@@ -20,7 +20,7 @@ import { MECH_OVERRIDES } from "@/lib/srd/spell-mechanics";
 import { applyDmMutation } from "@/lib/dm/mutations";
 import { instancesOf, removeConditionInstances, type ConditionMeta, type ConditionMetaMap } from "@/lib/dm/condition-logic";
 import { spellKey } from "@/lib/dm/spell-effects";
-import { spellReachProblem } from "@/lib/dm/cast-reach";
+import { spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
 import { spellAuthorsFor } from "@/lib/dm/spell-authors";
 import { publishEncounter } from "@/lib/dm/enemy-damage";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
@@ -127,18 +127,14 @@ export function handleDispelMagic(
   );
   const authors = spellAuthorsFor(campaign);
   const encounter = getActiveEncounter(campaign.id);
+  let ward: string | null = null;
   if (encounter) {
-    const reach = spellReachProblem({
-      encounterId: encounter.id,
-      casterId: caster.id,
-      casterName: caster.name,
-      targetId: input.target.id,
-      targetName: holder.name,
-      facts: spellFactsFor(input.spell, authors),
-    });
+    const near = { encounterId: encounter.id, casterId: caster.id, targetId: input.target.id, targetName: holder.name, facts: spellFactsFor(input.spell, authors) };
+    const reach = spellReachProblem({ ...near, casterName: caster.name });
     if (reach) {
       return reach;
     }
+    ward = spellWardOn(near);
   }
   const cast = applyDmMutation(
     campaign,
@@ -156,6 +152,11 @@ export function handleDispelMagic(
   ).result;
   if ("error" in cast) {
     return cast;
+  }
+  // A ward around the target: the spell is cast, and spent, and ends
+  // nothing on it.
+  if (ward) {
+    return { ok: true, spell: input.spell, target: holder.name, ...(cast.slot ? { slot: cast.slot } : {}), dispelled: [], noEffect: ward, note: `${ward} Narrate exactly this.` };
   }
   const slotLevel = typeof cast.slotLevel === "number" ? cast.slotLevel : 3;
   const ability = caster.spellcasting?.ability ?? "int";

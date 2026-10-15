@@ -28,7 +28,7 @@ import { rollEnemySave } from "@/lib/dm/forced-save";
 import { autoLegendaryResistance } from "@/lib/dm/legendary-tools";
 import { charmedBy } from "@/lib/dm/enemy-profile";
 import { castingHold } from "@/lib/dm/spell-planes";
-import { spellReachProblem } from "@/lib/dm/cast-reach";
+import { spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
 import { layOnEnemy } from "@/lib/dm/spell-riders";
 import { spellConditionMeta } from "@/lib/dm/spell-effects";
 import { publishEncounter } from "@/lib/dm/enemy-damage";
@@ -98,17 +98,12 @@ export function castShapeAtEnemy(
   if (sealed) {
     return { error: `${enemy.displayName} is ${sealed} and nothing from outside reaches it until that ends. Nothing was spent; pick another target.`, refused: "rules" };
   }
-  const reach = spellReachProblem({
-    encounterId: encounter.id,
-    casterId: caster.id,
-    casterName: caster.name,
-    targetId: enemy.id,
-    targetName: enemy.displayName,
-    facts: spellFactsFor(named, input.authors),
-  });
+  const near = { encounterId: encounter.id, casterId: caster.id, targetId: enemy.id, targetName: enemy.displayName, facts: spellFactsFor(named, input.authors) };
+  const reach = spellReachProblem({ ...near, casterName: caster.name });
   if (reach) {
     return reach;
   }
+  const ward = spellWardOn(near);
   const dc = spellSaveDcFor(caster, named);
 
   // The cast, through the one guard: slot, turn, components, concentration.
@@ -132,6 +127,11 @@ export function castShapeAtEnemy(
     ...(cast.slot ? { slot: cast.slot } : {}),
     ...(cast.droppedConcentration ? { droppedConcentration: cast.droppedConcentration } : {}),
   };
+  // A ward around the target: the spell is cast, and spent, and changes
+  // nothing.
+  if (ward) {
+    return { ok: true, ...base, noEffect: ward, note: `${ward} Narrate exactly this.` };
+  }
 
   // An unwilling creature makes a WIS save; every enemy is unwilling.
   const live = getEnemy(enemy.id) ?? enemy;

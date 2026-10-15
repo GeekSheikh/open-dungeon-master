@@ -270,6 +270,12 @@ export function handleEnemyAttack(
       swings.push({ attack: attack.name, skipped: underwater.note });
       return;
     }
+    // Arrows and bolts into a Wind Wall are deflected and miss (SRD 5.1); a
+    // spell attack is no projectile.
+    if (ranged && !attack.spellAttack && spatial.deflected) {
+      swings.push({ attack: attack.name, hit: false, missed: spatial.deflected });
+      return;
+    }
     lastSwing = { attack, ranged };
     // Every source of advantage on this swing (src/lib/dm/enemy-swing-odds.ts).
     const odds = enemySwingOdds({

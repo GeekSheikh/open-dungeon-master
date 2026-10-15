@@ -16,8 +16,6 @@
 //
 // Pure: no I/O. Traits are stored as "Name. text" or "Name: text" lines.
 
-import type { ToolError } from "@/lib/dm/tool-errors";
-
 type Traits = { traits?: string[] };
 
 const line = (stats: Traits, name: RegExp) => (stats.traits ?? []).find((entry) => name.test(entry.trim()));
@@ -48,13 +46,14 @@ export function magicImmunityLevel(stats: Traits): number | null {
   return level ? Number(level[1]) : 6;
 }
 
-// Why a spell of this level cannot touch the creature, or null.
-export function magicImmunityProblem(enemy: { displayName: string; stats: Traits }, spell: string, level: number): ToolError | null {
+// A spell of this level cast at the creature has no effect on it (the
+// spell is cast, and spent): the reason, or null.
+export function magicImmunityNote(enemy: { displayName: string; stats: Traits }, spell: string, level: number): string | null {
   const cap = magicImmunityLevel(enemy.stats);
   if (cap === null || level > cap) {
     return null;
   }
-  return { error: `${enemy.displayName} can't be affected or detected by spells of ${ordinal(cap)} level or lower (Limited Magic Immunity), and ${spell} is cast at ${level ? `${ordinal(level)} level` : "cantrip level"}. Nothing was spent; a spell from a higher slot reaches it.`, refused: "rules" };
+  return `${enemy.displayName} can't be affected by spells of ${ordinal(cap)} level or lower (Limited Magic Immunity): ${spell}, cast at ${level ? `${ordinal(level)} level` : "cantrip level"}, has no effect on it.`;
 }
 
 const ordinal = (n: number) => `${n}${n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th"}`;

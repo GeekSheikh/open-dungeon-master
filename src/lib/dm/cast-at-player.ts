@@ -2,7 +2,7 @@ import { canAct } from "@/lib/dm/can-act";
 import { hasDungeonDelver, shieldMasterSaveBonus, spellSaveAdvantageReach } from "@/lib/srd/feat-combat";
 import { tilesBetween } from "@/lib/dm/attack-spatial";
 import { z } from "zod";
-import { globeProblemFor } from "@/lib/dm/zone-rules";
+import { spellWardFor } from "@/lib/dm/zone-rules";
 import type { Campaign } from "@/lib/db/campaigns";
 import { getActiveEncounter, recordEncounterTarget, setEnemyConcentration } from "@/lib/db/encounters";
 import { markReactionUsed } from "@/lib/dm/turn-budget";
@@ -195,6 +195,7 @@ export function handleCastAtPlayer(
   // action (or a legendary action bought for it), the ability's printed save,
   // DC and dice, its recharge, its spell list and slots.
   let use: EnemyUse | null = null;
+  let ward: string | null = null;
   if (args.casterEnemyId) {
     const prepared = prepareEnemyUse(campaign, {
       casterEnemyId: args.casterEnemyId,
@@ -213,11 +214,9 @@ export function handleCastAtPlayer(
     if (warded) {
       return warded;
     }
-    // A Globe of Invulnerability around the target turns the spell (zone-rules.ts).
-    const globed = globeProblemFor(prepared.enemy.encounterId, prepared.enemy.id, sheet.id, sheet.name, args.spell);
-    if (globed) {
-      return globed;
-    }
+    // A Globe of Invulnerability or an Antimagic Field around the target: the
+    // spell is cast, its use spent, and does nothing to them (zone-rules.ts).
+    ward = spellWardFor(prepared.enemy.encounterId, prepared.enemy.id, sheet.id, sheet.name, args.spell);
     use = prepared;
   }
   const byBlock = Boolean(use?.fromBlock);
@@ -241,6 +240,9 @@ export function handleCastAtPlayer(
     return { error: `Invalid damage expression "${damage}".`, retry: true };
   }
   use?.commit();
+  if (ward) {
+    return { ok: true, target: sheet.name, source: use ? `${use.enemy.displayName}'s ${use.name}` : args.spell, noEffect: ward, note: `${ward} Narrate exactly this.` };
+  }
 
   const source = (args.source ?? (use ? `${use.enemy.displayName}'s ${use.name}` : "the effect")).trim() || "the effect";
   // The save a requested roll would be (src/lib/dm/forced-save.ts):

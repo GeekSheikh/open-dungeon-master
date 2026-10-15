@@ -31,7 +31,7 @@ import { authoredSpellDice } from "@/lib/srd/authored-effects-more";
 import { publishPersisted, publishWithSeq } from "@/lib/events";
 import { computeSheetDerived, spellSaveDcFor } from "@/lib/srd";
 import { spellDamageFor, spellFactsFor, spellMechanicsFor } from "@/lib/content";
-import { spellReachProblem } from "@/lib/dm/cast-reach";
+import { spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
 import { spellAuthorsFor } from "@/lib/dm/spell-authors";
 import { handleStabilize } from "@/lib/dm/stabilize";
 import { effectiveMaxHp } from "@/lib/dm/condition-logic";
@@ -96,18 +96,14 @@ export function castHealingSpell(
 
   // Reach first: nothing is spent on a creature the spell cannot reach.
   const encounter = getActiveEncounter(campaign.id);
+  let ward: string | null = null;
   if (encounter && target.id !== caster.id) {
-    const reach = spellReachProblem({
-      encounterId: encounter.id,
-      casterId: caster.id,
-      casterName: caster.name,
-      targetId: target.id,
-      targetName: target.name,
-      facts,
-    });
+    const near = { encounterId: encounter.id, casterId: caster.id, targetId: target.id, targetName: target.name, facts };
+    const reach = spellReachProblem({ ...near, casterName: caster.name });
     if (reach) {
       return reach;
     }
+    ward = spellWardOn(near);
   }
 
   if (mech?.revive) {
@@ -147,6 +143,11 @@ export function castHealingSpell(
   });
   if (typeof paid.error === "string") {
     return toolError(paid);
+  }
+  // A ward around the target: the spell is cast, and spent, and heals
+  // nothing.
+  if (ward) {
+    return { done: { ok: true, spell: name, target: target.name, healed: 0, ...(paid.slot ? { slot: paid.slot } : {}), noEffect: ward, note: `${ward} Narrate exactly this.` } };
   }
   const slotLevel = typeof paid.slotLevel === "number" ? paid.slotLevel : facts.level;
   if (mech?.healPool) {

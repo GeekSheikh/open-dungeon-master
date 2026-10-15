@@ -29,6 +29,7 @@ import { spendLuckCounter } from "@/lib/srd/class-resources";
 import { moteBurst, moteOf } from "@/lib/dm/authored-mote";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import type { ToolResult } from "@/lib/dm/tool-errors";
+import { attacksLeft } from "@/lib/dm/action-budget";
 
 // Re-exported for the callers that learned them here.
 export { superiorityDie } from "@/lib/dm/pc-attack-riders";
@@ -300,6 +301,18 @@ export function handlePcAttack(
   // (src/lib/dm/authored-mote.ts); it bursts once the attack is rolled.
   const mote = moteOf(sheet, plan.attackRiders.spent);
   spendPcAttack(plan);
+  // An attack the rules make and miss (pc-attack-plan.ts missesBecause):
+  // spent above, with no roll to make.
+  if (plan.missesBecause) {
+    return {
+      attacker: sheet.name,
+      weapon: plan.profile.weapon,
+      target: plan.enemy.displayName,
+      hit: false,
+      ...(plan.budget && attacksLeft(plan.budget) > 0 && plan.budget.attacksMade > 0 ? { attacksRemaining: attacksLeft(plan.budget) } : {}),
+      note: `${plan.missesBecause} The attack misses; narrate the miss.`,
+    };
+  }
   const strike = { ...strikeToHit(plan), ...strikeDamage(plan) };
 
   // Physical dice: park the to-hit roll for the player; the submit route

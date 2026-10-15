@@ -67,13 +67,15 @@ await test("Immutable Form: Polymorph is refused before the slot.", async () => 
   assert.equal(world.sheet(mage.id).spellcasting.slots["4"].used, 0);
 });
 
-await test("Limited Magic Immunity: Hold Person is refused; from a 7th-level slot it reaches.", async () => {
+await test("Limited Magic Immunity: Hold Person is cast and has no effect; from a 7th-level slot it reaches.", async () => {
   const [rakshasa] = await stage(["Limited Magic Immunity: The rakshasa can't be affected or detected by spells of 6th level or lower unless it wishes to be."]);
   kit.giveTurn(mage.id);
   const low = await world.invoke("cast_at_enemy", { characterId: mage.id, targetEnemyId: rakshasa.id, spell: "Hold Person", saveAbility: "wis", level: 2 });
-  assert.equal(low.ok, false);
-  assert.match(String(low.error), /Limited Magic Immunity/);
-  assert.equal(world.sheet(mage.id).spellcasting.slots["2"].used, 0);
+  assert.equal(low.ok, true, low.error);
+  assert.match(String(low.result.noEffect), /Limited Magic Immunity/);
+  assert.equal(world.sheet(mage.id).spellcasting.slots["2"].used, 1);
+  assert.ok(!kit.enemy(rakshasa.id).conditions.includes("paralyzed"));
+  kit.giveTurn(mage.id);
   world.dice(1);
   const high = await world.invoke("cast_at_enemy", { characterId: mage.id, targetEnemyId: rakshasa.id, spell: "Hold Person", saveAbility: "wis", level: 7 });
   world.clearDice();

@@ -177,9 +177,15 @@ await test("Underwater, a ranged weapon attack past its normal range misses; wit
   kit.freshTurn();
   // A hand crossbow's normal range is 30 feet; the target stands 45 feet off.
   kit.place(enemy.id, 5, 14);
+  // SRD 5.1: it "automatically misses": the shot is made, and spent, with no
+  // roll.
+  const hp = kit.enemy(enemy.id).currentHp;
   const far = await kit.swing(fighter.id, enemy.id, [15, 3], { weapon: "Hand Crossbow" });
-  assert.equal(far.ok, false, "a crossbow bolt flew past its normal range underwater");
-  assert.ok(!world.encounter().turnBudget?.actionUsed, "the refused shot spent the action");
+  assert.equal(far.ok, true, far.error);
+  assert.equal(far.result.hit, false, "a crossbow bolt flew past its normal range underwater");
+  assert.equal(far.toHit, null, "the automatic miss was rolled");
+  assert.ok(world.encounter().turnBudget?.attacksMade > 0, "the shot that missed was not spent");
+  assert.equal(kit.enemy(enemy.id).currentHp, hp);
 });
 
 await test("A creature fully immersed in water has resistance to fire damage.", async () => {

@@ -18,7 +18,7 @@ import { publishEphemeral } from "@/lib/events";
 import { swingMode, type EnemyAttackProfile } from "@/lib/dm/enemy-profile";
 import { enemySpeedTiles } from "@/lib/dm/enemy-speed";
 import { endsOwedTurn, markEnemyActed } from "@/lib/dm/can-act";
-import { missileProblem, zoneStepsFor } from "@/lib/dm/zone-rules";
+import { missileDeflection, zoneStepsFor } from "@/lib/dm/zone-rules";
 import { zonesAfterMove } from "@/lib/dm/zone-triggers";
 import type { ToolError } from "@/lib/dm/tool-errors";
 
@@ -35,6 +35,8 @@ type XY = { x: number; y: number };
 export type Approach = {
   // The refusal, when the attack cannot be made this turn.
   blocked?: ToolError & { heldGround?: string };
+  // A Wind Wall between them: why a ranged weapon swing misses.
+  deflected?: string;
   movedTo?: string;
   opportunityAttacks?: string[];
   // Squares between the two after the approach; null with no board.
@@ -156,7 +158,9 @@ export function approachTarget(
   const startDistance = apart(origin);
 
   if (reachesFrom(origin)) {
-    return { distance: startDistance };
+    // A Wind Wall between them turns its arrows from where it stands too.
+    const deflected = swingMode(profile, startDistance)?.ranged ? missileDeflection(encounterId, enemy.id, targetRef, target.name) : null;
+    return deflected ? { distance: startDistance, deflected } : { distance: startDistance };
   }
   if (holdGround) {
     return {
@@ -221,9 +225,10 @@ export function approachTarget(
     ...(provoked.length ? { opportunityAttacks: provoked } : {}),
   };
   if (reachesFrom(landing) && swingMode(profile, distance)) {
-    // A Wind Wall between them turns its arrows (zone-rules.ts).
-    const blown = swingMode(profile, distance)?.ranged ? missileProblem(encounterId, enemy.id, targetRef, target.name) : null;
-    return blown ? { ...base, blocked: blown } : base;
+    // A Wind Wall between them turns its arrows (zone-rules.ts): each shot
+    // through it is made and misses.
+    const deflected = swingMode(profile, distance)?.ranged ? missileDeflection(encounterId, enemy.id, targetRef, target.name) : null;
+    return deflected ? { ...base, deflected } : base;
   }
   const why = fear
     ? `${attacker.name} is frightened and will not move closer to what it fears`

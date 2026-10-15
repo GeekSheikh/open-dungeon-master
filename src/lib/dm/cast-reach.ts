@@ -13,7 +13,7 @@ import type { Campaign } from "@/lib/db/campaigns";
 import { spellDamageFor, spellFactsFor } from "@/lib/content";
 import type { AttackProfile } from "@/lib/dm/attack-logic";
 import { tilesBetween, wallBetween } from "@/lib/dm/attack-spatial";
-import { globeProblem } from "@/lib/dm/zone-rules";
+import { spellWard } from "@/lib/dm/zone-rules";
 import { spellAuthorsFor } from "@/lib/dm/spell-authors";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import type { SpellFacts } from "@/lib/srd/spell-facts";
@@ -66,8 +66,14 @@ export function spellReachProblem(input: {
   if (apart > 1 && wallBetween(input.encounterId, input.casterId, input.targetId)) {
     return { error: `${input.targetName} is behind total cover from ${input.casterName}: a spell needs a clear path to its target. They must move to a clear line first or pick another target. Nothing was spent.`, retry: true };
   }
-  // A Globe of Invulnerability around the target (src/lib/dm/zone-rules.ts).
-  return globeProblem(input.encounterId, input.casterId, input.targetId, input.targetName, facts.name, facts.level);
+  return null;
+}
+
+// A ward around the target that the spell, once cast, does nothing through
+// (a Globe of Invulnerability, an Antimagic Field: src/lib/dm/zone-rules.ts):
+// the note for the result, or null. Asked before the cast, said after it.
+export function spellWardOn(input: { encounterId: string; casterId: string; targetId: string; targetName: string; facts: SpellFacts | null }): string | null {
+  return input.facts ? spellWard(input.encounterId, input.casterId, input.targetId, input.targetName, input.facts.name, input.facts.level) : null;
 }
 
 // An attack-roll spell's profile held to the spell: its own range in feet

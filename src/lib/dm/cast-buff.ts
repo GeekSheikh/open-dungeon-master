@@ -24,7 +24,7 @@ import { resolveEnemyRef } from "@/lib/dm/enemy-damage";
 import { resolveSheetRef } from "@/lib/dm/rolls";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { spellAuthorsFor } from "@/lib/dm/spell-authors";
-import { spellReachProblem } from "@/lib/dm/cast-reach";
+import { spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
 import { castShares } from "@/lib/srd/spell-mechanics";
 import { castRedirect } from "@/lib/dm/cast-redirect";
 import { castCure } from "@/lib/dm/cure-spell";
@@ -255,18 +255,19 @@ export function handleCastBuff(
   // On a mapped fight each recipient must be within the spell's range with
   // a clear path: a touch spell reaches only the creature beside the caster.
   const facts = spellFactsFor(args.spell, authors);
+  // A recipient inside a ward (src/lib/dm/cast-reach.ts spellWardOn) is
+  // targeted all the same, and the spell does nothing to them.
+  const warded = new Map<string, string>();
   if (encounterNow) {
     for (const target of targetSheets) {
-      const reach = spellReachProblem({
-        encounterId: encounterNow.id,
-        casterId: sheet.id,
-        casterName: sheet.name,
-        targetId: target.id,
-        targetName: target.name,
-        facts,
-      });
+      const near = { encounterId: encounterNow.id, casterId: sheet.id, targetId: target.id, targetName: target.name, facts };
+      const reach = spellReachProblem({ ...near, casterName: sheet.name });
       if (reach) {
         return reach;
+      }
+      const ward = spellWardOn(near);
+      if (ward) {
+        warded.set(target.id, ward);
       }
     }
   }
@@ -326,6 +327,9 @@ export function handleCastBuff(
   };
   const applied: string[] = [];
   for (const target of targetSheets) {
+    if (warded.has(target.id)) {
+      continue;
+    }
     const fresh = getSheetById(target.id) ?? target;
     // Heroes' Feast rolls each diner's 2d10; it rides in the name as Aid's does.
     const feast = resolvedMech.mech.maxHpDice ? rollCard(campaign, turn, target.id, "custom", `${args.spell}: ${target.name}'s hit point maximum`, resolvedMech.mech.maxHpDice, null).total : 0;
@@ -392,6 +396,10 @@ export function handleCastBuff(
       }
     }
   }
+  const noEffect = [...warded.values()].join(" ");
+  if (!applied.length && noEffect) {
+    return { ok: true, spell: resolvedMech.name, targets: [], ...(cast.slot ? { slot: cast.slot } : {}), noEffect, note: `${noEffect} Narrate exactly this.` };
+  }
   if (!applied.length) {
     return { error: `${resolvedMech.name} landed on no valid target.`, retry: true };
   }
@@ -402,6 +410,7 @@ export function handleCastBuff(
     spell: resolvedMech.name,
     applied: condition,
     targets: applied,
+    ...(noEffect ? { noEffect } : {}),
     ...(quarry ? { quarry: quarry.displayName } : {}),
     ...(maxHpGain ? { hitPoints: `+${maxHpGain} to the maximum and current hit points of each` } : {}),
     ...(polymorphForm

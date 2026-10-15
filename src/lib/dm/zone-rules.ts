@@ -145,15 +145,17 @@ export function zoneCoverBetween(encounterId: string, attackerRef: string, targe
   return map && from && to ? zoneCover(zonesOf(map), map.width, from, to) : 0;
 }
 
-// A Wind Wall between a shooter and its target: the refusal a ranged weapon
-// attack meets, or null.
-export function missileProblem(encounterId: string, attackerRef: string, targetRef: string, targetName: string): ToolError | null {
+// A Wind Wall between a shooter and its target (SRD 5.1): arrows, bolts and
+// other ordinary projectiles at targets behind it are deflected and
+// automatically miss. The attack is made, and spent, and misses: the reason,
+// or null.
+export function missileDeflection(encounterId: string, attackerRef: string, targetRef: string, targetName: string): string | null {
   const map = getBattleMapForEncounter(encounterId);
   const from = map ? getTokenByRef(map.id, attackerRef) : null;
   const to = map ? getTokenByRef(map.id, targetRef) : null;
   const wall = map && from && to ? missileDeflectedBy(zonesOf(map), map.width, from, to) : null;
   return wall
-    ? { error: `${wall.casterName ? `${wall.casterName}'s ` : ""}Wind Wall stands between them: arrows, bolts and other ranged weapon attacks at ${targetName} are blown aside and miss. Attack in melee, with a spell, or from a clear line.`, refused: "rules" }
+    ? `${wall.casterName ? `${wall.casterName}'s ` : ""}Wind Wall stands between them: the shot at ${targetName} is deflected upward and misses.`
     : null;
 }
 
@@ -180,12 +182,15 @@ export function obscuredFor(campaignId: string, refId: string): string | null {
   return `${heavy ? "heavily" : "lightly"} obscured in ${veil.spell}: disadvantage on Perception by sight`;
 }
 
-// Globe of Invulnerability (SRD 5.1): a spell of 5th level or lower (more
-// from a higher slot) cast from outside the barrier has no effect on
-// anything within it. The refusal a spell at a creature inside meets before
-// anything is spent, or null. `spellLevel` is the level the spell is cast
-// at, its own when the slot is not yet known.
-export function globeProblem(encounterId: string, casterRef: string, targetRef: string, targetName: string, spell: string, spellLevel: number): ToolError | null {
+// Globe of Invulnerability (SRD 5.1): a spell of 5th level or lower (one
+// level more for each slot level above 6th the globe was cast from) cast
+// from outside the barrier "can target creatures and objects within the
+// barrier, but the spell has no effect on them", "even if the spell is cast
+// using a higher level spell slot". An Antimagic Field: a spell at a creature
+// in it has no effect, and "a slot expended to cast a suppressed spell is
+// consumed". Either way the spell is cast, and spent, and does nothing to
+// the target: the reason, or null. `spellLevel` is the spell's own level.
+export function spellWard(encounterId: string, casterRef: string, targetRef: string, targetName: string, spell: string, spellLevel: number): string | null {
   const map = getBattleMapForEncounter(encounterId);
   const caster = map ? getTokenByRef(map.id, casterRef) : null;
   const target = map ? getTokenByRef(map.id, targetRef) : null;
@@ -204,20 +209,21 @@ export function globeProblem(encounterId: string, casterRef: string, targetRef: 
     return spellLevel <= ward + (row?.antimagic ? 0 : Math.max(0, (zone.slotLevel ?? 6) - 6));
   });
   if (globe && zoneRowFor(globe)?.antimagic) {
-    return { error: `${targetName} stands inside ${globe.casterName ? `${globe.casterName}'s ` : ""}Antimagic Field: no spell from outside has any effect there. Nothing was spent; choose another target.`, refused: "rules" };
+    return `${targetName} stands inside ${globe.casterName ? `${globe.casterName}'s ` : ""}Antimagic Field: ${spell} is cast and has no effect on them.`;
   }
   return globe
-    ? { error: `${targetName} stands inside ${globe.casterName ? `${globe.casterName}'s ` : ""}Globe of Invulnerability: ${spell} is cast from outside it at ${spellLevel === 0 ? "cantrip level" : `level ${spellLevel}`}, too low to reach through it, and has no effect there. Nothing was spent; cast from inside the globe, with a higher slot, or at another target.`, refused: "rules" }
+    ? `${targetName} stands inside ${globe.casterName ? `${globe.casterName}'s ` : ""}Globe of Invulnerability: ${spell}, ${spellLevel === 0 ? "a cantrip" : `a level ${spellLevel} spell`} cast from outside it, has no effect on them.`
     : null;
 }
 
-// The same for a spell named by the caller, at the level named or its own.
-export function globeProblemFor(encounterId: string, casterRef: string, targetRef: string, targetName: string, spell: string | undefined, level?: number | null): ToolError | null {
+// The same for a spell named by the caller, at its own level (a spell the
+// server does not know: the level named, or 1).
+export function spellWardFor(encounterId: string, casterRef: string, targetRef: string, targetName: string, spell: string | undefined, level?: number | null): string | null {
   if (!spell) {
     return null;
   }
   const facts = spellFactsFor(spell);
-  return globeProblem(encounterId, casterRef, targetRef, targetName, facts?.name ?? spell, level ?? facts?.level ?? 1);
+  return spellWard(encounterId, casterRef, targetRef, targetName, facts?.name ?? spell, facts?.level ?? level ?? 1);
 }
 
 // Antilife Shell between a living attacker and its target in melee: the

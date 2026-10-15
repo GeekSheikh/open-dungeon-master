@@ -3,7 +3,7 @@
 // cast for real once the attack can no longer be refused. Split from
 // pc-attack.ts, which decides when each half runs.
 
-import { magicImmunityProblem } from "@/lib/dm/monster-traits";
+import { magicImmunityNote } from "@/lib/dm/monster-traits";
 import { resolveEnemyRef } from "@/lib/dm/enemy-damage";
 import type { Campaign } from "@/lib/db/campaigns";
 import type { DmTurn } from "@/lib/db/dm-turns";
@@ -33,7 +33,7 @@ export function checkAttackSpell(input: {
   sheetsById: Map<string, CharacterSheet>;
 }):
   | { refused: ToolError }
-  | { castsSpell: boolean; spellSlotLevel: number | null; profile: AttackProfile } {
+  | { castsSpell: boolean; spellSlotLevel: number | null; profile: AttackProfile; noEffect: string | null } {
   const { campaign, turn, sheet, args, kind, sheets, sheetsById } = input;
   let profile = input.profile;
   const castsSpell = Boolean(args.spell?.trim()) && kind !== "granted";
@@ -57,19 +57,16 @@ export function checkAttackSpell(input: {
       return { refused: toolError(check) };
     }
     spellSlotLevel = typeof check.slotLevel === "number" ? check.slotLevel : null;
-    // Limited Magic Immunity (the rakshasa): a spell of its level or lower
-    // never touches it (src/lib/dm/monster-traits.ts).
-    const live = getActiveEncounter(campaign.id);
-    const target = live && args.targetEnemyId ? resolveEnemyRef(live.id, args.targetEnemyId) : null;
-    const shrugged = target ? magicImmunityProblem(target, args.spell ?? "the spell", spellSlotLevel ?? 0) : null;
-    if (shrugged) {
-      return { refused: shrugged };
-    }
   }
+  // Limited Magic Immunity (the rakshasa): a spell of its level or lower is
+  // cast and has no effect on it (src/lib/dm/monster-traits.ts).
+  const live = castsSpell ? getActiveEncounter(campaign.id) : null;
+  const target = live && args.targetEnemyId ? resolveEnemyRef(live.id, args.targetEnemyId) : null;
+  const noEffect = target ? magicImmunityNote(target, args.spell ?? "the spell", spellSlotLevel ?? 0) : null;
   if (kind === "spell") {
     profile = spellAttackReach(campaign, sheet, args.spell ?? "", profile, spellSlotLevel);
   }
-  return { castsSpell, spellSlotLevel, profile };
+  return { castsSpell, spellSlotLevel, profile, noEffect };
 }
 
 // Checked above, so the cast goes through: the slot, the material, the
