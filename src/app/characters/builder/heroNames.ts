@@ -63,19 +63,20 @@ export function rollHeroName({
   current?: string;
   rng?: () => number;
 }): string {
-  const roll = (): string => {
-    if (packNames.length) {
-      return pick(packNames, rng);
-    }
-    const family = raceId || raceName ? lineageFamily(raceId, raceName) : null;
-    const names = (family && NAMES[family]) || pick(Object.values(NAMES), rng);
-    return `${pick(names.given, rng)} ${pick(names.family, rng)}`;
-  };
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    const name = roll();
-    if (name !== current.trim()) {
-      return name;
-    }
+  const now = current.trim();
+  if (packNames.length) {
+    // Drawn from the names that are not already in the field, so a pack of
+    // two always gives the other.
+    const others = packNames.filter((name) => name !== now);
+    return pick(others.length ? others : packNames, rng);
   }
-  return roll();
+  const family = raceId || raceName ? lineageFamily(raceId, raceName) : null;
+  const names = (family && NAMES[family]) || pick(Object.values(NAMES), rng);
+  const name = `${pick(names.given, rng)} ${pick(names.family, rng)}`;
+  if (name !== now) {
+    return name;
+  }
+  // The same pair twice: keep the family, take the next given name.
+  const next = names.given[(names.given.indexOf(name.split(" ")[0]) + 1) % names.given.length];
+  return `${next} ${name.split(" ").slice(1).join(" ")}`;
 }
