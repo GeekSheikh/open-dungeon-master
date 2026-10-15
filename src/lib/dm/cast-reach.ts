@@ -76,6 +76,12 @@ export function spellWardOn(input: { encounterId: string; casterId: string; targ
   return input.facts ? spellWard(input.encounterId, input.casterId, input.targetId, input.targetName, input.facts.name, input.facts.level) : null;
 }
 
+// A spell cast, and spent, to no effect: the reason, and the narration the
+// DM is held to.
+export function castToNoEffect(reason: string) {
+  return { noEffect: reason, note: `${reason} Narrate exactly this.` };
+}
+
 // An attack-roll spell's profile held to the spell: its own range in feet
 // (Fire Bolt 120, Chill Touch 120, Guiding Bolt 120, Ray of Frost 60) and no
 // long range beyond it, since a spell has none (SRD 5.1, Range). A touch

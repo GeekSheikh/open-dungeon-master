@@ -28,7 +28,7 @@ import { rollEnemySave } from "@/lib/dm/forced-save";
 import { autoLegendaryResistance } from "@/lib/dm/legendary-tools";
 import { charmedBy } from "@/lib/dm/enemy-profile";
 import { castingHold } from "@/lib/dm/spell-planes";
-import { spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
+import { castToNoEffect, spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
 import { layOnEnemy } from "@/lib/dm/spell-riders";
 import { spellConditionMeta } from "@/lib/dm/spell-effects";
 import { publishEncounter } from "@/lib/dm/enemy-damage";
@@ -133,7 +133,7 @@ export function castShapeAtEnemy(
   // spell is cast, and spent, and changes nothing.
   const noEffect = ward ?? immune;
   if (noEffect) {
-    return { ok: true, ...base, noEffect, note: `${noEffect} Narrate exactly this.` };
+    return { ok: true, ...base, ...castToNoEffect(noEffect) };
   }
 
   // An unwilling creature makes a WIS save; every enemy is unwilling.

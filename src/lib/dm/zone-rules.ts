@@ -29,7 +29,6 @@ import {
 import { liveZones } from "@/lib/dm/zone-store";
 import { zoneRowFor } from "@/lib/battlemap/zones-spells";
 import type { SpellFacts } from "@/lib/srd/spell-facts";
-import { spellFactsFor } from "@/lib/content";
 import type { ToolError } from "@/lib/dm/tool-errors";
 
 function zonesOf(map: BattleMap | null): SpellZone[] {
@@ -214,16 +213,6 @@ export function spellWard(encounterId: string, casterRef: string, targetRef: str
   return globe
     ? `${targetName} stands inside ${globe.casterName ? `${globe.casterName}'s ` : ""}Globe of Invulnerability: ${spell}, ${spellLevel === 0 ? "a cantrip" : `a level ${spellLevel} spell`} cast from outside it, has no effect on them.`
     : null;
-}
-
-// The same for a spell named by the caller, at its own level (a spell the
-// server does not know: the level named, or 1).
-export function spellWardFor(encounterId: string, casterRef: string, targetRef: string, targetName: string, spell: string | undefined, level?: number | null): string | null {
-  if (!spell) {
-    return null;
-  }
-  const facts = spellFactsFor(spell);
-  return spellWard(encounterId, casterRef, targetRef, targetName, facts?.name ?? spell, facts?.level ?? level ?? 1);
 }
 
 // Antilife Shell between a living attacker and its target in melee: the

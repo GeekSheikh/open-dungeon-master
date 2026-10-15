@@ -17,7 +17,7 @@ import { getSheetById, patchSheet } from "@/lib/db/sheets";
 import { publishPersisted } from "@/lib/events";
 import { spellFactsFor, type ResolvedSpellMech } from "@/lib/content";
 import { removeConditions } from "@/lib/dm/condition-logic";
-import { spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
+import { castToNoEffect, spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
 import { exhaustionPatch } from "@/lib/dm/vitals-logic";
 import { afflictionConditionsFor } from "@/lib/dm/afflictions";
 import type { CharacterSheet, FullPatchSheetInput } from "@/lib/schemas/sheet";
@@ -95,7 +95,7 @@ export function castCure(
   // A ward around the target: the spell is cast, and spent, and ends
   // nothing on them.
   if (ward) {
-    return { ok: true, spell: resolved.name, target: target.name, ended: [], ...(paid.slot ? { slot: paid.slot } : {}), noEffect: ward, note: `${ward} Narrate exactly this.` };
+    return { ok: true, spell: resolved.name, target: target.name, ended: [], ...(paid.slot ? { slot: paid.slot } : {}), ...castToNoEffect(ward) };
   }
   const fresh = getSheetById(target.id) ?? target;
   const ended = [...plan.conditions, ...(plan.exhaustion ? ["one level of exhaustion"] : [])];

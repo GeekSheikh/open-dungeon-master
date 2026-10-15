@@ -35,7 +35,10 @@ import { buildAttackProfile, type BuiltAttack } from "@/lib/dm/pc-attack-profile
 import { pickManeuver, type OnHitSpends } from "@/lib/dm/pc-attack-riders";
 import type { ManeuverUse } from "@/lib/dm/maneuver-rules";
 import { attackGeometry, attackSituation } from "@/lib/dm/pc-attack-situation";
-import { missileDeflection, spellWardFor } from "@/lib/dm/zone-rules";
+import { missileDeflection } from "@/lib/dm/zone-rules";
+import { spellWardOn } from "@/lib/dm/cast-reach";
+import { spellFactsFor } from "@/lib/content";
+import { spellAuthorsFor } from "@/lib/dm/spell-authors";
 import { checkAttackSpell } from "@/lib/dm/pc-attack-spell";
 import { attacksAllowedFor, budgetFor } from "@/lib/dm/turn-budget";
 import { acBreakdownFor } from "@/lib/srd";
@@ -213,7 +216,7 @@ export function planPcAttack(input: {
   const missesBecause =
     (profile.ranged && weaponAttack ? missileDeflection(encounter.id, sheet.id, enemy.id, enemy.displayName) : null) ??
     (weaponAttack ? underwaterRangeMiss(campaign.id, encounter.id, sheet.id, profile, enemy) : null) ??
-    (kind === "spell" ? spellWardFor(encounter.id, sheet.id, enemy.id, enemy.displayName, args.spell, args.level) : null) ??
+    (kind === "spell" && args.spell ? spellWardOn({ encounterId: encounter.id, casterId: sheet.id, targetId: enemy.id, targetName: enemy.displayName, facts: spellFactsFor(args.spell, spellAuthorsFor(campaign)) }) : null) ??
     spell.noEffect;
   let geometry = attackGeometry(campaign.id, encounter.id, sheet.id, enemy, profile);
   const { atRange } = geometry;

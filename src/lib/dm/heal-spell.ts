@@ -31,7 +31,7 @@ import { authoredSpellDice } from "@/lib/srd/authored-effects-more";
 import { publishPersisted, publishWithSeq } from "@/lib/events";
 import { computeSheetDerived, spellSaveDcFor } from "@/lib/srd";
 import { spellDamageFor, spellFactsFor, spellMechanicsFor } from "@/lib/content";
-import { spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
+import { castToNoEffect, spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
 import { spellAuthorsFor } from "@/lib/dm/spell-authors";
 import { handleStabilize } from "@/lib/dm/stabilize";
 import { effectiveMaxHp } from "@/lib/dm/condition-logic";
@@ -147,7 +147,7 @@ export function castHealingSpell(
   // A ward around the target: the spell is cast, and spent, and heals
   // nothing.
   if (ward) {
-    return { done: { ok: true, spell: name, target: target.name, healed: 0, ...(paid.slot ? { slot: paid.slot } : {}), noEffect: ward, note: `${ward} Narrate exactly this.` } };
+    return { done: { ok: true, spell: name, target: target.name, healed: 0, ...(paid.slot ? { slot: paid.slot } : {}), ...castToNoEffect(ward) } };
   }
   const slotLevel = typeof paid.slotLevel === "number" ? paid.slotLevel : facts.level;
   if (mech?.healPool) {

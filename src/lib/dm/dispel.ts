@@ -20,7 +20,7 @@ import { MECH_OVERRIDES } from "@/lib/srd/spell-mechanics";
 import { applyDmMutation } from "@/lib/dm/mutations";
 import { instancesOf, removeConditionInstances, type ConditionMeta, type ConditionMetaMap } from "@/lib/dm/condition-logic";
 import { spellKey } from "@/lib/dm/spell-effects";
-import { spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
+import { castToNoEffect, spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
 import { spellAuthorsFor } from "@/lib/dm/spell-authors";
 import { publishEncounter } from "@/lib/dm/enemy-damage";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
@@ -156,7 +156,7 @@ export function handleDispelMagic(
   // A ward around the target: the spell is cast, and spent, and ends
   // nothing on it.
   if (ward) {
-    return { ok: true, spell: input.spell, target: holder.name, ...(cast.slot ? { slot: cast.slot } : {}), dispelled: [], noEffect: ward, note: `${ward} Narrate exactly this.` };
+    return { ok: true, spell: input.spell, target: holder.name, ...(cast.slot ? { slot: cast.slot } : {}), dispelled: [], ...castToNoEffect(ward) };
   }
   const slotLevel = typeof cast.slotLevel === "number" ? cast.slotLevel : 3;
   const ability = caster.spellcasting?.ability ?? "int";

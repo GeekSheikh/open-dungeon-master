@@ -38,7 +38,7 @@ import { zoneArgsSchema, zonePlacement } from "@/lib/dm/zone-args";
 import { zoneRowFor } from "@/lib/battlemap/zones-spells";
 import { spellEngineName } from "@/lib/content";
 import { spellAuthorsFor } from "@/lib/dm/spell-authors";
-import { spellWardFor } from "@/lib/dm/zone-rules";
+import { spellWardOn } from "@/lib/dm/cast-reach";
 import { partsTaken, partsTotal, splitDamageExpression, type DamagePart } from "@/lib/dm/aoe-parts";
 import { castingHold, outOfReach } from "@/lib/dm/spell-planes";
 import { castPrismaticSpray, isPrismaticSpray } from "@/lib/dm/prismatic";
@@ -175,7 +175,8 @@ export function handleAoeDamage(
   const shielded: string[] = [];
   if (args.spell && areaCasterRef) {
     const caster = args.casterEnemyId ? resolveEnemyRef(encounter.id, args.casterEnemyId)?.id : resolveSheetRef(args.casterId ?? "", sheets, sheetsById)?.id;
-    const wardOn = (id: string, name: string) => (caster ? spellWardFor(encounter.id, caster, id, name, args.spell, args.level) : null);
+    const facts = spellFactsFor(args.spell, spellAuthorsFor(campaign));
+    const wardOn = (id: string, name: string) => (caster ? spellWardOn({ encounterId: encounter.id, casterId: caster, targetId: id, targetName: name, facts }) : null);
     for (const enemy of [...enemyTargets]) {
       const ward = wardOn(enemy.id, enemy.displayName);
       if (ward) {

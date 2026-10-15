@@ -2,14 +2,14 @@ import { canAct } from "@/lib/dm/can-act";
 import { hasDungeonDelver, shieldMasterSaveBonus, spellSaveAdvantageReach } from "@/lib/srd/feat-combat";
 import { tilesBetween } from "@/lib/dm/attack-spatial";
 import { z } from "zod";
-import { spellWardFor } from "@/lib/dm/zone-rules";
+import { castToNoEffect, spellWardOn } from "@/lib/dm/cast-reach";
 import type { Campaign } from "@/lib/db/campaigns";
 import { getActiveEncounter, recordEncounterTarget, setEnemyConcentration } from "@/lib/db/encounters";
 import { markReactionUsed } from "@/lib/dm/turn-budget";
 import { getSheetById } from "@/lib/db/sheets";
 import type { DmTurn } from "@/lib/db/dm-turns";
 import { isValidExpression } from "@/lib/dice";
-import { spellMechanicsFor } from "@/lib/content";
+import { spellFactsFor, spellMechanicsFor } from "@/lib/content";
 import { spellAuthorsFor } from "@/lib/dm/spell-authors";
 import type { SaveAbility } from "@/lib/bestiary/statblock";
 import { planSpellFx } from "@/lib/battlemap/fx-plan";
@@ -216,7 +216,7 @@ export function handleCastAtPlayer(
     }
     // A Globe of Invulnerability or an Antimagic Field around the target: the
     // spell is cast, its use spent, and does nothing to them (zone-rules.ts).
-    ward = spellWardFor(prepared.enemy.encounterId, prepared.enemy.id, sheet.id, sheet.name, args.spell);
+    ward = spellWardOn({ encounterId: prepared.enemy.encounterId, casterId: prepared.enemy.id, targetId: sheet.id, targetName: sheet.name, facts: args.spell ? spellFactsFor(args.spell, spellAuthorsFor(campaign)) : null });
     use = prepared;
   }
   const byBlock = Boolean(use?.fromBlock);
@@ -241,7 +241,7 @@ export function handleCastAtPlayer(
   }
   use?.commit();
   if (ward) {
-    return { ok: true, target: sheet.name, source: use ? `${use.enemy.displayName}'s ${use.name}` : args.spell, noEffect: ward, note: `${ward} Narrate exactly this.` };
+    return { ok: true, target: sheet.name, source: use ? `${use.enemy.displayName}'s ${use.name}` : args.spell, ...castToNoEffect(ward) };
   }
 
   const source = (args.source ?? (use ? `${use.enemy.displayName}'s ${use.name}` : "the effect")).trim() || "the effect";

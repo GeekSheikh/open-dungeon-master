@@ -24,7 +24,7 @@ import { resolveEnemyRef } from "@/lib/dm/enemy-damage";
 import { resolveSheetRef } from "@/lib/dm/rolls";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { spellAuthorsFor } from "@/lib/dm/spell-authors";
-import { spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
+import { castToNoEffect, spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
 import { castShares } from "@/lib/srd/spell-mechanics";
 import { castRedirect } from "@/lib/dm/cast-redirect";
 import { castCure } from "@/lib/dm/cure-spell";
@@ -398,7 +398,7 @@ export function handleCastBuff(
   }
   const noEffect = [...warded.values()].join(" ");
   if (!applied.length && noEffect) {
-    return { ok: true, spell: resolvedMech.name, targets: [], ...(cast.slot ? { slot: cast.slot } : {}), noEffect, note: `${noEffect} Narrate exactly this.` };
+    return { ok: true, spell: resolvedMech.name, targets: [], ...(cast.slot ? { slot: cast.slot } : {}), ...castToNoEffect(noEffect) };
   }
   if (!applied.length) {
     return { error: `${resolvedMech.name} landed on no valid target.`, retry: true };

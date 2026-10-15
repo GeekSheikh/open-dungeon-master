@@ -36,7 +36,7 @@ import { publishFx, tokenPosition } from "@/lib/dm/fx";
 import { rollEnemySave, settleFailedSave } from "@/lib/dm/forced-save";
 import { charmedBy } from "@/lib/dm/enemy-profile";
 import { spellAuthorsFor } from "@/lib/dm/spell-authors";
-import { spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
+import { castToNoEffect, spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
 import { landSpellDamage } from "@/lib/dm/cast-at-enemy-damage";
 import { spellConditionMeta } from "@/lib/dm/spell-effects";
 // What the spell does beyond damage and condition (src/lib/dm/spell-riders.ts).
@@ -322,7 +322,7 @@ export function handleCastAtEnemy(
   // spell is cast, and spent, and does nothing to it (SRD 5.1).
   const noEffect = ward ?? immune ?? spared ?? magicImmunityNote(enemy, spellName, slotLevel ?? facts?.level ?? 0);
   if (noEffect) {
-    return { ok: true, ...base, noEffect, note: `${noEffect} Narrate exactly this.` };
+    return { ok: true, ...base, ...castToNoEffect(noEffect) };
   }
   const source = { spell: spellName, casterId: sheet.id, slotLevel: slotLevel ?? null };
 
