@@ -249,7 +249,10 @@ export function handleClearEffect(
   }
   const removed = deleteEffectsByName(campaign.id, target, args.name);
   if (!removed) {
-    return { error: `${target.name} is not under "${args.name}".`, retry: true };
+    // The effects they are under, so the call is fixed from them.
+    const held = [...new Set(listEffects(campaign.id, target).map((effect) => effect.name))];
+    const asked = args.name.trim() ? `"${args.name.trim()}"` : "an effect without a name";
+    return { error: `${target.name} is not under ${asked}; ${held.length ? `they are under ${held.join(", ")}` : "they are under no effect"}.`, retry: true };
   }
   publishEffects(campaign.id);
   tableNote(campaign, `${args.name} lifts from ${target.name}.`);
