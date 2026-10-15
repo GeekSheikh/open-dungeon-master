@@ -39,6 +39,8 @@ export default {
     const name = dialog.locator('input[maxlength="80"]');
     await eventually(() => name.evaluate((el) => el === document.activeElement), { label: "focus back on the title" });
     await name.fill(title);
+    // The step's entrance has finished before the picture.
+    await sleep(900);
     await t.shot("essentials");
 
     // A closed group keeps what was typed in it.
@@ -64,6 +66,8 @@ export default {
     await t.tap(eachVoice);
     await eventually(async () => (await eachVoice.getAttribute("aria-pressed")) === "true", { label: "each speaker gets a voice" });
     check(/Character voices/.test(await textOf(experience)), "the casting choice names where voices are changed later");
+    // The step's entrance has finished before the picture.
+    await sleep(900);
     await t.shot("experience");
 
     // A line typed and left at once (the diamond to the review) is kept.
@@ -78,6 +82,8 @@ export default {
     await eventually(async () => /Here is what you made/.test(await textOf(review)), { label: "the review" });
     await eventually(async () => /1 line/.test(await textOf(review.locator(".cc-readback"))), { label: "the review counts the line just typed" });
     check(/each speaker gets a voice/.test(await textOf(review.locator(".cc-readback"))), "the review reads back the casting choice");
+    // The step's entrance has finished before the picture.
+    await sleep(900);
     await t.shot("review");
 
     // Edit from the review, and straight back.
@@ -120,6 +126,8 @@ export default {
     check(/1 line/.test(await textOf(safetySummary)), "the saved line is in the new draft");
     await t.tap(dialog.getByRole("radio", { name: "App defaults" }));
     await eventually(async () => /no lines or veils/.test(await textOf(safetySummary)), { label: "app defaults put the line away" });
+    // The step's entrance has finished before the picture.
+    await sleep(900);
     await t.shot("app-defaults");
 
     await api.delete(`${base}/api/profile/campaign-defaults`);
