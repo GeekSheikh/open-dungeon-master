@@ -251,7 +251,7 @@ function handleEnemyCondition(
     let initialSave: string | null = null;
     if (ctx.turn.actor === "ai" && bindsCreature(wanted)) {
       if (!args.saveAbility || !args.saveDc) {
-        return { error: AI_BIND_REFUSAL(enemy.displayName, wanted), retry: true };
+        return AI_BIND_REFUSAL(enemy.displayName, wanted);
       }
       const save = rollEnemySave(campaign.id, enemy, args.saveAbility, args.saveDc, {
         resist: true,
@@ -348,7 +348,7 @@ function handleEnemyCondition(
   if (ctx.turn.actor === "ai") {
     const kept = removed.find((name) => bindsCreature(canonicalCondition(name)) && instancesOf((enemy.conditionMeta as ConditionMetaMap)[name]).some(engineKept));
     if (kept) {
-      return { error: AI_CLEAR_REFUSAL(enemy.displayName, kept), retry: true };
+      return AI_CLEAR_REFUSAL(enemy.displayName, kept);
     }
   }
   const remaining = enemy.conditions.filter((entry) => !matches(entry));

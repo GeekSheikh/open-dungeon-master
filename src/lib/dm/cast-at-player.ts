@@ -185,8 +185,10 @@ export function handleCastAtPlayer(
   }
   // Blink, Etherealness, Maze took them off the Material Plane (spell-planes.ts).
   const away = args.casterEnemyId ? outOfReach(sheet) : null;
+  // The enemy is the DM's to play: a target it cannot reach is another action
+  // to pick, not a refusal to narrate.
   if (away) {
-    return { ...away, error: `${away.error} Nothing was spent.` };
+    return { error: `${away.error} Nothing was spent.`, retry: true };
   }
 
   // An enemy caster acts through the enemy guard and its own block: its

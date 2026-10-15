@@ -112,7 +112,7 @@ function number(ctx: GateContext, args: Record<string, unknown>, what: "damage" 
     .map((rollId) => getRoll(rollId))
     .find((roll) => roll && kinds.includes(roll.kind) && !roll.applied && roll.total === amount);
   if (!rolled) {
-    return { result: { error: AI_NUMBER_REFUSAL(what), retry: true } };
+    return { result: AI_NUMBER_REFUSAL(what) };
   }
   markRollApplied(rolled.id, targetId || "split");
   return { args: JSON.stringify(args) };
@@ -130,7 +130,7 @@ function bind(ctx: GateContext, args: Record<string, unknown>): GateOutcome {
   const ability = String(args.saveAbility ?? "").slice(0, 3).toLowerCase();
   const dc = Number(args.saveDc);
   if (!SAVE_ABILITIES.has(ability) || !(dc >= 1)) {
-    return { result: { error: AI_BIND_REFUSAL(sheet.name, wanted), retry: true } };
+    return { result: AI_BIND_REFUSAL(sheet.name, wanted) };
   }
   const save = rollCharacterSave(ctx.campaign, ctx.turn, sheet, ability as SaveAbility, dc, `${ability.toUpperCase()} save against being ${wanted}`, wanted);
   if (save.success) {
@@ -150,5 +150,5 @@ function lift(ctx: GateContext, args: Record<string, unknown>, rawArguments: str
   }
   const held = sheet.conditions.find((entry) => canonicalCondition(entry) === wanted);
   const kept = held && instancesOf((sheet.conditionMeta as ConditionMetaMap)[held]).some(engineKept);
-  return kept ? { result: { error: AI_CLEAR_REFUSAL(sheet.name, wanted), retry: true } } : { args: rawArguments };
+  return kept ? { result: AI_CLEAR_REFUSAL(sheet.name, wanted) } : { args: rawArguments };
 }

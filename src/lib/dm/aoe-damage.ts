@@ -162,7 +162,10 @@ export function handleAoeDamage(
     enemyTargets.splice(0, enemyTargets.length, ...enemyTargets.filter((enemy) => !beyondReach.includes(enemy.displayName)));
     pcTargets.splice(0, pcTargets.length, ...pcTargets.filter((sheet) => !beyondReach.includes(sheet.name)));
     if (!enemyTargets.length && !pcTargets.length) {
-      return { error: `${beyondReach.join(", ")} ${beyondReach.length === 1 ? "is" : "are"} out of reach of the Material Plane; the area catches nobody. Nothing was spent; aim it elsewhere.`, refused: "rules" };
+      // A character's spell is the player's to hear about; an enemy's or a
+      // trap's is the DM's own call, to aim elsewhere.
+      const error = `${beyondReach.join(", ")} ${beyondReach.length === 1 ? "is" : "are"} out of reach of the Material Plane; the area catches nobody. Nothing was spent; aim it elsewhere.`;
+      return args.casterId ? { error, refused: "rules" } : { error, retry: true };
     }
   }
   // A Globe of Invulnerability shields the creatures inside it from a spell

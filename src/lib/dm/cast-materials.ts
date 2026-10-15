@@ -193,13 +193,13 @@ export function materialPlan(sheet: Holder, facts: SpellFacts | null, ctx: Mater
     const printed = `${pieces > 1 ? `${pieces} × ` : ""}${component.what.replace(/\.$/, "")}${stated ? "" : ` worth ${component.gp} gp${pieces > 1 ? " each" : ""}`}${component.consumed && !/consum/i.test(component.what) ? ", which the spell consumes" : ""}`;
     if (ctx.inFight) {
       return {
-        error: `${facts.name} needs ${printed}, and ${sheet.name} does not carry it (a line on the sheet that states its worth, like "${name}"). There is no buying one in the middle of a fight. No slot was spent.`,
+        error: `${facts.name} needs ${printed}, and ${sheet.name} does not carry it (a line on the sheet that states its worth, like "${name}"). There is no buying one in the middle of a fight. Nothing was spent.`,
         refused: "rules",
       };
     }
     if (purse < copper) {
       return {
-        error: `${facts.name} needs ${printed}. ${sheet.name} carries none (a line on the sheet that states its worth, like "${name}") and has not the gold to buy it. No slot was spent.`,
+        error: `${facts.name} needs ${printed}. ${sheet.name} carries none (a line on the sheet that states its worth, like "${name}") and has not the gold to buy it. Nothing was spent.`,
         refused: "rules",
       };
     }
@@ -250,5 +250,5 @@ export function focusProblem(sheet: Pick<CharacterSheet, "name" | "class" | "cla
     return null;
   }
   const what = kinds.length ? kinds.map((kind) => (kind === "arcane" ? "an arcane focus" : kind === "holy" ? "a holy symbol" : kind === "druidic" ? "a druidic focus" : kind === "instrument" ? "a musical instrument" : "artisan's tools")).join(" or ") : "a spellcasting focus";
-  return { error: `${facts.name} has a material component${facts.materialText ? ` (${facts.materialText.replace(/\.$/, "")})` : ""}: ${sheet.name} needs a component pouch or ${what} to cast it, and carries neither. Add one to the sheet. No slot was spent.`, refused: "rules" };
+  return { error: `${facts.name} has a material component${facts.materialText ? ` (${facts.materialText.replace(/\.$/, "")})` : ""}: ${sheet.name} needs a component pouch or ${what} to cast it, and carries neither. Add one to the sheet. Nothing was spent.`, refused: "rules" };
 }

@@ -47,7 +47,7 @@ import { resolveRollExpression, resolveSheetRef } from "@/lib/dm/rolls";
 import { rollExtrasFor, spendRollCarriers } from "@/lib/dm/forced-save";
 import type { RollArgs } from "@/lib/dm/rolls";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
-import type { ToolError, ToolResult } from "@/lib/dm/tool-errors";
+import { toolError, type ToolError, type ToolResult } from "@/lib/dm/tool-errors";
 
 // The relationship engine: how each character actually stands with each NPC
 // and AI companion, on one server-owned meter running from open hostility to
@@ -523,10 +523,8 @@ export function handleRomanceAdvance(
   );
   if (!verdict.ok) {
     const next = nextRomanceStage(relationship.romance);
-    // Every reason canAdvanceRomance gives is the story saying no.
     return {
-      error: verdict.reason,
-      refused: "rules",
+      ...toolError(verdict),
       approval: relationship.approval,
       standing: friendshipTier(relationship.approval),
       romance: relationship.romance,

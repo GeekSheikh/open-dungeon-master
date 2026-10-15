@@ -240,6 +240,8 @@ await test("a potion name nobody knows lists what they carry; a potion the rules
   world.say("player", "I drink my potion.", kara);
   expect(await ai(world, "use_item", { characterId: kara.id, item: "Potoin of healing" }), "retry", /They carry: Longsword, Rope/);
   expect(await ai(world, "use_item", { characterId: kara.id, item: "Potion of Healing" }), "rules", /does not carry "Potion of Healing"/);
+  // The SRD's adventuring gear is known with or without a content pack.
+  expect(await ai(world, "remove_item", { characterId: kara.id, name: "Torch", reason: "the test asks" }), "rules", /does not carry "Torch"/);
   expect(await ai(world, "pet_attack", { characterId: kara.id, petName: "Shadow", targetEnemyId: "nobody" }), "retry", /has no bound creature called "Shadow"\. They have none/);
   world.close();
 });

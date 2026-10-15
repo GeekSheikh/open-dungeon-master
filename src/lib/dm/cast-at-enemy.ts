@@ -236,7 +236,7 @@ export function handleCastAtEnemy(
   );
   if (immuneTo && !pool) {
     return {
-      error: `${enemy.displayName} is immune to ${immuneTo} (immunities: ${enemy.stats.conditionImmune}); the spell cannot take hold. The slot was not spent; pick another target or another spell.`,
+      error: `${enemy.displayName} is immune to ${immuneTo} (immunities: ${enemy.stats.conditionImmune}); the spell cannot take hold. Nothing was spent; pick another target or another spell.`,
       refused: "rules",
     };
   }
@@ -246,13 +246,13 @@ export function handleCastAtEnemy(
   // A stat block that names no type is not refused on a guess.
   if (creatureType && mech?.targetTypes?.length && !mech.targetTypes.some((type) => creatureType.includes(type))) {
     return {
-      error: `${spellName} affects only ${mech.targetTypes.join(" or ")} creatures, and ${enemy.displayName} is ${creatureType ? `a ${creatureType}` : "not one"}. The slot was not spent; pick another target or another spell.`,
+      error: `${spellName} affects only ${mech.targetTypes.join(" or ")} creatures, and ${enemy.displayName} is ${creatureType ? `a ${creatureType}` : "not one"}. Nothing was spent; pick another target or another spell.`,
       refused: "rules",
     };
   }
   if (creatureType && mech?.immuneTypes?.some((type) => creatureType.includes(type))) {
     return {
-      error: `${spellName} has no effect on ${creatureType} creatures, and ${enemy.displayName} is one. The slot was not spent; pick another target or another spell.`,
+      error: `${spellName} has no effect on ${creatureType} creatures, and ${enemy.displayName} is one. Nothing was spent; pick another target or another spell.`,
       refused: "rules",
     };
   }

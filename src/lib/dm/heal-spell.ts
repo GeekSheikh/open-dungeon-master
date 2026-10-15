@@ -132,7 +132,7 @@ export function castHealingSpell(
   const readable = Boolean(mech?.healing || mech?.healPool || dice);
   if (!readable && !(input.amount && input.amount > 0)) {
     return {
-      error: `${name} is not a healing spell the server can roll, so nothing was cast and no slot was spent. Cast it with its own tool, or send heal with an amount for healing that is not a spell.`,
+      error: `${name} is not a healing spell the server can roll, so it was not cast. Nothing was spent. Cast it with its own tool, or send heal with an amount for healing that is not a spell.`,
       retry: true,
     };
   }
@@ -269,7 +269,7 @@ function revive(
   const since = minutesSinceDeath(campaign.id, target.id);
   if (since !== null && since > rule.withinMinutes) {
     return {
-      error: `${target.name} died ${describeMinutes(since)} ago, longer than ${name} reaches back (${describeMinutes(rule.withinMinutes)}). The spell would fail, so nothing was cast and nothing was spent.`,
+      error: `${target.name} died ${describeMinutes(since)} ago, longer than ${name} reaches back (${describeMinutes(rule.withinMinutes)}). The spell would fail, so it was not cast. Nothing was spent.`,
       refused: "rules",
     };
   }

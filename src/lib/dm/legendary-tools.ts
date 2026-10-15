@@ -292,7 +292,7 @@ export function handleLegendaryResist(campaign: Campaign, rawArguments: string):
   const failed = encounter.legendary.failedSave;
   if (!failed || failed.enemyId !== enemy.id || failed.round !== encounter.round || failed.resisted) {
     return {
-      error: `${enemy.displayName} has no failed save to turn into a success this round. Legendary Resistance answers a save the server just rolled and the creature failed; nothing was spent.`,
+      error: `${enemy.displayName} has no failed save to turn into a success this round. Legendary Resistance answers a save the server just rolled and the creature failed. Nothing was spent.`,
       retry: true,
     };
   }

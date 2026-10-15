@@ -18,8 +18,11 @@ export const OPEN_HAND_REELING = "no reactions (open hand)";
 
 // The refusal for an Open Hand rider on an attack that is not one of Flurry
 // of Blows' strikes.
-export const OPEN_HAND_NOT_FLURRY =
-  'Open Hand Technique rides a hit of Flurry of Blows, and this attack is not one of its strikes. Spend the ki with use_resource Ki variant "flurry of blows" after the Attack action, then make the unarmed strikes with openHand.';
+export const OPEN_HAND_NOT_FLURRY: ToolError = {
+  error:
+    'Open Hand Technique rides a hit of Flurry of Blows, and this attack is not one of its strikes. Spend the ki with use_resource Ki variant "flurry of blows" after the Attack action, then make the unarmed strikes with openHand.',
+  retry: true,
+};
 
 export function hasOpenHandTechnique(sheet: CharacterSheet): boolean {
   return (

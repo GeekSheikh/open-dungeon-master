@@ -194,7 +194,7 @@ export function planAoeSpell(
     const reachTiles = Math.floor((facts.range.feet + mech.areaFeet) / FEET_PER_TILE);
     if (apart !== null && apart > reachTiles) {
       return {
-        error: `${target.name} is ${apart * FEET_PER_TILE} ft from ${caster.name}: ${name} reaches ${facts.range.feet} ft and its area ${mech.areaFeet} ft more, so it cannot catch them. Leave them out or move closer. No slot was spent.`,
+        error: `${target.name} is ${apart * FEET_PER_TILE} ft from ${caster.name}: ${name} reaches ${facts.range.feet} ft and its area ${mech.areaFeet} ft more, so it cannot catch them. Leave them out or move closer. Nothing was spent.`,
         retry: true,
       };
     }

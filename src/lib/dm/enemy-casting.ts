@@ -238,8 +238,10 @@ export function prepareEnemyUse(campaign: Campaign, input: Input): EnemyUse | To
   }
   // Feeblemind, Maze, Fear's flight stop a creature's spells (spell-planes.ts).
   const unable = input.spell ? (castingHold({ name: enemy.displayName, conditions: enemy.conditions }) ?? antimagicProblem(campaign.id, enemy.id, enemy.displayName)) : null;
+  // The enemy is the DM's to play: what it cannot do is another action to
+  // pick, not a refusal to narrate.
   if (unable) {
-    return unable;
+    return { error: unable.error, retry: true };
   }
   if (use.save && input.sent.save && use.save !== input.sent.save) {
     use.corrections.push(`${use.name} forces a ${use.save.toUpperCase()} save; the server rolled that one.`);

@@ -75,5 +75,5 @@ export function characterCallUnasked(
   if (typeof ref !== "string" || !sheet || !resolveSheetRef(ref, [sheet], new Map([[sheet.id, sheet]]))) {
     return null;
   }
-  return { error: `${sheet.name} has not acted: their player hasn't declared an action this turn, and nothing was spent. Don't narrate an attempt; wait for them to say what ${sheet.name} does, or narrate the moment and stop.`, retry: true };
+  return { error: `${sheet.name} has not acted: their player hasn't declared an action this turn. Nothing was spent. Don't narrate an attempt; wait for them to say what ${sheet.name} does, or narrate the moment and stop.`, retry: true };
 }

@@ -168,7 +168,7 @@ export function spendAttackEconomy(input: {
 
   // Open Hand Technique rides a Flurry of Blows strike only.
   if (args.openHand && !flurryStrike) {
-    return { refused: { error: OPEN_HAND_NOT_FLURRY, retry: true } };
+    return { refused: OPEN_HAND_NOT_FLURRY };
   }
   return { budget, spendNote, notes };
 }

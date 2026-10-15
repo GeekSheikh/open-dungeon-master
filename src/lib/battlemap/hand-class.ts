@@ -138,7 +138,7 @@ export function attackOptionsFor(
     const spend = spendAttack(budgetOf(turn, sheet, swing.allowed), sheet.name, { unarmed: true });
     const flurry = spend.ok && (spend.budget.flurryStrikes ?? 0) < before;
     for (const option of OPEN_HAND_OPTIONS) {
-      options.push({ ...option, group: "openHand", disabled: flurry ? null : OPEN_HAND_NOT_FLURRY });
+      options.push({ ...option, group: "openHand", disabled: flurry ? null : OPEN_HAND_NOT_FLURRY.error });
     }
   }
   if (holds(sheet, "reckless attack") && melee) {
