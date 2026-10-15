@@ -122,6 +122,10 @@ export type McpToolDefinition = {
 export type HarnessEvent =
   | { type: "ready"; tools: string[] }
   | { type: "delta"; text: string }
+  // The program began a tool call, ODM's or one of its own: what it wrote
+  // before was not the narration (src/lib/harness/bridge.ts keeps it only as
+  // a draft, for a turn that writes nothing after).
+  | { type: "tool_round" }
   | { type: "turn_end"; text: string; usage?: HarnessUsage }
   | { type: "image"; bytes: Buffer; mime: string }
   | { type: "rate_limit"; utilization: number; resetsAt?: number; window?: string }
