@@ -3,7 +3,7 @@
 // is spent, and spawns what it answers.
 
 import { findSummonForm, summonFormsOf, type SummonForm } from "@/lib/srd/summon-forms";
-import { formList } from "@/lib/srd/beast-forms";
+import { formatCr, formList } from "@/lib/srd/beast-forms";
 import type { ToolError } from "@/lib/dm/tool-errors";
 
 const HOUR = 600;
@@ -178,7 +178,6 @@ export function summonSpellFor(spell: string): SummonSpell | null {
   return SUMMON_SPELLS.find((entry) => key(entry.name) === wanted) ?? null;
 }
 
-const crLabel = (cr: number) => (cr === 0.125 ? "1/8" : cr === 0.25 ? "1/4" : cr === 0.5 ? "1/2" : String(cr));
 
 export type SummonPlan = { form: SummonForm; count: number; spell: SummonSpell };
 
@@ -233,14 +232,14 @@ export function summonPlan(
   if (spell.byCr) {
     const tier = [...spell.byCr].reverse().find(([cr]) => form.cr <= cr);
     if (!tier) {
-      return { error: `${spell.name} calls creatures of challenge rating ${crLabel(spell.byCr[0][0])} or lower; a ${form.name} is CR ${crLabel(form.cr)}. Nothing was spent.`, retry: true };
+      return { error: `${spell.name} calls creatures of challenge rating ${formatCr(spell.byCr[0][0])} or lower; a ${form.name} is CR ${formatCr(form.cr)}. Nothing was spent.`, retry: true };
     }
     const factor = [...(spell.multiplier ?? [])].reverse().find(([slot]) => slotLevel >= slot)?.[1] ?? 1;
     most = tier[1] * factor;
   } else if (spell.maxCr !== undefined) {
     const ceiling = crCeiling(spell, slotLevel) ?? spell.maxCr;
     if (form.cr > ceiling) {
-      return { error: `${spell.name} from a level ${slotLevel} slot calls a creature of challenge rating ${crLabel(ceiling)} or lower; a ${form.name} is CR ${crLabel(form.cr)}. Nothing was spent.`, retry: true };
+      return { error: `${spell.name} from a level ${slotLevel} slot calls a creature of challenge rating ${formatCr(ceiling)} or lower; a ${form.name} is CR ${formatCr(form.cr)}. Nothing was spent.`, retry: true };
     }
   } else if (spell.countByForm) {
     most = spell.countByForm[form.name] ?? 1;
