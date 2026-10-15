@@ -20,6 +20,7 @@ import { publishEncounter } from "@/lib/dm/enemy-damage";
 import { applyDmMutation } from "@/lib/dm/mutations";
 import { GRAPPLING_STRIKE, MANEUVERED, maneuverDieFor, maneuverUse, offSwingRefusal, type ManeuverUse } from "@/lib/dm/maneuver-rules";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 export { superiorityDie, maneuverDieFor } from "@/lib/dm/maneuver-rules";
 
@@ -38,12 +39,12 @@ export function pickManeuver(
   sheet: CharacterSheet,
   asked: string | undefined,
   weaponAttack: boolean,
-): { refused: string } | { maneuver: ManeuverPick | null } {
+): { refused: ToolError } | { maneuver: ManeuverPick | null } {
   if (!asked?.trim()) {
     return { maneuver: null };
   }
   if (!weaponAttack) {
-    return { refused: "Maneuvers ride weapon attacks, not spells." };
+    return { refused: { error: "Maneuvers ride weapon attacks, not spells.", retry: true } };
   }
   const term = asked.trim().toLowerCase();
   const picks = sheet.features
@@ -55,9 +56,9 @@ export function pickManeuver(
   });
   if (!known) {
     return {
-      refused: `${sheet.name} knows no maneuver "${asked}".${
+      refused: { error: `${sheet.name} knows no maneuver "${asked}".${
         picks.length ? ` Their maneuvers: ${picks.join(", ")}.` : " They have no maneuver picks."
-      }`,
+      }`, retry: true },
     };
   }
   // A reaction, a bonus action of its own or a check is not part of a swing.
@@ -69,9 +70,9 @@ export function pickManeuver(
   if (pool === null || pool.left < 1) {
     return {
       refused:
-        pool === null
+        { error: pool === null
           ? `${sheet.name} has no Superiority Dice.`
-          : `${sheet.name} has 0/${pool.max} Superiority Dice left; ${asked.trim()} is not available until they rest. They can make the attack without it.`,
+          : `${sheet.name} has 0/${pool.max} Superiority Dice left; ${asked.trim()} is not available until they rest. They can make the attack without it.`, retry: true },
     };
   }
   return {
@@ -276,7 +277,7 @@ export function stunningStrikeSave(
   }
   const barred = riderBarred(fresh, "stunned", null);
   if (barred) {
-    return `Stunning Strike: ${barred} The ki is spent.`;
+    return `Stunning Strike: ${barred.error} The ki is spent.`;
   }
   // A stun is what a legendary creature keeps its resistances for.
   const save = rollEnemySave(campaign.id, fresh, "con", dc, { resist: true });
@@ -316,12 +317,12 @@ export function riderBarred(
   enemy: EncounterEnemy,
   condition: string,
   maxSize: string | null,
-): string | null {
+): ToolError | null {
   if (enemy.stats.conditionImmune.toLowerCase().includes(condition)) {
-    return `${enemy.displayName} is immune to being ${condition}.`;
+    return { error: `${enemy.displayName} is immune to being ${condition}.`, retry: true };
   }
   if (maxSize && sizeRank(enemy.stats.size) > sizeRank(maxSize)) {
-    return `${enemy.displayName} is ${enemy.stats.size}, too large to be knocked ${condition} this way (${maxSize} or smaller).`;
+    return { error: `${enemy.displayName} is ${enemy.stats.size}, too large to be knocked ${condition} this way (${maxSize} or smaller).`, retry: true };
   }
   return null;
 }
@@ -335,7 +336,7 @@ export function applyRiderCondition(
 ): { applied: true } | { applied: false; reason: string } {
   const barred = riderBarred(enemy, condition, options.maxSize ?? null);
   if (barred) {
-    return { applied: false, reason: barred };
+    return { applied: false, reason: barred.error };
   }
   if (!enemy.conditions.includes(condition)) {
     patchEnemyConditions(enemy.id, [...enemy.conditions, condition], {

@@ -15,6 +15,7 @@ import type { PcAttackArgs } from "@/lib/dm/pc-attack";
 import type { AttackPlan } from "@/lib/dm/pc-attack-plan";
 import type { AttackKind } from "@/lib/dm/pc-attack-profile";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import { toolError, type ToolError } from "@/lib/dm/tool-errors";
 
 // A spell named here is a cast, whatever form the caster wears: it goes
 // through the one guard (src/lib/dm/cast-guard.ts) as a dry run now, so
@@ -31,7 +32,7 @@ export function checkAttackSpell(input: {
   sheets: CharacterSheet[];
   sheetsById: Map<string, CharacterSheet>;
 }):
-  | { refused: Record<string, unknown> }
+  | { refused: ToolError }
   | { castsSpell: boolean; spellSlotLevel: number | null; profile: AttackProfile } {
   const { campaign, turn, sheet, args, kind, sheets, sheetsById } = input;
   let profile = input.profile;
@@ -52,8 +53,8 @@ export function checkAttackSpell(input: {
       sheets,
       sheetsById,
     ).result;
-    if ("error" in check) {
-      return { refused: check };
+    if (typeof check.error === "string") {
+      return { refused: toolError(check) };
     }
     spellSlotLevel = typeof check.slotLevel === "number" ? check.slotLevel : null;
     // Limited Magic Immunity (the rakshasa): a spell of its level or lower
@@ -62,7 +63,7 @@ export function checkAttackSpell(input: {
     const target = live && args.targetEnemyId ? resolveEnemyRef(live.id, args.targetEnemyId) : null;
     const shrugged = target ? magicImmunityProblem(target, args.spell ?? "the spell", spellSlotLevel ?? 0) : null;
     if (shrugged) {
-      return { refused: { error: shrugged } };
+      return { refused: shrugged };
     }
   }
   if (kind === "spell") {

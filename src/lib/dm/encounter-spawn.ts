@@ -23,6 +23,7 @@ import { publishBattleMapUpdate } from "@/lib/dm/map-tools";
 import type { SettingRef } from "@/lib/worlds/preset";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { dmRoll } from "@/lib/dm/roll-card";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 // Enemy spawning shared by start_encounter and the mid-combat add_enemies
 // tool, so reinforcements and summons are real server-tracked combatants
@@ -166,28 +167,30 @@ export function handleAddEnemies(
   campaign: Campaign,
   rawArguments: string,
   sheets: CharacterSheet[],
-): Record<string, unknown> {
+): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter; use start_encounter to begin a fight." };
+    return { error: "No active encounter; use start_encounter to begin a fight.", retry: true };
   }
   const args = parseAddArgs(rawArguments);
   if (!args) {
     return {
       error: 'Invalid add_enemies arguments. Send {"enemies":[{"monster":"goblin","count":2}]}.',
+      retry: true,
     };
   }
   const outcome = resolveEnemyRequests(campaign.gameSettings, args.enemies, spellAuthorsFor(campaign), campaign.id);
   if ("unknownMonster" in outcome) {
     return {
       error: `Unknown monster "${outcome.unknownMonster}". Use a real monster slug or name, or pass cr for an invented enemy.`,
+      retry: true,
     };
   }
 
   const existing = listEnemies(encounter.id);
   const alive = existing.filter((enemy) => enemy.status === "alive");
   if (alive.length + outcome.resolved.length > 8) {
-    return { error: "Too many combatants: keep the fight to 8 living enemies or fewer." };
+    return { error: "Too many combatants: keep the fight to 8 living enemies or fewer.", retry: true };
   }
   // Budget check over the whole living opposition, reinforcements included.
   const partyLevels = sheets.map((sheet) => sheet.level);
@@ -199,6 +202,7 @@ export function handleAddEnemies(
   if (evaluation.adjustedXp > ceiling) {
     return {
       error: `Too deadly: with these reinforcements the adjusted XP is ${evaluation.adjustedXp} vs an allowed ceiling of ${ceiling}. Add fewer or weaker enemies.`,
+      retry: true,
     };
   }
 

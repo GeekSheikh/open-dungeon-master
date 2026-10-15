@@ -34,6 +34,7 @@ import type { SaveAbilityId } from "@/lib/srd/condition-effects";
 import { castRedirect } from "@/lib/dm/cast-redirect";
 import { overchannelProblem, payOverchannel, sculptedIds } from "@/lib/dm/caster-features";
 import { maximumOf } from "@/lib/dm/heal-spell";
+import { toolError, type ToolError } from "@/lib/dm/tool-errors";
 
 const FEET_PER_TILE = 5;
 
@@ -90,16 +91,17 @@ export function planAoeSpell(
     at?: { x: number; y: number };
     toward?: { x: number; y: number };
   },
-): AoeSpellPlan | { error: string } {
+): AoeSpellPlan | ToolError {
   if (!input.casterId) {
     return {
       error: `aoe_damage names ${input.spell} but no caster. A player's spell needs casterId (the server spends the slot and uses the spell's own numbers); an enemy's needs casterEnemyId; a trap or a breath weapon names no spell.`,
+      retry: true,
     };
   }
   const stale = resolveSheetRef(input.casterId, sheets, sheetsById);
   const caster = stale ? (getSheetById(stale.id) ?? stale) : null;
   if (!caster) {
-    return { error: `casterId "${input.casterId}" is not a character in GAME STATE; nothing was cast.` };
+    return { error: `casterId "${input.casterId}" is not a character in GAME STATE; nothing was cast.`, retry: true };
   }
   const authors = spellAuthorsFor(campaign);
   const resolved = spellMechanicsFor({ spell: input.spell, userIds: authors });
@@ -110,21 +112,21 @@ export function planAoeSpell(
   // A spell that summons, heals or grants a buff has no area to save in
   // (Animate Objects makes creatures; it is no blast of damage).
   if (mech && mech.resolution !== "save" && mech.resolution !== "auto") {
-    return { error: `${castRedirect(resolved, "save") ?? `${name} is not resolved with aoe_damage.`} Nothing was spent.` };
+    return { error: `${castRedirect(resolved, "save")?.error ?? `${name} is not resolved with aoe_damage.`} Nothing was spent.`, retry: true };
   }
   // The save and the DC come from the spell and the caster's sheet; only a
   // spell the server has no row for needs the caller's, refused before any
   // slot is spent when they are missing.
   if (mech?.resolution !== "auto" && !mech?.save && !input.saveAbility) {
-    return { error: `The server does not know which save ${name} forces; send saveAbility (and dc) with it. Nothing was spent.` };
+    return { error: `The server does not know which save ${name} forces; send saveAbility (and dc) with it. Nothing was spent.`, retry: true };
   }
   if (mech?.resolution !== "auto" && !input.dc && !spellSaveDcFor(caster, input.spell)) {
-    return { error: `${caster.name} has no spell save DC on their sheet for ${name}; send dc with it. Nothing was spent.` };
+    return { error: `${caster.name} has no spell save DC on their sheet for ${name}; send dc with it. Nothing was spent.`, retry: true };
   }
   if (input.overchannel) {
     const problem = overchannelProblem(caster, facts, !mech?.noDamage);
     if (problem) {
-      return { error: `${problem} Nothing was spent.` };
+      return { ...problem, error: `${problem.error} Nothing was spent.` };
     }
   }
 
@@ -139,6 +141,7 @@ export function planAoeSpell(
     if (caught > most) {
       return {
         error: `${name} from a level ${input.level ?? spellLevel} slot affects at most ${most} creatures; ${caught} were named. Name ${most} or fewer. Nothing was spent.`,
+        retry: true,
       };
     }
   }
@@ -151,6 +154,7 @@ export function planAoeSpell(
     if (apart !== null && apart > Math.floor(cluster / FEET_PER_TILE)) {
       return {
         error: `${name}'s two targets must stand within ${cluster} feet of each other; these are ${apart * FEET_PER_TILE} feet apart. Name one of them. Nothing was spent.`,
+        retry: true,
       };
     }
   }
@@ -172,7 +176,7 @@ export function planAoeSpell(
         facts,
       });
       if (reach) {
-        return { error: reach };
+        return reach;
       }
       continue;
     }
@@ -184,6 +188,7 @@ export function planAoeSpell(
     if (apart !== null && apart > reachTiles) {
       return {
         error: `${target.name} is ${apart * FEET_PER_TILE} ft from ${caster.name}: ${name} reaches ${facts.range.feet} ft and its area ${mech.areaFeet} ft more, so it cannot catch them. Leave them out or move closer. No slot was spent.`,
+        retry: true,
       };
     }
   }
@@ -204,7 +209,7 @@ export function planAoeSpell(
       ...(input.toward ? { toward: input.toward } : {}),
     });
     if (problem) {
-      return { error: problem };
+      return problem;
     }
   }
 
@@ -223,8 +228,8 @@ export function planAoeSpell(
     sheets,
     sheetsById,
   ).result;
-  if ("error" in cast) {
-    return { error: String(cast.error) };
+  if (typeof cast.error === "string") {
+    return toolError(cast);
   }
   const slotLevel = typeof cast.slotLevel === "number" ? cast.slotLevel : null;
   const corrections: string[] = [];

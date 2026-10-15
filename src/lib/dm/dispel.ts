@@ -24,6 +24,7 @@ import { spellReachProblem } from "@/lib/dm/cast-reach";
 import { spellAuthorsFor } from "@/lib/dm/spell-authors";
 import { publishEncounter } from "@/lib/dm/enemy-damage";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 const SRD_CONDITIONS = new Set([
   "blinded", "charmed", "deafened", "frightened", "grappled", "incapacitated",
@@ -108,7 +109,7 @@ export function handleDispelMagic(
     endSpell?: string;
     reason?: string;
   },
-): Record<string, unknown> {
+): ToolResult {
   const { caster } = input;
   const enemy = input.target.kind === "enemy" ? getEnemy(input.target.id) : null;
   const ally = input.target.kind === "sheet" ? getSheetById(input.target.id) : null;
@@ -118,17 +119,12 @@ export function handleDispelMagic(
       ? { name: ally.name, conditions: ally.conditions, meta: ally.conditionMeta as ConditionMetaMap }
       : null;
   if (!holder) {
-    return { error: "Unknown target for Dispel Magic; use an id from GAME STATE." };
+    return { error: "Unknown target for Dispel Magic; use an id from GAME STATE.", retry: true };
   }
   const wanted = input.endSpell ? spellKey(input.endSpell) : null;
   const held = spellsOn(holder.conditions, holder.meta).filter(
     (entry) => !wanted || spellKey(entry.spell) === wanted,
   );
-  if (!held.length) {
-    return {
-      error: `${holder.name} holds no spell the server tracks${input.endSpell ? ` named ${input.endSpell}` : ""}, so ${input.spell} would end nothing. The slot was not spent.`,
-    };
-  }
   const authors = spellAuthorsFor(campaign);
   const encounter = getActiveEncounter(campaign.id);
   if (encounter) {
@@ -141,7 +137,7 @@ export function handleDispelMagic(
       facts: spellFactsFor(input.spell, authors),
     });
     if (reach) {
-      return { error: reach };
+      return reach;
     }
   }
   const cast = applyDmMutation(
@@ -220,5 +216,12 @@ export function handleDispelMagic(
     dispelled: lines,
     ...(ended.length ? { ended } : {}),
     ...(kept.length ? { stillHeld: kept } : {}),
+    // A target with no spell on it is still one the spell can be cast on:
+    // the slot is spent and nothing ends.
+    ...(held.length
+      ? {}
+      : {
+          note: `${holder.name} holds no spell the server tracks${input.endSpell ? ` named ${input.endSpell}` : ""}: ${input.spell} is cast and nothing ended. Narrate exactly this.`,
+        }),
   };
 }

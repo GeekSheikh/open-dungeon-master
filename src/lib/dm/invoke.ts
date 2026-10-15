@@ -24,13 +24,14 @@ import { dispatchAdjudication } from "@/lib/dm/invoke-dispatch";
 import { askForInitiative, describeInitiativeAsk } from "@/lib/dm/initiative-ask";
 import { listPendingPlayerWhispers, markPlayerWhispersAnswered } from "@/lib/db/dm-whispers";
 import { publishEphemeral } from "@/lib/events";
-import { ENCOUNTER_CAP_PER_TURN, ENCOUNTER_TOOL_NAMES, handOnEnemyTurns, settleTurn, turnHolder } from "@/lib/dm/encounter-tools";
+import { ENCOUNTER_CAP_PER_TURN, ENCOUNTER_CAP_REFUSAL, ENCOUNTER_TOOL_NAMES, handOnEnemyTurns, settleTurn, turnHolder } from "@/lib/dm/encounter-tools";
 import { personRunsTable } from "@/lib/dm/enemies-due";
-import { MUTATION_CAP_PER_TURN, MUTATION_TOOL_NAMES } from "@/lib/dm/mutations";
+import { MUTATION_CAP_PER_TURN, MUTATION_CAP_REFUSAL, MUTATION_TOOL_NAMES } from "@/lib/dm/mutations";
 // "goblin x4" is the same shorthand a prepared encounter is saved in, so the
 // live form and the saved roster share one parser.
 import { parseRoster } from "@/lib/dm/encounter-template-logic";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import { toolError, type ToolResult } from "@/lib/dm/tool-errors";
 
 export type Actor =
   | { kind: "ai"; turnId: string }
@@ -40,7 +41,10 @@ export type Adjudication = { name: string; args: Record<string, unknown> };
 
 export type InvokeOutcome =
   | { ok: true; result: Record<string, unknown>; turnId: string }
-  | { ok: false; error: string };
+  // The kind rides along for the server's own readers; the console and the
+  // agents get the sentence alone (the dm/invoke route, odm_dm_invoke). A
+  // handler that threw has none.
+  | { ok: false; error: string; retry?: true; refused?: "rules" | "limit" };
 
 // Arguments a form produces are not quite arguments a tool call produces.
 // A person types "goblin x3" where the model sends an array, and a comma
@@ -231,18 +235,18 @@ export async function invokeEngine(
 ): Promise<InvokeOutcome> {
   const entry = adjudication(call.name);
   if (!entry) {
-    return { ok: false, error: `Unknown action "${call.name}".` };
+    return { ok: false, error: `Unknown action "${call.name}".`, retry: true };
   }
   const args = normalizeArgs(entry, call.args ?? {});
   const complaint = checkArgs(entry, args);
   if (complaint) {
-    return { ok: false, error: complaint };
+    return { ok: false, error: complaint, retry: true };
   }
 
   const turn =
     actor.kind === "ai" ? getDmTurn(actor.turnId) : humanTurnFor(campaign.id);
   if (!turn) {
-    return { ok: false, error: "That DM turn no longer exists." };
+    return { ok: false, error: "That DM turn no longer exists.", retry: true };
   }
 
   // The rails on the model, for the model only.
@@ -255,16 +259,16 @@ export async function invokeEngine(
           ? ("mutationCount" as const)
           : null;
   if (counted === "encounterCount" && turn.encounterCount >= ENCOUNTER_CAP_PER_TURN) {
-    return { ok: false, error: "Encounter action limit reached for this turn." };
+    return { ok: false, ...ENCOUNTER_CAP_REFUSAL };
   }
   if (counted === "mutationCount" && turn.mutationCount >= MUTATION_CAP_PER_TURN) {
-    return { ok: false, error: "Mutation limit reached for this turn." };
+    return { ok: false, ...MUTATION_CAP_REFUSAL };
   }
 
   const sheets: CharacterSheet[] = listSheets(campaign.id);
   const sheetsById = new Map(sheets.map((sheet) => [sheet.id, sheet]));
 
-  let result: Record<string, unknown>;
+  let result: ToolResult;
   const holder = turnHolder(campaign.id);
   try {
     result = await dispatchAdjudication(entry.name, JSON.stringify(args), {
@@ -332,7 +336,7 @@ export async function invokeEngine(
   saveDmTurn(turn);
 
   if (typeof result.error === "string") {
-    return { ok: false, error: result.error };
+    return { ok: false, ...toolError(result) };
   }
   return { ok: true, result, turnId: turn.id };
 }
@@ -394,7 +398,7 @@ export async function invokeEngineById(
 ): Promise<InvokeOutcome> {
   const campaign = getCampaignById(campaignId);
   if (!campaign) {
-    return { ok: false, error: "Campaign not found." };
+    return { ok: false, error: "Campaign not found.", retry: true };
   }
   return invokeEngine(campaign, actor, call);
 }

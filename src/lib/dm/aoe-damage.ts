@@ -42,6 +42,7 @@ import { globeProblemFor } from "@/lib/dm/zone-rules";
 import { partsTaken, partsTotal, splitDamageExpression, type DamagePart } from "@/lib/dm/aoe-parts";
 import { castingHold, outOfReach } from "@/lib/dm/spell-planes";
 import { castPrismaticSpray, isPrismaticSpray } from "@/lib/dm/prismatic";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 export { aoeDamageTool } from "@/lib/dm/aoe-damage-tool";
 const aoeArgsSchema = z.object({
@@ -75,10 +76,10 @@ export function handleAoeDamage(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter." };
+    return { error: "No active encounter.", retry: true };
   }
   let args: z.infer<typeof aoeArgsSchema>;
   try {
@@ -86,6 +87,7 @@ export function handleAoeDamage(
   } catch {
     return {
       error: "Invalid arguments: aoe_damage needs targets, and saveAbility and dc unless a caster's spell or an enemy's ability sets them.",
+      retry: true,
     };
   }
   // A trap or a collapsing ceiling names no spell and no caster: its save
@@ -93,6 +95,7 @@ export function handleAoeDamage(
   if (!args.spell && !args.casterEnemyId && (!args.saveAbility || !args.dc)) {
     return {
       error: "aoe_damage needs saveAbility and dc for an effect that names no spell; a player's spell (casterId and spell) or an enemy's (casterEnemyId) brings its own.",
+      retry: true,
     };
   }
 
@@ -140,7 +143,7 @@ export function handleAoeDamage(
     pcTargets.splice(0, pcTargets.length, ...pcTargets.filter((sheet) => !sheet.deathSaves?.dead));
     // A spell that lays its area (a Web over the fallen) is still cast.
     if (!enemyTargets.length && !pcTargets.length && !(args.spell && zoneRowFor(engineSpell))) {
-      return { error: `${skippedDead.join(", ")} ${skippedDead.length === 1 ? "is" : "are"} dead; the area catches nobody it can harm. Nothing was spent.` };
+      return { error: `${skippedDead.join(", ")} ${skippedDead.length === 1 ? "is" : "are"} dead; the area catches nobody it can harm. Nothing was spent.`, retry: true };
     }
   }
   // A creature Blink, Etherealness, Maze or a Resilient Sphere took away is
@@ -149,7 +152,7 @@ export function handleAoeDamage(
   const awayCaster = args.casterId ? resolveSheetRef(args.casterId, sheets, sheetsById) : null;
   const casterAway = awayCaster ? castingHold(awayCaster) : null;
   if (casterAway) {
-    return { error: casterAway };
+    return casterAway;
   }
   const beyondReach = [
     ...enemyTargets.filter((enemy) => outOfReach({ name: enemy.displayName, conditions: enemy.conditions })).map((enemy) => enemy.displayName),
@@ -159,7 +162,7 @@ export function handleAoeDamage(
     enemyTargets.splice(0, enemyTargets.length, ...enemyTargets.filter((enemy) => !beyondReach.includes(enemy.displayName)));
     pcTargets.splice(0, pcTargets.length, ...pcTargets.filter((sheet) => !beyondReach.includes(sheet.name)));
     if (!enemyTargets.length && !pcTargets.length) {
-      return { error: `${beyondReach.join(", ")} ${beyondReach.length === 1 ? "is" : "are"} out of reach of the Material Plane; the area catches nobody. Nothing was spent.` };
+      return { error: `${beyondReach.join(", ")} ${beyondReach.length === 1 ? "is" : "are"} out of reach of the Material Plane; the area catches nobody. Nothing was spent.`, refused: "rules" };
     }
   }
   // A Globe of Invulnerability shields the creatures inside it from a spell
@@ -171,8 +174,9 @@ export function handleAoeDamage(
     const caster = args.casterEnemyId ? resolveEnemyRef(encounter.id, args.casterEnemyId)?.id : resolveSheetRef(args.casterId ?? "", sheets, sheetsById)?.id;
     const guard = (id: string, name: string) => (caster ? globeProblemFor(encounter.id, caster, id, name, args.spell, args.level) : null);
     const blocked = [...enemyTargets.filter((enemy) => guard(enemy.id, enemy.displayName)), ...pcTargets.filter((sheet) => guard(sheet.id, sheet.name))];
-    if (blocked.length && blocked.length === enemyTargets.length + pcTargets.length) {
-      return { error: guard(blocked[0].id, "displayName" in blocked[0] ? blocked[0].displayName : blocked[0].name) ?? "" };
+    const refusal = blocked.length === enemyTargets.length + pcTargets.length && blocked[0] ? guard(blocked[0].id, "displayName" in blocked[0] ? blocked[0].displayName : blocked[0].name) : null;
+    if (refusal) {
+      return refusal;
     }
     for (const entry of blocked) {
       shielded.push("displayName" in entry ? entry.displayName : entry.name);
@@ -187,6 +191,7 @@ export function handleAoeDamage(
     return {
       error:
         "aoe_damage needs at least one valid target: enemyIds and/or characterIds from GAME STATE.",
+      retry: true,
     };
   }
 
@@ -196,7 +201,7 @@ export function handleAoeDamage(
     ? enemyTargets.find((enemy) => charmedBy(charmedCaster.conditions, charmedCaster.conditionMeta, enemy.id))
     : null;
   if (charmedCaster && charmer) {
-    return { error: `${charmedCaster.name} is charmed by ${charmer.displayName} and cannot catch it in harmful magic. Nothing was spent; leave it out of the area.` };
+    return { error: `${charmedCaster.name} is charmed by ${charmer.displayName} and cannot catch it in harmful magic. Nothing was spent; leave it out of the area.`, refused: "rules" };
   }
   // A named player spell is cast and paid for, and its own numbers apply
   // (src/lib/dm/aoe-spell.ts): the slot, the save, the DC, the dice, the
@@ -273,10 +278,10 @@ export function handleAoeDamage(
     args.dc = prepared.dc ?? args.dc;
     corrections.push(...prepared.corrections);
     if ((!args.saveAbility || !args.dc) && (enemyTargets.length || pcTargets.length)) {
-      return { error: `${prepared.enemy.displayName}'s block gives ${prepared.name} no save and DC; send saveAbility and dc with it. Nothing was spent.` };
+      return { error: `${prepared.enemy.displayName}'s block gives ${prepared.name} no save and DC; send saveAbility and dc with it. Nothing was spent.`, retry: true };
     }
     if (args.damage === undefined && !prepared.condition && !zoneRowFor(prepared.name)) {
-      return { error: `${prepared.name} forces no save with damage or a condition on ${prepared.enemy.displayName}'s block; narrate what it does, or use its attacks.` };
+      return { error: `${prepared.name} forces no save with damage or a condition on ${prepared.enemy.displayName}'s block; narrate what it does, or use its attacks.`, retry: true };
     }
     // One breath, one cone: everyone caught fits one placement of the shape
     // the block prints (src/lib/dm/aoe-shape.ts).
@@ -293,7 +298,7 @@ export function handleAoeDamage(
         ...zonePlacement(args),
       });
       if (problem) {
-        return { error: problem };
+        return problem;
       }
     }
     prepared.commit();
@@ -305,7 +310,7 @@ export function handleAoeDamage(
     return aoePool(campaign, encounter.id, plan, enemyTargets, corrections);
   }
   if (args.damage === undefined && !plan?.conditions.length && !plan?.mech?.riders && !enemyUse?.condition && !areaOnly) {
-    return { error: "aoe_damage needs damage (dice or a number), or a known spell that lays a condition." };
+    return { error: "aoe_damage needs damage (dice or a number), or a known spell that lays a condition.", retry: true };
   }
 
   // The damage rolls once for the whole effect; a spell that deals none
@@ -337,7 +342,7 @@ export function handleAoeDamage(
     total = args.damage;
   } else if (args.damage) {
     if (!isValidExpression(args.damage)) {
-      return { error: `Invalid damage expression "${args.damage}".` };
+      return { error: `Invalid damage expression "${args.damage}".`, retry: true };
     }
     const split = splitDamageExpression(args.damage, plan?.mech?.secondType);
     for (const [index, expression] of (split ?? [args.damage]).entries()) {

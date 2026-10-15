@@ -477,7 +477,7 @@ function maneuverRiderSave(plan: AttackPlan, maneuver: ManeuverPick): Record<str
     Math.max(derived.abilityMods.str, derived.abilityMods.dex);
   const barred = riderBarred(fresh, rider.condition, rider.condition === "prone" ? "Large" : null);
   if (barred) {
-    maneuverOutcome.maneuver = `${maneuver.name}: ${barred} The extra damage still lands.`;
+    maneuverOutcome.maneuver = `${maneuver.name}: ${barred.error} The extra damage still lands.`;
     return maneuverOutcome;
   }
   // The creature's save as every other is rolled (src/lib/dm/forced-save.ts):

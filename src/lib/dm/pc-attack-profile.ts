@@ -32,6 +32,7 @@ import { allSpellNames } from "@/lib/srd/spell-lists";
 import { SPECIAL_WEAPONS } from "@/lib/srd/weapons";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { summonAttackProfile } from "@/lib/dm/summon-rules";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 export type AttackKind = "weapon" | "spell" | "natural" | "granted";
 
@@ -66,7 +67,7 @@ export function buildAttackProfile(
   // How many tiles lie between the attacker and the target, when the board
   // knows (a thrown weapon past its reach is a ranged attack).
   target: { apart: number | null } = { apart: null },
-): BuiltAttack | { error: string } {
+): BuiltAttack | ToolError {
   const derived = computeSheetDerived(sheet);
   const riders = combatRiders(sheet);
   let profile: AttackProfile;
@@ -84,7 +85,7 @@ export function buildAttackProfile(
   const racial = !granted && !natural && !args.spell?.trim() && !sheet.wildShape ? racialNaturalWeapon(sheet.features, args.weapon) : null;
   if (granted) {
     if (derived.spellAttack === null) {
-      return { error: `${sheet.name} has no spell attack bonus for ${granted.attack.name}.` };
+      return { error: `${sheet.name} has no spell attack bonus for ${granted.attack.name}.`, refused: "rules" };
     }
     // Cast from a higher slot, a scaling attack (Spiritual Weapon) rolls the
     // slot's dice: the level the condition carries, else the caster's last
@@ -130,14 +131,14 @@ export function buildAttackProfile(
   } else if (args.spell?.trim()) {
     const spellName = args.spell.trim();
     if (!sheet.spellcasting) {
-      return { error: `${sheet.name} cannot cast spells.` };
+      return { error: `${sheet.name} cannot cast spells.`, refused: "rules" };
     }
     // The content pack knows how a known spell resolves; a save or buff
     // spell aimed through pc_attack is redirected to the right tool.
     const resolvedMech = spellMechanicsFor({ spell: spellName, userIds: sheetSpellAuthors(sheet) });
     const redirect = castRedirect(resolvedMech, "attack");
     if (redirect) {
-      return { error: redirect };
+      return redirect;
     }
     const mechDamageType = resolvedMech?.mech.damageType;
     const spellList = allSpellNames(sheet.spellcasting);
@@ -148,6 +149,7 @@ export function buildAttackProfile(
     if (!onList) {
       return {
         error: `${spellName} is not on ${sheet.name}'s spell list; they cannot cast it.`,
+        retry: true,
       };
     }
     // The content pack knows what this spell rolls at this level, including
@@ -163,6 +165,7 @@ export function buildAttackProfile(
     if (!damageArg || !isValidExpression(damageArg)) {
       return {
         error: `Spell attacks need the spell's damage dice, e.g. damage="1d10". Send pc_attack again with a damage expression.`,
+        retry: true,
       };
     }
     if (scaled) {
@@ -178,7 +181,7 @@ export function buildAttackProfile(
       (mechDamageType || args.damageType || "").trim().toLowerCase(),
     );
     if (!spellProfile) {
-      return { error: `${sheet.name} has no spell attack bonus.` };
+      return { error: `${sheet.name} has no spell attack bonus.`, refused: "rules" };
     }
     // A melee spell attack (a touch) is a melee attack: it reaches only the
     // creature beside the caster, and the rules for ranged attacks do not
@@ -212,7 +215,7 @@ export function buildAttackProfile(
     // A creature a spell made fights with its stat block (summon-rules.ts).
     const summoned = summonAttackProfile(sheet, args.weapon);
     if (!summoned || "error" in summoned) {
-      return summoned ?? { error: `${sheet.name} has no attack.` };
+      return summoned ?? { error: `${sheet.name} has no attack.`, refused: "rules" };
     }
     profile = summoned;
     kind = "natural";
@@ -228,7 +231,7 @@ export function buildAttackProfile(
     // Soulknife's psychic blade, Radiant Sun Bolt): a proficient weapon of
     // its kind, with no item behind it (src/lib/srd/authored-effects-more.ts).
     if (!natural) {
-      return { error: `${sheet.name}'s ${args.weapon} exists only while raging (${naturalWeaponGated(sheet, args.weapon)}). They rage first (use_resource Rage), or attack with a weapon they carry.` };
+      return { error: `${sheet.name}'s ${args.weapon} exists only while raging (${naturalWeaponGated(sheet, args.weapon)}). They rage first (use_resource Rage), or attack with a weapon they carry.`, refused: "rules" };
     }
     // The bonus-action second blade keeps its modifier and rolls its own die.
     const srd = args.offHand && natural.second ? { ...natural.srd, damage: `${natural.second} ${natural.weapon.type}` } : natural.srd;
@@ -274,6 +277,7 @@ export function buildAttackProfile(
     if (resolved.carried === false) {
       return {
         error: `${sheet.name} carries no ${resolved.displayName}. They attack with a weapon from their equipment, with an unarmed strike, or with something they pick up (an improvised weapon, named for what it is).`,
+        retry: true,
       };
     }
     // Hands: a shield on the arm leaves one free, and the off-hand swing

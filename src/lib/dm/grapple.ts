@@ -43,6 +43,7 @@ import { rollCharacterCheck } from "@/lib/dm/contest-roll";
 import { publishEncounter, resolveEnemyRef } from "@/lib/dm/enemy-damage";
 import { enemyAttackProfile } from "@/lib/dm/enemy-profile";
 import { characterSpellEscape, characterSpellHold, enemySpellEscape, enemySpellHold } from "@/lib/dm/spell-escape";
+import { toolError, type ToolResult } from "@/lib/dm/tool-errors";
 
 const GRAPPLED = "grappled";
 
@@ -85,7 +86,7 @@ export function characterEscape(
   turn: DmTurn,
   sheet: CharacterSheet,
   spend: () => void,
-): Record<string, unknown> {
+): ToolResult {
   const held = sheet.conditions.some((entry) => entry.toLowerCase() === GRAPPLED)
     ? grappleOf(sheet.conditionMeta as ConditionMetaMap)
     : null;
@@ -93,7 +94,7 @@ export function characterEscape(
     // A spell's hold (Entangle, Web): src/lib/dm/spell-escape.ts.
     return characterSpellHold(campaign, sheet)
       ? characterSpellEscape(campaign, turn, sheet, spend)
-      : { error: `${sheet.name} is not grappled; there is nothing to escape.` };
+      : { error: `${sheet.name} is not grappled; there is nothing to escape.`, refused: "rules" };
   }
   const encounter = getActiveEncounter(campaign.id);
   const enemyHolder = held.source && encounter ? resolveEnemyRef(encounter.id, held.source) : null;
@@ -101,6 +102,7 @@ export function characterEscape(
   if (!enemyHolder && !sheetHolder) {
     return {
       error: `${sheet.name}'s grapple names no grappler the server can find, so there is no contest to roll. The DM or the party lead ends it with clear_condition.`,
+      retry: true,
     };
   }
   spend();
@@ -159,14 +161,14 @@ export function enemyEscape(
   campaign: Campaign,
   turn: DmTurn,
   enemyRef: string,
-): Record<string, unknown> {
+): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter." };
+    return { error: "No active encounter.", retry: true };
   }
   const enemy = resolveEnemyRef(encounter.id, enemyRef);
   if (!enemy) {
-    return { error: "Unknown enemyId; use one from GAME STATE." };
+    return { error: "Unknown enemyId; use one from GAME STATE.", retry: true };
   }
   const held = enemy.conditions.some((entry) => entry.toLowerCase() === GRAPPLED)
     ? grappleOf(enemy.conditionMeta)
@@ -174,16 +176,17 @@ export function enemyEscape(
   if (!held) {
     return enemySpellHold(campaign, enemy)
       ? enemySpellEscape(campaign, turn, enemy)
-      : { error: `${enemy.displayName} is not grappled; there is nothing to escape.` };
+      : { error: `${enemy.displayName} is not grappled; there is nothing to escape.`, retry: true };
   }
   const allowed = canEnemyAct({ enemy, encounter, kind: "action" });
   if (!allowed.ok) {
-    return { error: allowed.error };
+    return toolError(allowed);
   }
   const holder = held.source ? getSheetById(held.source) : null;
   if (!holder) {
     return {
       error: `${enemy.displayName}'s grapple names no grappler the server can find; end it with set_enemy_condition instead of a contest.`,
+      retry: true,
     };
   }
   spendEnemyAction(encounter, enemy.id);

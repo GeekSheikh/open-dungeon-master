@@ -33,6 +33,7 @@ import { applyPcDamage } from "@/lib/dm/pc-damage";
 import { sanctuaryWard } from "@/lib/dm/enemy-conditions";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { outOfReach } from "@/lib/dm/spell-planes";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 // cast_at_player: a save forced on ONE character, by an enemy's spell or
 // ability or by a hazard (SRD 5.1, Saving Throws). The mirror of
@@ -164,27 +165,28 @@ export function handleCastAtPlayer(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   let args: z.infer<typeof castAtPlayerSchema>;
   try {
     args = castAtPlayerSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
     return {
       error: "Invalid arguments: cast_at_player needs characterId, saveAbility, and dc.",
+      retry: true,
     };
   }
   const staleSheet = resolveSheetRef(args.characterId, sheets, sheetsById);
   const sheet = staleSheet ? (getSheetById(staleSheet.id) ?? staleSheet) : null;
   if (!sheet) {
-    return { error: "Unknown characterId; use one from GAME STATE." };
+    return { error: "Unknown characterId; use one from GAME STATE.", retry: true };
   }
   if (sheet.deathSaves?.dead) {
-    return { error: `${sheet.name} is DEAD; nothing can affect them.` };
+    return { error: `${sheet.name} is DEAD; nothing can affect them.`, retry: true };
   }
   // Blink, Etherealness, Maze took them off the Material Plane (spell-planes.ts).
   const away = args.casterEnemyId ? outOfReach(sheet) : null;
   if (away) {
-    return { error: `${away} Nothing was spent.` };
+    return { ...away, error: `${away.error} Nothing was spent.` };
   }
 
   // An enemy caster acts through the enemy guard and its own block: its
@@ -207,12 +209,12 @@ export function handleCastAtPlayer(
     // caster keeps its action for another target.
     const warded = sanctuaryWard(campaign.id, prepared.enemy, sheet, sanctuaryRefusal);
     if (warded) {
-      return { error: warded };
+      return warded;
     }
     // A Globe of Invulnerability around the target turns the spell (zone-rules.ts).
     const globed = globeProblemFor(prepared.enemy.encounterId, prepared.enemy.id, sheet.id, sheet.name, args.spell);
     if (globed) {
-      return { error: globed };
+      return globed;
     }
     use = prepared;
   }
@@ -230,10 +232,11 @@ export function handleCastAtPlayer(
       error: use?.fromBlock
         ? `${use.name} forces no save with damage or a condition on ${use.enemy.displayName}'s block; narrate what it does, or use its attacks.`
         : "cast_at_player needs damage and/or condition; otherwise nothing happens.",
+      retry: true,
     };
   }
   if (damage && !isValidExpression(damage)) {
-    return { error: `Invalid damage expression "${damage}".` };
+    return { error: `Invalid damage expression "${damage}".`, retry: true };
   }
   use?.commit();
 

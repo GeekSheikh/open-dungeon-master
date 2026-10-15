@@ -33,9 +33,9 @@ test("the accuracy-for-damage trade: four feats, four shapes", () => {
   const deadeye = combat.powerAttackFeat(sheet("Deadeye"), ranged);
   assert.equal(deadeye.toHit, -3);
   assert.equal(deadeye.damage, 6);
-  assert.match(combat.powerAttackFeat(sheet("Deadeye"), melee).refused, /ranged/);
-  assert.match(combat.powerAttackFeat(sheet("Powerful Attacker"), { ...melee, heavy: false }).refused, /heavy melee weapon/);
-  assert.match(combat.powerAttackFeat(sheet(), melee).refused, /none of them/);
+  assert.match(combat.powerAttackFeat(sheet("Deadeye"), melee).refused.error, /ranged/);
+  assert.match(combat.powerAttackFeat(sheet("Powerful Attacker"), { ...melee, heavy: false }).refused.error, /heavy melee weapon/);
+  assert.match(combat.powerAttackFeat(sheet(), melee).refused.error, /none of them/);
   assert.equal(combat.shotIgnoresCover(sheet("Deadeye")), true);
   assert.equal(combat.coverFeatName(sheet("Deadeye")), "Deadeye");
 });

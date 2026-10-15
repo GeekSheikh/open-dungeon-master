@@ -33,6 +33,7 @@ import { layOnEnemy } from "@/lib/dm/spell-riders";
 import { spellConditionMeta } from "@/lib/dm/spell-effects";
 import { publishEncounter } from "@/lib/dm/enemy-damage";
 import { beastEnemyStats, enemyShapeProblem, enemyShapeSpellFor } from "@/lib/dm/enemy-polymorph-logic";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 export { enemyShapeSpellFor };
 
@@ -57,10 +58,10 @@ export function castShapeAtEnemy(
   turn: DmTurn,
   input: EnemyShapeCast,
   spend: (cast: Record<string, unknown>) => Record<string, unknown>,
-): Record<string, unknown> {
+): ToolResult {
   const rule = enemyShapeSpellFor(input.runsAs ?? input.spell);
   if (!rule) {
-    return { error: `${input.spell} cannot turn a creature into a beast; only Polymorph and True Polymorph do.` };
+    return { error: `${input.spell} cannot turn a creature into a beast; only Polymorph and True Polymorph do.`, retry: true };
   }
   // The name the casting goes by: a workshop copy's own, the rule's otherwise.
   const named = input.runsAs && input.runsAs.trim().toLowerCase() !== input.spell.trim().toLowerCase() ? input.spell : rule.spell;
@@ -68,33 +69,34 @@ export function castShapeAtEnemy(
   const enemy = getEnemy(input.enemy.id) ?? input.enemy;
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter || enemy.encounterId !== encounter.id) {
-    return { error: "Unknown targetEnemyId; use one from GAME STATE. Nothing was spent." };
+    return { error: "Unknown targetEnemyId; use one from GAME STATE. Nothing was spent.", retry: true };
   }
   if (enemy.status !== "alive") {
-    return { error: `${enemy.displayName} is already ${enemy.status}. Nothing was spent.` };
+    return { error: `${enemy.displayName} is already ${enemy.status}. Nothing was spent.`, retry: true };
   }
   const form = findBeastForm(input.variant ?? "");
   if (!form) {
     return {
       error: `${rule.spell} needs the beast in variant, one the table knows (e.g. 'wolf', 'brown bear', 'giant spider'). Nothing was spent.`,
+      retry: true,
     };
   }
   const problem = enemyShapeProblem(rule, form, enemy);
   if (problem) {
-    return { error: problem };
+    return problem;
   }
   // The refusals cast_at_enemy gives any spell at a creature, for the way in
   // through cast_buff too.
   if (charmedBy(caster.conditions, caster.conditionMeta, enemy.id)) {
-    return { error: `${caster.name} is charmed by ${enemy.displayName} and cannot target it with harmful magic. Nothing was spent; pick another target.` };
+    return { error: `${caster.name} is charmed by ${enemy.displayName} and cannot target it with harmful magic. Nothing was spent; pick another target.`, refused: "rules" };
   }
   const away = castingHold(caster);
   if (away) {
-    return { error: away };
+    return away;
   }
   const sealed = conditionUntargetable(enemy.conditions) ?? (enemy.conditions.includes("banished") ? "banished" : null);
   if (sealed) {
-    return { error: `${enemy.displayName} is ${sealed} and nothing from outside reaches it until that ends. Nothing was spent.` };
+    return { error: `${enemy.displayName} is ${sealed} and nothing from outside reaches it until that ends. Nothing was spent.`, refused: "rules" };
   }
   const reach = spellReachProblem({
     encounterId: encounter.id,
@@ -105,11 +107,11 @@ export function castShapeAtEnemy(
     facts: spellFactsFor(named, input.authors),
   });
   if (reach) {
-    return { error: reach };
+    return reach;
   }
   const dc = spellSaveDcFor(caster, named);
   if (dc === null) {
-    return { error: `${caster.name} has no spell save DC. Nothing was spent.` };
+    return { error: `${caster.name} has no spell save DC. Nothing was spent.`, refused: "rules" };
   }
 
   // The cast, through the one guard: slot, turn, components, concentration.

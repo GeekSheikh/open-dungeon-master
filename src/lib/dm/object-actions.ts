@@ -33,6 +33,7 @@ import { attacksAllowedFor, budgetFor, storeBudget } from "@/lib/dm/turn-budget"
 import { READIED, READIED_WORDS, RELEASE_TOOLS, readiedHeld, type Readiable } from "@/lib/dm/readied-kinds";
 import { dropReadied, readiedReleaseFor } from "@/lib/dm/readied-release";
 import type { ConditionMetaMap } from "@/lib/dm/condition-logic";
+import { toolError, type ToolError, type ToolResult } from "@/lib/dm/tool-errors";
 
 // Haste's extra action names this use by these words (action-budget.ts).
 const USE_AN_OBJECT = "use an object";
@@ -51,23 +52,23 @@ export function prepareUseItem(
   sheet: CharacterSheet,
   target: CharacterSheet,
   itemName: string,
-): { error: string } | { commit: () => Record<string, unknown> } {
+): ToolError | { commit: () => ToolResult } {
   const carried = findCarriedItem(sheet.equipment, itemName);
   const problem = carried ? itemUseProblem(carried.name) : null;
   if (problem) {
-    return { error: `${sheet.name} does not use up ${carried?.name ?? itemName}: ${problem}` };
+    return { ...problem, error: `${sheet.name} does not use up ${carried?.name ?? itemName}: ${problem.error}` };
   }
   const encounter = getActiveEncounter(campaign.id);
   // Off their turn, the use of an item they readied is their reaction, and
   // nothing of the acting combatant's turn (readied-release.ts).
   const readied = readiedReleaseFor(sheet, encounter, "item");
   if (readied && "error" in readied) {
-    return { error: readied.error };
+    return toolError(readied);
   }
   if (!readied) {
     const allowed = canAct({ sheet, encounter, kind: "action" });
     if (!allowed.ok) {
-      return { error: allowed.error };
+      return toolError(allowed);
     }
   }
   if (target.id !== sheet.id && encounter) {
@@ -75,6 +76,7 @@ export function prepareUseItem(
     if (apart !== null && apart > 1) {
       return {
         error: `${target.name} is ${apart * 5} ft from ${sheet.name}; feeding them a potion needs them within 5 ft. ${sheet.name} moves next to them first.`,
+        retry: true,
       };
     }
   }
@@ -100,7 +102,7 @@ export function prepareUseItem(
     ? spendAction(budget, "bonus", `${drinksAsBonusAction(sheet) && /\b(?:potion|elixir|philter)\b/i.test(name) ? "Rapid Drinker" : "Poisoner"} (${USE_AN_OBJECT})`, sheet.name)
     : spendAction(budget, "action", USE_AN_OBJECT, sheet.name);
   if (!price.ok) {
-    return { error: price.error };
+    return toolError(price);
   }
   return {
     commit: () => {
@@ -128,11 +130,12 @@ export function objectAction(
   // What it costs, for the result: a Thief's Fast Hands makes it the bonus
   // action.
   cost = "their action",
-): Record<string, unknown> {
+): ToolResult {
   const carried = item ? findCarriedItem(sheet.equipment, item) : null;
   if (carried && !itemUseProblem(carried.name)) {
     return {
       error: `${carried.name} is used up when it is used: call use_item for it, which spends ${sheet.name}'s action (Use an Object) itself.`,
+      retry: true,
     };
   }
   priced.spend();
@@ -181,14 +184,15 @@ export function readyAction(
   inFight: boolean,
   priced: Priced,
   holds: Exclude<Readiable, "spell"> = "attack",
-): Record<string, unknown> {
+): ToolResult {
   const named = (trigger ?? "").trim();
   if (!inFight) {
-    return { error: "Ready is an action in a fight, where turns are taken in order; there is no active fight." };
+    return { error: "Ready is an action in a fight, where turns are taken in order; there is no active fight.", refused: "rules" };
   }
   if (!named) {
     return {
       error: "Ready needs the trigger it waits for, e.g. trigger: 'when the goblin steps through the door'. Nothing was spent.",
+      retry: true,
     };
   }
   priced.spend();

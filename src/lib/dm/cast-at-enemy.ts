@@ -48,6 +48,7 @@ import { overchannelProblem, payOverchannel } from "@/lib/dm/caster-features";
 import { maximumOf } from "@/lib/dm/heal-spell";
 import { castingHold } from "@/lib/dm/spell-planes";
 import { castShapeAtEnemy, enemyShapeSpellFor } from "@/lib/dm/enemy-polymorph";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 const castArgsSchema = z.object({
   characterId: z.string(),
@@ -78,10 +79,10 @@ export function handleCastAtEnemy(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter." };
+    return { error: "No active encounter.", retry: true };
   }
   let args: z.infer<typeof castArgsSchema>;
   try {
@@ -89,49 +90,48 @@ export function handleCastAtEnemy(
   } catch {
     return {
       error: "Invalid arguments: cast_at_enemy needs characterId, targetEnemyId, spell, and saveAbility.",
+      retry: true,
     };
   }
   const staleSheet = resolveSheetRef(args.characterId, sheets, sheetsById);
   const sheet = staleSheet ? (getSheetById(staleSheet.id) ?? staleSheet) : null;
   if (!sheet) {
-    return { error: "Unknown characterId; use one from GAME STATE." };
+    return { error: "Unknown characterId; use one from GAME STATE.", retry: true };
   }
   // A reaction spell is asked by the cast guard's reaction gate instead,
   // which judges one answering the hit that dropped the caster as they stood
   // before it (issue 233).
   if (sheet.currentHp <= 0 && spellFactsFor(args.spell, spellAuthorsFor(campaign))?.castingTime !== "reaction") {
-    return { error: `${sheet.name} is at 0 HP and cannot cast.` };
+    return { error: `${sheet.name} is at 0 HP and cannot cast.`, refused: "rules" };
   }
-  if (!sheet.spellcasting) {
-    return { error: `${sheet.name} cannot cast spells.` };
-  }
-  // Multiclass: the DC follows the class whose list carries the spell.
-  const dc = spellSaveDcFor(sheet, args.spell ?? "");
+  // Multiclass: the DC follows the class whose list carries the spell. Only
+  // a sheet without spellcasting has none.
+  const dc = sheet.spellcasting ? spellSaveDcFor(sheet, args.spell ?? "") : null;
   if (dc === null) {
-    return { error: `${sheet.name} has no spell save DC.` };
+    return { error: `${sheet.name} cannot cast spells.`, refused: "rules" };
   }
   const enemy = resolveEnemyRef(encounter.id, args.targetEnemyId);
   if (!enemy) {
-    return { error: "Unknown targetEnemyId; use one from GAME STATE." };
+    return { error: "Unknown targetEnemyId; use one from GAME STATE.", retry: true };
   }
   if (enemy.status !== "alive") {
-    return { error: `${enemy.displayName} is already ${enemy.status}.` };
+    return { error: `${enemy.displayName} is already ${enemy.status}.`, retry: true };
   }
   // SRD 5.1, Charmed: no harmful magic at the charmer (monsters workstream).
   if (charmedBy(sheet.conditions, sheet.conditionMeta, enemy.id)) {
-    return { error: `${sheet.name} is charmed by ${enemy.displayName} and cannot target it with harmful magic. Nothing was spent; pick another target.` };
+    return { error: `${sheet.name} is charmed by ${enemy.displayName} and cannot target it with harmful magic. Nothing was spent; pick another target.`, refused: "rules" };
   }
   // A caster Etherealness or Maze took away reaches nobody here (spell-planes.ts).
   const away = castingHold(sheet);
   if (away) {
-    return { error: away };
+    return away;
   }
   const sealed = conditionUntargetable(enemy.conditions);
   if (sealed) {
-    return { error: `${enemy.displayName} is ${sealed} and nothing from outside reaches it until the spell ends. Nothing was spent.` };
+    return { error: `${enemy.displayName} is ${sealed} and nothing from outside reaches it until the spell ends. Nothing was spent.`, refused: "rules" };
   }
   if (enemy.conditions.includes("banished")) {
-    return { error: `${enemy.displayName} is banished to another plane and cannot be targeted until the spell ends. Nothing was spent.` };
+    return { error: `${enemy.displayName} is banished to another plane and cannot be targeted until the spell ends. Nothing was spent.`, refused: "rules" };
   }
   // The content pack decides how a known spell resolves; the model's
   // arguments are corrected rather than trusted. Unknown spells resolve only
@@ -157,13 +157,13 @@ export function handleCastAtEnemy(
   }
   const redirect = castRedirect(resolvedMech, "save");
   if (redirect) {
-    return { error: redirect };
+    return redirect;
   }
   const facts = spellFactsFor(args.spell, authors);
   const mech = resolvedMech?.mech ?? null;
   const corrections: string[] = [];
   if (!mech?.save && !args.saveAbility && mech?.resolution !== "auto") {
-    return { error: "cast_at_enemy needs saveAbility for a spell the server does not know." };
+    return { error: "cast_at_enemy needs saveAbility for a spell the server does not know.", retry: true };
   }
   let ability = (mech?.save ?? args.saveAbility ?? "wis") as SaveAbility;
   if (mech?.save && args.saveAbility && mech.save !== args.saveAbility) {
@@ -211,11 +211,11 @@ export function handleCastAtEnemy(
         ? [wanted]
         : [];
   if (!pool && !(named?.dice ?? callerDice) && !conditions.length && !mech?.riders) {
-    return { error: "cast_at_enemy needs damage and/or condition; otherwise nothing happens." };
+    return { error: "cast_at_enemy needs damage and/or condition; otherwise nothing happens.", retry: true };
   }
   const guessed = named?.dice ?? callerDice;
   if (guessed && !isValidExpression(guessed)) {
-    return { error: `Invalid damage expression "${guessed}".` };
+    return { error: `Invalid damage expression "${guessed}".`, retry: true };
   }
   const pickedWord = picked && (picked.extra.length || picked.name !== mechCondition?.name);
   if (mechCondition && wanted && !conditions.includes(wanted) && !pickedWord) {
@@ -231,6 +231,7 @@ export function handleCastAtEnemy(
   if (immuneTo && !pool) {
     return {
       error: `${enemy.displayName} is immune to ${immuneTo} (immunities: ${enemy.stats.conditionImmune}); the spell cannot take hold. The slot was not spent.`,
+      refused: "rules",
     };
   }
   // Hold Person holds a humanoid and nothing else; Command does nothing to
@@ -240,17 +241,19 @@ export function handleCastAtEnemy(
   if (creatureType && mech?.targetTypes?.length && !mech.targetTypes.some((type) => creatureType.includes(type))) {
     return {
       error: `${spellName} affects only ${mech.targetTypes.join(" or ")} creatures, and ${enemy.displayName} is ${creatureType ? `a ${creatureType}` : "not one"}. The slot was not spent; pick another target or another spell.`,
+      refused: "rules",
     };
   }
   if (creatureType && mech?.immuneTypes?.some((type) => creatureType.includes(type))) {
     return {
       error: `${spellName} has no effect on ${creatureType} creatures, and ${enemy.displayName} is one. The slot was not spent; pick another target or another spell.`,
+      refused: "rules",
     };
   }
   if (args.overchannel) {
     const problem = overchannelProblem(sheet, facts, Boolean(named?.dice ?? callerDice));
     if (problem) {
-      return { error: `${problem} Nothing was spent.` };
+      return { ...problem, error: `${problem.error} Nothing was spent.` };
     }
   }
   const reach = spellReachProblem({
@@ -262,13 +265,13 @@ export function handleCastAtEnemy(
     facts,
   });
   if (reach) {
-    return { error: reach };
+    return reach;
   }
   // Limited Magic Immunity (the rakshasa): a spell of its level or lower
   // never touches it (src/lib/dm/monster-traits.ts).
   const shrugged = magicImmunityProblem(enemy, spellName, args.level ?? facts?.level ?? 0);
   if (shrugged) {
-    return { error: shrugged };
+    return shrugged;
   }
 
   // The cast itself, through the one guard (src/lib/dm/cast-guard.ts): who

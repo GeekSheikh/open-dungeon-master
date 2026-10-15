@@ -31,6 +31,7 @@ import { rollOn } from "@/lib/roll-labels";
 import { springTrapOn } from "@/lib/dm/trap-run";
 import { SAMPLE_TRAPS } from "@/lib/srd/trap-specs";
 import { hazardNamesAt, trapAt } from "@/lib/srd/table-hazards";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 // Traps and environmental hazards used to be pure narration routed through the
 // generic damage_enemy call, so a "dart trap" or a "40-foot fall" dealt
@@ -183,24 +184,24 @@ export function handleApplyHazard(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   let args: z.infer<typeof hazardSchema>;
   try {
     args = hazardSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: apply_hazard needs a type and characterIds (or rank)." };
+    return { error: "Invalid arguments: apply_hazard needs a type and characterIds (or rank).", retry: true };
   }
   // Who walks first or last, from the formation in force (issue 230).
   let named = args.characterIds ?? [];
   let rankLine = "";
   if (!named.length) {
     if (!args.rank) {
-      return { error: "apply_hazard needs characterIds, or rank 'front' or 'rear' for whoever walks there in the travel formation." };
+      return { error: "apply_hazard needs characterIds, or rank 'front' or 'rear' for whoever walks there in the travel formation.", retry: true };
     }
     const { placed } = formationView(getParty(campaign.id).marchingOrder, formationPartyIds(campaign, sheets));
     const walker = args.rank === "front" ? placed[0] : placed[placed.length - 1];
     if (!walker) {
-      return { error: "The party has set no travel formation, so nobody is at the front or the rear. Name the characterIds the hazard catches." };
+      return { error: "The party has set no travel formation, so nobody is at the front or the rear. Name the characterIds the hazard catches.", retry: true };
     }
     named = [walker];
     rankLine = `${sheetsById.get(walker)?.name ?? "The character"} walks at the ${args.rank} of the travel formation, so the hazard catches them first.`;
@@ -217,7 +218,7 @@ function resolveHazard(
   named: string[],
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   // Resolve the victims once; bad ids are reported, not silently dropped.
   const targets: CharacterSheet[] = [];
   const unknown: string[] = [];
@@ -231,7 +232,7 @@ function resolveHazard(
     }
   }
   if (!targets.length) {
-    return { error: `No valid characterIds${unknown.length ? `: ${unknown.join(", ")}` : ""}.` };
+    return { error: `No valid characterIds${unknown.length ? `: ${unknown.join(", ")}` : ""}.`, retry: true };
   }
 
   const source = (args.reason ?? "").trim() || defaultSource(args);
@@ -390,7 +391,7 @@ function resolveHazard(
     const found = trapAt(args.trap, campaign.id);
     if (!found) {
       const own = hazardNamesAt(campaign.id).trap;
-      return { error: `No trap is named "${args.trap}". The SRD's sample traps are ${SAMPLE_TRAPS.map((trap) => trap.name).join(", ")}${own.length ? `; this table's are ${own.join(", ")}` : ""}. Leave trap out to use the severity table.` };
+      return { error: `No trap is named "${args.trap}". The SRD's sample traps are ${SAMPLE_TRAPS.map((trap) => trap.name).join(", ")}${own.length ? `; this table's are ${own.join(", ")}` : ""}. Leave trap out to use the severity table.`, retry: true };
     }
     return {
       ok: true,

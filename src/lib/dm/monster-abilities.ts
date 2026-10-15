@@ -1,4 +1,5 @@
 import type { SaveAbility } from "@/lib/bestiary/statblock";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 // A monster's special actions as numbers the engine runs (SRD 5.1,
 // Monsters): the save, DC and dice an ability prints, whether it recharges
@@ -315,14 +316,14 @@ export function normalizeAbilityLedgers(raw: unknown): Record<string, AbilityLed
 }
 
 // Why an ability cannot be used now, or null when it can.
-export function abilityRefusal(creature: string, ability: MonsterAbility, ledger: AbilityLedger | undefined): string | null {
+export function abilityRefusal(creature: string, ability: MonsterAbility, ledger: AbilityLedger | undefined): ToolError | null {
   const key = abilityKey(ability.name);
   if (ability.recharge && ledger?.spent?.includes(key)) {
-    return `${creature}'s ${ability.name} has not recharged: it comes back on a ${ability.recharge === 6 ? "6" : `${ability.recharge} or higher`} on the d6 rolled at the start of its turn. Pick another action.`;
+    return { error: `${creature}'s ${ability.name} has not recharged: it comes back on a ${ability.recharge === 6 ? "6" : `${ability.recharge} or higher`} on the d6 rolled at the start of its turn. Pick another action.`, retry: true };
   }
   const limit = ability.perDay ?? (ability.perRest ? 1 : 0);
   if (limit && (ledger?.uses?.[key] ?? 0) >= limit) {
-    return `${creature} has used ${ability.name} ${limit === 1 ? "already" : `all ${limit} times`} and cannot use it again today. Pick another action.`;
+    return { error: `${creature} has used ${ability.name} ${limit === 1 ? "already" : `all ${limit} times`} and cannot use it again today. Pick another action.`, retry: true };
   }
   return null;
 }

@@ -4,6 +4,8 @@
 // scripts/test-item-proposals.mjs can load it directly; the impure rim is
 // src/lib/db/item-proposals.ts plus the turn.ts interception.
 
+import type { ToolError } from "./tool-errors.ts";
+
 export const PROPOSAL_TOOL_NAMES = new Set([
   "grant_item",
   "remove_item",
@@ -216,16 +218,16 @@ export function purseWords(gold: number, copper: number): string {
 // by its own contract and a purchase is priced by the shelf, not the call,
 // so both are left to applyDmMutation on approval (a failure there is told
 // to the table as one).
-export function offerPrecheck(toolName: string, args: OfferArgs, sheet: OfferSheet): string | null {
+export function offerPrecheck(toolName: string, args: OfferArgs, sheet: OfferSheet): ToolError | null {
   const qty = Math.max(1, Math.floor(Number(args.qty ?? 1) || 1));
   if (toolName === "remove_item") {
     const name = String(args.name ?? "").trim();
     const held = heldQty(sheet, name);
     if (!held) {
-      return `${sheet.name} does not carry "${name}", so there is nothing to take and no offer was made. Check the sheet before offering a removal.`;
+      return { error: `${sheet.name} does not carry "${name}", so there is nothing to take and no offer was made. Check the sheet before offering a removal.`, retry: true };
     }
     if (qty > held) {
-      return `${sheet.name} carries only ${held} ${name}; offer to take at most ${held}. No offer was made.`;
+      return { error: `${sheet.name} carries only ${held} ${name}; offer to take at most ${held}. No offer was made.`, retry: true };
     }
     return null;
   }
@@ -233,10 +235,10 @@ export function offerPrecheck(toolName: string, args: OfferArgs, sheet: OfferShe
     const item = String(args.item ?? args.name ?? "").trim();
     const held = heldQty(sheet, item);
     if (!held) {
-      return `${sheet.name} does not carry "${item}" to sell. No offer was made.`;
+      return { error: `${sheet.name} does not carry "${item}" to sell. No offer was made.`, retry: true };
     }
     if (qty > held) {
-      return `${sheet.name} carries only ${held} ${item} to sell. No offer was made.`;
+      return { error: `${sheet.name} carries only ${held} ${item} to sell. No offer was made.`, retry: true };
     }
   }
   return null;
@@ -278,7 +280,7 @@ export function duplicateOfferProblem(
   character: { id: string; name: string },
   recent: readonly RecentOffer[],
   nowMs: number,
-): string | null {
+): ToolError | null {
   const key = offerKey(toolName, args);
   if (!key) {
     return null;
@@ -292,7 +294,7 @@ export function duplicateOfferProblem(
       continue;
     }
     if (offer.status === "pending" && !proposalExpired(offer.createdAt, new Date(nowMs))) {
-      return `An identical offer ("${summary}") is still waiting for ${character.name}'s player to answer. Do not offer it again and do not ask them in words; their answer arrives as a table note.`;
+      return { error: `An identical offer ("${summary}") is still waiting for ${character.name}'s player to answer. Do not offer it again and do not ask them in words; their answer arrives as a table note.`, retry: true };
     }
     if (offer.status === "approved" && !args.additional) {
       const resolved = Date.parse(offer.resolvedAt ?? "");
@@ -300,7 +302,7 @@ export function duplicateOfferProblem(
       if (age <= DUPLICATE_OFFER_WINDOW_MS) {
         const minutes = Math.max(1, Math.round(age / 60_000));
         const what = toolName === "modify_gold" ? "coin" : "loot";
-        return `${character.name}'s player already accepted "${summary}" ${minutes} minute${minutes === 1 ? "" : "s"} ago and it was applied; that ${what} is claimed. Do not grant it twice. Only if this is truly another, separate ${what} from a different source, call again with additional: true.`;
+        return { error: `${character.name}'s player already accepted "${summary}" ${minutes} minute${minutes === 1 ? "" : "s"} ago and it was applied; that ${what} is claimed. Do not grant it twice. Only if this is truly another, separate ${what} from a different source, call again with additional: true.`, retry: true };
       }
     }
   }

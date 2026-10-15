@@ -32,6 +32,7 @@ import {
 } from "@/lib/battlemap/hand-core";
 import { spellNames } from "@/lib/battlemap/hand-spells";
 import { COMMANDED } from "@/lib/dm/maneuver-rules";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 // A Battle Master maneuver's card wears its painting.
 const MANEUVER_ICON = (name: string): HandCard["icon"] => ({ kind: "option", key: `Maneuver: ${name}`, family: "option-maneuver" });
@@ -101,7 +102,7 @@ function spellReaction(
     { card: "reaction", feature: spell, spell, slotLevel: slot?.level ?? null },
     { type: "spell", rules, resource: slot ? slotLine(slot) : "No slots", icon: { kind: "spell", key: spell, family: null }, ...extra },
   );
-  const problem = (text: string | null): Gate => (text ? { reason: text, spent: false } : null);
+  const problem = (refusal: ToolError | null): Gate => (refusal ? { reason: refusal.error, spent: false } : null);
   return gated(
     card,
     standingGate(sheet, turn, "reaction"),

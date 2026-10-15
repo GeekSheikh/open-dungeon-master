@@ -41,6 +41,7 @@ import {
   type SpellFact,
 } from "@/lib/battlemap/hand-core";
 import { compareNames } from "@/lib/language/text-logic";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 // ---- spells ----
 
@@ -239,7 +240,7 @@ function spellCard(sheet: CharacterSheet, turn: HandTurn, riders: CombatRiders, 
   // untrained armor, a verbal component while silenced, no free hand, a
   // costly material neither carried nor affordable, no slot, and the
   // bonus-action spell rule.
-  const problem = (text: string | null, spent = false): Gate => (text ? { reason: text, spent } : null);
+  const problem = (refusal: ToolError | null, spent = false): Gate => (refusal ? { reason: refusal.error, spent } : null);
   const material = materialPlan(sheet, facts, { inFight: true, slotLevel: slot?.level ?? fact.level });
   const slotRefusal = fact.level > 0 && !slot ? slotPlan(sheet, name, facts, fact.level) : null;
   const charge = turnCharge({

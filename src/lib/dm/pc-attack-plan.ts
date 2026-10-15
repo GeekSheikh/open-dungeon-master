@@ -49,6 +49,7 @@ import { conditionExtraActions } from "@/lib/srd/condition-effects";
 import { conditionsSpentAgainst } from "@/lib/srd/condition-effect-queries";
 import type { ConditionRollRiders } from "@/lib/srd/condition-effects";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import { toolError, type ToolError } from "@/lib/dm/tool-errors";
 
 // A Battle Master maneuver riding the swing.
 export type ManeuverPick = {
@@ -141,7 +142,7 @@ export function planPcAttack(input: {
   args: PcAttackArgs;
   sheets: CharacterSheet[];
   sheetsById: Map<string, CharacterSheet>;
-}): AttackPlan | { refused: Record<string, unknown> } {
+}): AttackPlan | { refused: ToolError } {
   const { campaign, turn, encounter, sheet, args, sheets, sheetsById } = input;
 
   // ---- refusals: everything that can stop this attack, before any spend ----
@@ -185,7 +186,7 @@ export function planPcAttack(input: {
       ? spendAmmo(sheet.equipment, profile.weapon, sheet.name)
       : null;
   if (ammo && !ammo.ok) {
-    return { refused: { error: ammo.error } };
+    return { refused: toolError(ammo) };
   }
 
   // Battle-map positions are authoritative; players move their own tokens,
@@ -205,7 +206,7 @@ export function planPcAttack(input: {
     // Underwater, a shot past normal range misses (underwater.ts).
     (weaponAttack ? underwaterRangeProblem(campaign.id, encounter.id, sheet.id, profile, enemy) : null);
   if (blown) {
-    return { refused: { error: blown } };
+    return { refused: blown };
   }
   let geometry = attackGeometry(campaign.id, encounter.id, sheet.id, enemy, profile);
   const { atRange } = geometry;
@@ -228,7 +229,7 @@ export function planPcAttack(input: {
   if (args.powerAttack) {
     const power = powerAttackFeat(sheet, { weaponAttack, ranged: atRange, heavy: profile.heavy, proficient: profile.proficient, proficiencyBonus: built.derived.proficiencyBonus });
     if ("refused" in power) {
-      return { refused: { error: `${sheet.name}: ${power.refused} Nothing was spent.` } };
+      return { refused: { ...power.refused, error: `${sheet.name}: ${power.refused.error} Nothing was spent.` } };
     }
     profile = { ...profile, toHit: profile.toHit + power.toHit, damageExpression: `${profile.damageExpression}+${power.damage}` };
     powerDisadvantage = power.disadvantage;
@@ -250,18 +251,18 @@ export function planPcAttack(input: {
   // the hit for every other maneuver.
   const picked = pickManeuver(sheet, args.maneuver, weaponAttack);
   if ("refused" in picked) {
-    return { refused: { error: picked.refused } };
+    return { refused: picked.refused };
   }
   const maneuver = picked.maneuver;
   // What the maneuver asks of the swing beyond its die (maneuver-rules.ts).
   if (maneuver?.use === "feint" && !geometry.withinFiveFeet) {
-    return { refused: { error: `Feinting Attack feints at a creature within 5 feet of ${sheet.name}, and ${enemy.displayName} is not. Nothing was spent.` } };
+    return { refused: { error: `Feinting Attack feints at a creature within 5 feet of ${sheet.name}, and ${enemy.displayName} is not. Nothing was spent.`, retry: true } };
   }
   if (maneuver?.use === "grapple" && (atRange || !weaponAttack)) {
-    return { refused: { error: "Grappling Strike follows a hit with a melee attack. Nothing was spent." } };
+    return { refused: { error: "Grappling Strike follows a hit with a melee attack. Nothing was spent.", retry: true } };
   }
   if (maneuver?.use === "bonus_swing" && (!atRange || !(profile.properties ?? []).includes("thrown"))) {
-    return { refused: { error: `Quick Toss is a ranged attack with a weapon that has the thrown property, and ${profile.weapon} thrown at range is not. Nothing was spent.` } };
+    return { refused: { error: `Quick Toss is a ranged attack with a weapon that has the thrown property, and ${profile.weapon} thrown at range is not. Nothing was spent.`, retry: true } };
   }
 
   // Divine Smite: checked here, paid for on the hit. 2d8 at 1st level, 1d8
@@ -269,15 +270,16 @@ export function planPcAttack(input: {
   let smite: OnHitSpends["smite"];
   if (args.smite) {
     if (!riders.canSmite) {
-      return { refused: { error: `${sheet.name} has no Divine Smite.` } };
+      return { refused: { error: `${sheet.name} has no Divine Smite.`, retry: true } };
     }
     if (atRange || !weaponAttack) {
-      return { refused: { error: "Divine Smite rides on a melee weapon attack, not a ranged one or a spell." } };
+      return { refused: { error: "Divine Smite rides on a melee weapon attack, not a ranged one or a spell.", retry: true } };
     }
     if (!slotFree(sheet, args.smite)) {
       return {
         refused: {
           error: `${sheet.name} has no free level ${args.smite} spell slot to smite with. They can make the attack without Divine Smite, or name a slot level they still have.`,
+          retry: true,
         },
       };
     }
@@ -297,7 +299,7 @@ export function planPcAttack(input: {
   // The second blade a feature's weapon grants (authored-attacks.ts).
   const secondWeapon = args.offHand ? secondWeaponProblem(sheet, args.weapon, budget) : undefined;
   if (secondWeapon) {
-    return { refused: { error: secondWeapon } };
+    return { refused: secondWeapon };
   }
   if (args.offHand && !grantedBonusAction && secondWeapon === undefined) {
     const problem = offHandProblem({
@@ -311,7 +313,7 @@ export function planPcAttack(input: {
       shieldName: acBreakdownFor(sheet).shieldName,
     });
     if (problem) {
-      return { refused: { error: problem } };
+      return { refused: problem };
     }
   }
   // The feature options riding the swing: a bonus attack a feature grants,
@@ -331,7 +333,7 @@ export function planPcAttack(input: {
     },
   });
   if ("refused" in checked) {
-    return { refused: { error: checked.refused } };
+    return { refused: checked.refused };
   }
   const options = checked.options;
   // A feature bonus attack's extra damage (Unwavering Mark: half the fighter
@@ -373,7 +375,7 @@ export function planPcAttack(input: {
     enemyId: enemy.id,
   });
   if ("refused" in spent) {
-    return { refused: { error: spent.refused } };
+    return { refused: spent.refused };
   }
   budget = spent.budget;
   // Feinting Attack is the bonus action, taken before the swing; Grappling
@@ -381,12 +383,12 @@ export function planPcAttack(input: {
   if (maneuver?.use === "feint" && budget) {
     const feint = spendAction(budget, "bonus", "Feinting Attack", sheet.name);
     if (!feint.ok) {
-      return { refused: { error: feint.error } };
+      return { refused: toolError(feint) };
     }
     budget = feint.budget;
   }
   if (maneuver?.use === "grapple" && budget?.bonusUsed) {
-    return { refused: { error: `Grappling Strike's grapple is a bonus action, and ${sheet.name} has used theirs this turn. They can make the attack without it. Nothing was spent.` } };
+    return { refused: { error: `Grappling Strike's grapple is a bonus action, and ${sheet.name} has used theirs this turn. They can make the attack without it. Nothing was spent.`, retry: true } };
   }
   const { spendNote, notes: context0 } = spent;
 
@@ -470,7 +472,7 @@ export function planPcAttack(input: {
   if (args.rapidStrike) {
     const traded = rapidStrike({ sheet, budget, advantage, weaponAttack, bonus: Boolean(options.bonusAttack || args.offHand || grantedBonusAction) });
     if ("refused" in traded) {
-      return { refused: { error: traded.refused } };
+      return { refused: traded.refused };
     }
     advantage = "none";
     budget = traded.budget;

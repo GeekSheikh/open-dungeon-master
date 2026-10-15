@@ -3,6 +3,7 @@
 // is spent, and spawns what it answers.
 
 import { findSummonForm, type SummonForm } from "@/lib/srd/summon-forms";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 const HOUR = 600;
 const DAY = 14400;
@@ -164,10 +165,10 @@ const key = (name: string) => name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "
 
 // A summoning spell spent through a bare slot would leave its creatures to be
 // invented: the refusal that sends it to cast_buff, or null.
-export function summonSlotProblem(spell: string): string | null {
+export function summonSlotProblem(spell: string): ToolError | null {
   const summoning = summonSpellFor(spell);
   return summoning
-    ? `${summoning.name} brings its creatures in with their stat blocks: cast it with cast_buff, the creature in variant (and count for fewer). Nothing was spent.`
+    ? { error: `${summoning.name} brings its creatures in with their stat blocks: cast it with cast_buff, the creature in variant (and count for fewer). Nothing was spent.`, retry: true }
     : null;
 }
 
@@ -188,7 +189,7 @@ export function summonPlan(
   slotLevel: number,
   formName: string,
   wanted?: number,
-): SummonPlan | { error: string } {
+): SummonPlan | ToolError {
   const above = Math.max(0, slotLevel - spell.level);
   const named = formName.trim();
   // A spell with a fixed list reads the caller's word against that list
@@ -197,19 +198,19 @@ export function summonPlan(
   const form = fromList ?? (named ? findSummonForm(named) : spell.forms?.length === 1 ? findSummonForm(spell.forms[0]) : null);
   if (!form) {
     const offer = spell.forms?.join(", ") ?? `a ${spell.types?.join(" or ")} the server knows`;
-    return { error: `${spell.name} needs the creature in variant (${offer}); "${named}" is not one the server has a stat block for. Nothing was spent.` };
+    return { error: `${spell.name} needs the creature in variant (${offer}); "${named}" is not one the server has a stat block for. Nothing was spent.`, retry: true };
   }
   if (spell.forms && !spell.forms.includes(form.name)) {
-    return { error: `${spell.name} makes ${spell.forms.join(", ")}, not a ${form.name}. Nothing was spent.` };
+    return { error: `${spell.name} makes ${spell.forms.join(", ")}, not a ${form.name}. Nothing was spent.`, retry: true };
   }
   if (spell.types && !spell.types.includes(form.type)) {
-    return { error: `${spell.name} calls a ${spell.types.join(" or ")}; a ${form.name} is a ${form.type}. Nothing was spent.` };
+    return { error: `${spell.name} calls a ${spell.types.join(" or ")}; a ${form.name} is a ${form.type}. Nothing was spent.`, retry: true };
   }
   let most = 1;
   if (spell.byCr) {
     const tier = [...spell.byCr].reverse().find(([cr]) => form.cr <= cr);
     if (!tier) {
-      return { error: `${spell.name} calls creatures of challenge rating ${crLabel(spell.byCr[0][0])} or lower; a ${form.name} is CR ${crLabel(form.cr)}. Nothing was spent.` };
+      return { error: `${spell.name} calls creatures of challenge rating ${crLabel(spell.byCr[0][0])} or lower; a ${form.name} is CR ${crLabel(form.cr)}. Nothing was spent.`, retry: true };
     }
     const factor = [...(spell.multiplier ?? [])].reverse().find(([slot]) => slotLevel >= slot)?.[1] ?? 1;
     most = tier[1] * factor;
@@ -217,7 +218,7 @@ export function summonPlan(
     const bySlot = [...(spell.maxCrBySlot ?? [])].reverse().find(([slot]) => slotLevel >= slot)?.[1];
     const ceiling = bySlot ?? spell.maxCr + (spell.crPerSlot ?? 0) * above;
     if (form.cr > ceiling) {
-      return { error: `${spell.name} from a level ${slotLevel} slot calls a creature of challenge rating ${crLabel(ceiling)} or lower; a ${form.name} is CR ${crLabel(form.cr)}. Nothing was spent.` };
+      return { error: `${spell.name} from a level ${slotLevel} slot calls a creature of challenge rating ${crLabel(ceiling)} or lower; a ${form.name} is CR ${crLabel(form.cr)}. Nothing was spent.`, retry: true };
     }
   } else if (spell.countByForm) {
     most = spell.countByForm[form.name] ?? 1;
@@ -225,7 +226,7 @@ export function summonPlan(
     const row = [...spell.bySlot].reverse().find(([slot]) => slotLevel >= slot)?.[1] ?? {};
     const allowed = row[form.name];
     if (!allowed) {
-      return { error: `${spell.name} from a level ${slotLevel} slot makes ${Object.entries(row).map(([name, count]) => `${count} ${name.toLowerCase()}s`).join(" or ")}; not a ${form.name}. Nothing was spent.` };
+      return { error: `${spell.name} from a level ${slotLevel} slot makes ${Object.entries(row).map(([name, count]) => `${count} ${name.toLowerCase()}s`).join(" or ")}; not a ${form.name}. Nothing was spent.`, retry: true };
     }
     most = allowed;
   } else if (spell.objectBudget) {

@@ -13,6 +13,7 @@
 // Pure: cast-buff.ts asks here before the slot is spent.
 
 import type { BeastForm } from "@/lib/srd/beast-forms";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 export type ShapeRule = {
   spell: string;
@@ -37,13 +38,13 @@ export function shapeRuleFor(spell: string): ShapeRule {
 }
 
 // Why this form is not allowed for this target, or null.
-export function shapeProblem(rule: ShapeRule, form: BeastForm, target: { name: string; level: number }, casterLevel: number): string | null {
+export function shapeProblem(rule: ShapeRule, form: BeastForm, target: { name: string; level: number }, casterLevel: number): ToolError | null {
   const cap = rule.crCap(target.level, casterLevel);
   if (form.cr > cap) {
-    return `${form.name} is CR ${form.cr}, above the CR ${cap} ${rule.spell} allows for ${target.name}. Offer a lesser form.`;
+    return { error: `${form.name} is CR ${form.cr}, above the CR ${cap} ${rule.spell} allows for ${target.name}. Offer a lesser form.`, retry: true };
   }
   if (rule.maxSize && SIZES.indexOf(form.size) > SIZES.indexOf(rule.maxSize)) {
-    return `${form.name} is ${form.size}; ${rule.spell} allows a ${rule.maxSize} or smaller beast. Offer a smaller form.`;
+    return { error: `${form.name} is ${form.size}; ${rule.spell} allows a ${rule.maxSize} or smaller beast. Offer a smaller form.`, retry: true };
   }
   return null;
 }

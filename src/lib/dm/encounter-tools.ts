@@ -125,6 +125,7 @@ import { afflictionsAtCombatStart } from "@/lib/dm/afflictions";
 import { ENEMY_TURNS_CUE, enemiesDue, enemiesOwedTurn, holdForEnemies } from "@/lib/dm/enemies-due";
 import { approachForCompanion } from "@/lib/dm/companion-approach";
 import { dmRoll } from "@/lib/dm/roll-card";
+import type { ToolError, ToolResult } from "@/lib/dm/tool-errors";
 
 // Server-authoritative combat: enemies spawn from real stat blocks, their
 // HP changes only through these tools, and the initiative pointer is moved
@@ -150,6 +151,7 @@ export const ENCOUNTER_TOOL_NAMES = [
 ];
 
 export const ENCOUNTER_CAP_PER_TURN = 12;
+export const ENCOUNTER_CAP_REFUSAL: ToolError = { error: "Encounter action limit reached for this turn.", refused: "limit" };
 
 export function encounterTools(hasActiveEncounter: boolean): ToolDef[] {
   return hasActiveEncounter
@@ -241,30 +243,32 @@ function handleStartEncounter(
   // character it rolls for); a person's fight is asked for its rolls by the
   // console's façade (src/lib/dm/initiative-ask.ts), on the person's turn.
   actor: DmTurn["actor"] = "human_dm",
-): Record<string, unknown> {
+): ToolResult {
   const args = parseStartArgs(rawArguments);
   if (!args) {
     return {
       error:
         'Invalid start_encounter arguments. Send {"enemies":[{"monster":"goblin","count":3}],"summary":"..."}.',
+      retry: true,
     };
   }
   if (args.scene !== undefined && !sceneIds().includes(args.scene)) {
-    return { error: `Unknown scene "${args.scene}"; use one of: ${sceneIds().join(", ")}.` };
+    return { error: `Unknown scene "${args.scene}"; use one of: ${sceneIds().join(", ")}.`, retry: true };
   }
   if (getActiveEncounter(campaign.id)) {
     return {
       error:
         "An encounter is already active. Use damage_enemy and enemy_attack, or end_encounter first.",
+      retry: true,
     };
   }
   if (!sheets.length) {
-    return { error: "No party characters to fight." };
+    return { error: "No party characters to fight.", retry: true };
   }
   // The dead roll no initiative (recordInitiativeRoll), so with nobody alive
   // the order would never be collected.
   if (!fieldedSheets(campaign, sheets).some((sheet) => !sheet.deathSaves?.dead)) {
-    return { error: "Every character in the party is dead: there is nobody to fight." };
+    return { error: "Every character in the party is dead: there is nobody to fight.", retry: true };
   }
 
   // Resolve every requested enemy before creating anything.
@@ -272,11 +276,12 @@ function handleStartEncounter(
   if ("unknownMonster" in outcome) {
     return {
       error: `Unknown monster "${outcome.unknownMonster}". Use a real monster slug or name, or pass cr for an invented enemy. Good picks for this world: ${suggestionLines(campaign, sheets)}.`,
+      retry: true,
     };
   }
   const resolved = outcome.resolved;
   if (resolved.length > 8) {
-    return { error: "Too many enemies; keep encounters to 8 combatants or fewer." };
+    return { error: "Too many enemies; keep encounters to 8 combatants or fewer.", retry: true };
   }
 
   // 5e budget check: refuse fights the party cannot plausibly survive.
@@ -286,12 +291,13 @@ function handleStartEncounter(
   if (evaluation.adjustedXp > ceiling) {
     return {
       error: `Too deadly for this party: adjusted XP ${evaluation.adjustedXp} vs an allowed ceiling of ${ceiling} (difficulty ${campaign.difficulty}). Use fewer or weaker enemies. Good picks for this world: ${suggestionLines(campaign, sheets)}.`,
+      retry: true,
     };
   }
 
   const encounter = createEncounter(campaign.id, args.summary ?? "");
   if (!encounter) {
-    return { error: "An encounter is already active." };
+    return { error: "An encounter is already active.", retry: true };
   }
 
   // One run of numbers per kind, whatever the caller numbered itself
@@ -758,26 +764,26 @@ function handleDamageEnemy(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter. Call start_encounter first." };
+    return { error: "No active encounter. Call start_encounter first.", retry: true };
   }
   let args: z.infer<typeof damageArgsSchema>;
   try {
     args = damageArgsSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: damage_enemy needs enemyId and amount." };
+    return { error: "Invalid arguments: damage_enemy needs enemyId and amount.", retry: true };
   }
   if (args.amount === undefined && args.fallFeet === undefined) {
-    return { error: "damage_enemy needs the amount, or fallFeet for a fall." };
+    return { error: "damage_enemy needs the amount, or fallFeet for a fall.", retry: true };
   }
   const enemy = resolveEnemyRef(encounter.id, args.enemyId);
   if (!enemy) {
-    return { error: "Unknown enemyId; use one from GAME STATE." };
+    return { error: "Unknown enemyId; use one from GAME STATE.", retry: true };
   }
   if (enemy.status !== "alive") {
-    return { error: `${enemy.displayName} is already ${enemy.status}.` };
+    return { error: `${enemy.displayName} is already ${enemy.status}.`, retry: true };
   }
   // The AI's damage_enemy is for harm no creature's attack deals: a hazard,
   // the environment. A blow is an attack and goes through pc_attack (or an
@@ -794,6 +800,7 @@ function handleDamageEnemy(
         args.source === "ally"
           ? "An ally's blow is an attack: recruit the ally with add_companion (kind guest) and resolve it with pc_attack. damage_enemy takes only harm from a hazard or the environment."
           : "damage_enemy takes only harm no creature's attack deals: send source 'hazard' or 'environment' with the reason. A character's attack is pc_attack; a spell is cast_at_enemy or aoe_damage.",
+      retry: true,
     };
   }
   // Double-apply guard: a damage roll carrying targetEnemyId already landed
@@ -846,7 +853,7 @@ function handleEndEncounter(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
     // The server closes a fight itself when the whole party is dead
@@ -863,7 +870,7 @@ function handleEndEncounter(
         note: `The server already ended this fight (${ended.outcome}). Narrate how it ended.`,
       };
     }
-    return { error: "No active encounter." };
+    return { error: "No active encounter.", retry: true };
   }
   let args: z.infer<typeof endArgsSchema>;
   try {
@@ -931,27 +938,27 @@ function handleEndTurn(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter || !encounter.orderReady) {
-    return { error: "No active encounter with a locked initiative order." };
+    return { error: "No active encounter with a locked initiative order.", retry: true };
   }
   let args: z.infer<typeof endTurnArgsSchema>;
   try {
     args = endTurnArgsSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: end_turn needs characterId." };
+    return { error: "Invalid arguments: end_turn needs characterId.", retry: true };
   }
   const sheet = resolveSheetRef(args.characterId, sheets, sheetsById);
   if (!sheet) {
-    return { error: "Unknown characterId; use one from GAME STATE." };
+    return { error: "Unknown characterId; use one from GAME STATE.", retry: true };
   }
   // Ending a turn is the one thing its owner can always do: a character
   // stunned in the middle of their turn still has to be able to hand it on.
   // So only whose turn it is is asked here, not whether they can act.
   const current = encounter.order[encounter.turnIndex];
   if (actingCombatantId(encounter) !== sheet.id || !current || current.kind !== "pc") {
-    return { error: `It is ${current?.name ?? "someone else"}'s turn, not ${sheet.name}'s.` };
+    return { error: `It is ${current?.name ?? "someone else"}'s turn, not ${sheet.name}'s.`, retry: true };
   }
   // A pass now would leave the enemies before this turn behind
   // (src/lib/dm/enemies-due.ts).
@@ -959,6 +966,7 @@ function handleEndTurn(
   if (waiting.length) {
     return {
       error: `${waiting.join(" and ")} act${waiting.length === 1 ? "s" : ""} before ${sheet.name}: take ${waiting.length === 1 ? "its turn" : "their turns"} first, then end the turn.`,
+      retry: true,
     };
   }
   markTurnResolved(turn, sheet.id);
@@ -975,7 +983,7 @@ function handleEndTurn(
   const ai = turn.actor === "ai";
   const advanced = advancePointer(campaign, encounter, { announce: !ai, hold: !ai });
   if (!advanced) {
-    return { error: "Nobody is left standing to take the next turn." };
+    return { error: "Nobody is left standing to take the next turn.", retry: true };
   }
   const next = encounter.order[encounter.turnIndex];
   const passed = advanced.enemiesPassed
@@ -1024,7 +1032,7 @@ export function applyEncounterCall(
   // pc_attack only: physical-dice roster and the call id its parked to-hit
   // roll answers on resume.
   callContext?: { realDiceUserIds: Set<string>; toolCallId: string | null },
-): { result: Record<string, unknown> } {
+): { result: ToolResult } {
   switch (toolName) {
     case "start_encounter": {
       const started = handleStartEncounter(campaign, rawArguments, sheets, turn.actor);
@@ -1043,7 +1051,7 @@ export function applyEncounterCall(
     case "pc_attack": {
       const unasked = characterCallUnasked(campaign.id, turn, rawArguments, "characterId");
       if (unasked) {
-        return { result: { error: unasked } };
+        return { result: unasked };
       }
       const result = handlePcAttack(
         campaign,
@@ -1060,7 +1068,7 @@ export function applyEncounterCall(
     case "cast_at_enemy": {
       const unasked = characterCallUnasked(campaign.id, turn, rawArguments, "characterId");
       if (unasked) {
-        return { result: { error: unasked } };
+        return { result: unasked };
       }
       // Improved Reaper's second target (src/lib/dm/authored-reaper.ts).
       const result = handleReaperCast(campaign, turn, rawArguments, sheets, sheetsById) ?? handleCastAtEnemy(campaign, turn, rawArguments, sheets, sheetsById);
@@ -1070,12 +1078,12 @@ export function applyEncounterCall(
     case "cast_at_player": {
       // An enemy's spell or ability is its action, on its own turn.
       const early = enemyCallOutOfTurn(campaign.id, turn, rawArguments, "casterEnemyId");
-      return { result: early ? { error: early } : handleCastAtPlayer(campaign, turn, rawArguments, sheets, sheetsById) };
+      return { result: early ? early : handleCastAtPlayer(campaign, turn, rawArguments, sheets, sheetsById) };
     }
     case "take_action": {
       const unasked = characterCallUnasked(campaign.id, turn, rawArguments, "characterId");
       if (unasked) {
-        return { result: { error: unasked } };
+        return { result: unasked };
       }
       const result = handleTakeAction(campaign, turn, rawArguments, sheets, sheetsById);
       markResolvedFromArgs(turn, rawArguments, sheets, sheetsById, result);
@@ -1085,7 +1093,7 @@ export function applyEncounterCall(
       return { result: handleUseReaction(campaign, turn, rawArguments, sheets, sheetsById) };
     case "end_turn": {
       const unasked = characterCallUnasked(campaign.id, turn, rawArguments, "characterId");
-      return { result: unasked ? { error: unasked } : handleEndTurn(campaign, turn, rawArguments, sheets, sheetsById) };
+      return { result: unasked ? unasked : handleEndTurn(campaign, turn, rawArguments, sheets, sheetsById) };
     }
     case "damage_enemy":
       return { result: handleDamageEnemy(campaign, turn, rawArguments, sheets, sheetsById) };
@@ -1093,13 +1101,13 @@ export function applyEncounterCall(
       // The backstop calls handleEnemyAttack directly; the model's call waits
       // for the enemy's turn (src/lib/dm/enemy-turn-order.ts).
       const early = enemyCallOutOfTurn(campaign.id, turn, rawArguments, "enemyId");
-      return { result: early ? { error: early } : handleEnemyAttack(campaign, turn, rawArguments, sheets, sheetsById) };
+      return { result: early ? early : handleEnemyAttack(campaign, turn, rawArguments, sheets, sheetsById) };
     }
     case "move_token":
       return { result: handleMoveToken(campaign, rawArguments, sheets, sheetsById, turn) };
     case "teleport_token": {
       const unasked = characterCallUnasked(campaign.id, turn, rawArguments, "casterId");
-      return { result: unasked ? { error: unasked } : handleTeleportToken(campaign, rawArguments, sheets, sheetsById, turn) };
+      return { result: unasked ? unasked : handleTeleportToken(campaign, rawArguments, sheets, sheetsById, turn) };
     }
     case "set_movement":
       return { result: handleSetMovement(campaign, rawArguments, sheets, sheetsById, turn) };
@@ -1108,7 +1116,7 @@ export function applyEncounterCall(
     default:
       return (
         applyExtraEncounterCall(campaign, turn, toolName, rawArguments, sheets, sheetsById) ?? {
-          result: { error: `Unknown encounter tool ${toolName}.` },
+          result: { error: `Unknown encounter tool ${toolName}.`, retry: true },
         }
       );
   }

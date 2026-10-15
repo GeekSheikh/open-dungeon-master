@@ -21,8 +21,9 @@ import { wearsUntrainedArmor } from "@/lib/srd/armor";
 import { matchWeapon } from "@/lib/srd/weapons";
 import { spendAction, spendCastAttack, type TurnBudget } from "@/lib/dm/action-budget";
 import { masteredSpell, pactLevelFor } from "@/lib/dm/cast-slot-choice";
+import { toolError, type ToolError } from "@/lib/dm/tool-errors";
 
-export type CastRefusal = { error: string };
+export type CastRefusal = ToolError;
 
 type Caster = Pick<
   CharacterSheet,
@@ -88,10 +89,10 @@ export function spellHeldProblem(
   facts: SpellFacts | null,
   // The table's workshop and pack subclasses, for their always-prepared lists.
   options: { ritual?: boolean; extras?: SubclassExtras } = {},
-): string | null {
+): ToolError | null {
   const casting = sheet.spellcasting;
   if (!casting) {
-    return `${sheet.name} has no Spellcasting feature and cannot cast spells.`;
+    return { error: `${sheet.name} has no Spellcasting feature and cannot cast spells.`, refused: "rules" };
   }
   const names = namesOf(spell, facts);
   const views = casterViewsOf(sheet);
@@ -115,8 +116,10 @@ export function spellHeldProblem(
   const ready = [...new Set(lists.flatMap((entry) => [...(entry.cantrips ?? []), ...entry.known, ...entry.prepared]))];
   return (
     notReadyReason(casting, facts?.name ?? spell) ??
-    notReadyReason(casting, spell) ??
-    `${sheet.name} cannot cast "${spell}": it is not among the spells they know or have prepared (${ready.join(", ") || "none"}).`
+    notReadyReason(casting, spell) ?? {
+      error: `${sheet.name} cannot cast "${spell}": it is not among the spells they know or have prepared (${ready.join(", ") || "none"}).`,
+      retry: true,
+    }
   );
 }
 
@@ -132,7 +135,7 @@ function ritualHolderProblem(
   names: Set<string>,
   spell: string,
   extras?: SubclassExtras,
-): string | null | undefined {
+): ToolError | null | undefined {
   const ritualViews = views.filter((view) => RITUAL_CASTERS.has(view.classId.trim().toLowerCase()));
   const holds = (view: (typeof views)[number]) =>
     hasName([...view.known, ...view.prepared, ...subclassSpellsFor(view.classId, view.subclass, view.level, extras)], names) ||
@@ -146,19 +149,19 @@ function ritualHolderProblem(
   }
   const other = views.find(holds);
   if (other) {
-    return `${sheet.name} holds ${spell} as a ${other.classId} spell, and a ${other.classId}'s Spellcasting does not cast rituals (bards, clerics, druids, wizards and artificers do, through their own spells). It can be cast from a slot instead.`;
+    return { error: `${sheet.name} holds ${spell} as a ${other.classId} spell, and a ${other.classId}'s Spellcasting does not cast rituals (bards, clerics, druids, wizards and artificers do, through their own spells). It can be cast from a slot instead.`, refused: "rules" };
   }
   if (book) {
-    return `${spell} is not written in ${sheet.name}'s ritual book, so it cannot be cast as a ritual. It goes in the book first (a ritual of a level they can cast, found and copied), or it is cast from a slot.`;
+    return { error: `${spell} is not written in ${sheet.name}'s ritual book, so it cannot be cast as a ritual. It goes in the book first (a ritual of a level they can cast, found and copied), or it is cast from a slot.`, refused: "rules" };
   }
   return undefined;
 }
 
 // ---- the caster's own state ----
 
-export function casterStateProblem(sheet: Caster): string | null {
+export function casterStateProblem(sheet: Caster): ToolError | null {
   if (sheet.conditions.some((entry) => entry.trim().toLowerCase() === "raging")) {
-    return `${sheet.name} is raging and cannot cast spells or concentrate on them. They can cast once the rage ends.`;
+    return { error: `${sheet.name} is raging and cannot cast spells or concentrate on them. They can cast once the rage ends.`, refused: "rules" };
   }
   if (sheet.wildShape) {
     const polymorphed = sheet.wildShape.kind === "polymorph";
@@ -166,16 +169,16 @@ export function casterStateProblem(sheet: Caster): string | null {
       !polymorphed &&
       sheet.features.some((feature) => feature.name.toLowerCase().includes("beast spells"));
     if (!beastSpells) {
-      return polymorphed
+      return { error: polymorphed
         ? `${sheet.name} is polymorphed into a ${sheet.wildShape.form} and cannot cast spells; the form has no capacity for it. The spell waits until the transformation ends.`
-        : `${sheet.name} is wild shaped as a ${sheet.wildShape.form} and cannot cast spells in beast form, cantrips included (that unlocks with Beast Spells at druid level 18). They can revert with use_resource on Wild Shape.`;
+        : `${sheet.name} is wild shaped as a ${sheet.wildShape.form} and cannot cast spells in beast form, cantrips included (that unlocks with Beast Spells at druid level 18). They can revert with use_resource on Wild Shape.`, refused: "rules" };
     }
   }
   // SRD 5.1, Armor: armor worn without the training for it bars casting.
   if (wearsUntrainedArmor(sheet)) {
     const armor = acBreakdownFor(sheet);
     const worn = [armor.armorName, armor.shieldName].filter(Boolean).join(" and ");
-    return `${sheet.name} is wearing armor they are not trained in (${worn || "their armor"}) and cannot cast spells in it. They cast again once it is off.`;
+    return { error: `${sheet.name} is wearing armor they are not trained in (${worn || "their armor"}) and cannot cast spells in it. They cast again once it is off.`, refused: "rules" };
   }
   return null;
 }
@@ -201,13 +204,13 @@ export function handsBusy(sheet: Pick<Caster, "equipment" | "proficiencies" | "c
 // as an emblem), which makes the shield hand the hand for a material.
 const EMBLEM_BEARERS = new Set(["cleric", "paladin"]);
 
-export function componentProblem(sheet: Caster, facts: SpellFacts | null): string | null {
+export function componentProblem(sheet: Caster, facts: SpellFacts | null): ToolError | null {
   if (!facts) {
     return null;
   }
   const mute = sheet.conditions.find((entry) => MUTE.includes(entry.trim().toLowerCase()));
   if (facts.verbal && mute) {
-    return `${facts.name} has a verbal component and ${sheet.name} is ${mute}: they cannot speak the words. A spell with no verbal component could still be cast.`;
+    return { error: `${facts.name} has a verbal component and ${sheet.name} is ${mute}: they cannot speak the words. A spell with no verbal component could still be cast.`, refused: "rules" };
   }
   if (!facts.somatic && !facts.material) {
     return null;
@@ -222,7 +225,7 @@ export function componentProblem(sheet: Caster, facts: SpellFacts | null): strin
   if (!facts.material) {
     return castsWithHandsFull(sheet)
       ? null
-      : `${facts.name} needs a free hand for its gestures, and both of ${sheet.name}'s hands are full. They must put a weapon away or lower the shield first (unequip it on the sheet).`;
+      : { error: `${facts.name} needs a free hand for its gestures, and both of ${sheet.name}'s hands are full. They must put a weapon away or lower the shield first (unequip it on the sheet).`, refused: "rules" };
   }
   const classIds = sheet.classes?.length ? sheet.classes.map((entry) => entry.id) : [sheet.class];
   const emblem =
@@ -232,7 +235,7 @@ export function componentProblem(sheet: Caster, facts: SpellFacts | null): strin
   if (emblem || focusInHand) {
     return null;
   }
-  return `${facts.name} needs a free hand for its material component${facts.somatic ? " (the same hand makes the gestures)" : ""}, and both of ${sheet.name}'s hands are full${castsWithHandsFull(sheet) ? "; War Caster frees the gestures, not the material" : ""}. They must put a weapon away or lower the shield first (unequip it on the sheet).`;
+  return { error: `${facts.name} needs a free hand for its material component${facts.somatic ? " (the same hand makes the gestures)" : ""}, and both of ${sheet.name}'s hands are full${castsWithHandsFull(sheet) ? "; War Caster frees the gestures, not the material" : ""}. They must put a weapon away or lower the shield first (unequip it on the sheet).`, refused: "rules" };
 }
 
 // ---- a material that costs ----
@@ -270,11 +273,13 @@ export function slotPlan(
       error: spell
         ? `${spell} is not a spell the server knows, so the slot level it is cast from must be named (1 to 9).`
         : "A spell slot has a level from 1 to 9; name the level to spend.",
+      retry: true,
     };
   }
   if (facts && level < facts.level) {
     return {
       error: `${facts.name} is a level ${facts.level} spell; it cannot be cast from a level ${level} slot. Use a slot of level ${facts.level} or higher.`,
+      retry: true,
     };
   }
   // Multiclass warlock: a Pact Magic slot of the right level is spent first
@@ -301,6 +306,7 @@ export function slotPlan(
     error: `${sheet.name} has no free level ${level} spell slot.${
       facts && facts.level <= level ? ` ${facts.name} needs a slot of level ${facts.level} or higher that is not yet spent.` : ""
     }`,
+    retry: true,
   };
 }
 
@@ -311,30 +317,30 @@ export function ritualProblem(
   spell: string,
   facts: SpellFacts | null,
   inFight: boolean,
-): string | null {
+): ToolError | null {
   if (!spell) {
-    return "A ritual is a named spell with the ritual tag; name the spell being cast.";
+    return { error: "A ritual is a named spell with the ritual tag; name the spell being cast.", retry: true };
   }
   if (!facts) {
-    return `${spell} is not a spell the server knows to be a ritual; it needs a slot.`;
+    return { error: `${spell} is not a spell the server knows to be a ritual; it needs a slot.`, retry: true };
   }
   if (!facts.ritual) {
-    return `${facts.name} has no ritual tag; it cannot be cast as a ritual and needs a slot.`;
+    return { error: `${facts.name} has no ritual tag; it cannot be cast as a ritual and needs a slot.`, refused: "rules" };
   }
   if (!canCastRituals(sheet)) {
-    return `${sheet.name}'s class does not cast rituals (bards, clerics, druids and wizards do); ${facts.name} needs a slot.`;
+    return { error: `${sheet.name}'s class does not cast rituals (bards, clerics, druids and wizards do); ${facts.name} needs a slot.`, refused: "rules" };
   }
   if (inFight) {
-    return `A ritual takes ten minutes longer than the spell; ${facts.name} cannot be cast as one in the middle of a fight. It can be cast from a slot, or as a ritual once the fight is over.`;
+    return { error: `A ritual takes ten minutes longer than the spell; ${facts.name} cannot be cast as one in the middle of a fight. It can be cast from a slot, or as a ritual once the fight is over.`, refused: "rules" };
   }
   return null;
 }
 
-export function longCastingProblem(facts: SpellFacts | null, inFight: boolean): string | null {
+export function longCastingProblem(facts: SpellFacts | null, inFight: boolean): ToolError | null {
   if (!facts || typeof facts.castingTime !== "number" || !inFight) {
     return null;
   }
-  return `${facts.name} takes ${describeCastingTime(facts.castingTime)} to cast, far longer than a turn; it cannot be cast in the middle of a fight. It can be cast once the fight is over.`;
+  return { error: `${facts.name} takes ${describeCastingTime(facts.castingTime)} to cast, far longer than a turn; it cannot be cast in the middle of a fight. It can be cast once the fight is over.`, refused: "rules" };
 }
 
 // ---- the turn ----
@@ -472,17 +478,20 @@ export function turnCharge(input: {
   if (time === "bonus" && marks.includes(LEVELLED_SPELL) && !(featured && bonusCast?.afterLevelled)) {
     return {
       error: `${who} has already cast a levelled spell this turn, so ${name} cannot be cast with the bonus action: beside a bonus action spell the only other spell of the turn is a cantrip.`,
+      refused: "rules",
     };
   }
   if (time !== "bonus" && levelled && marks.includes(BONUS_SPELL)) {
     return {
       error: `${who} has cast a spell with their bonus action this turn, so the only other spell they can cast is a cantrip with a casting time of one action. ${name} waits for another turn.`,
+      refused: "rules",
     };
   }
   if (time === "reaction") {
     if (input.reactionSpent) {
       return {
         error: `${who} has already used their reaction; it comes back at the start of their next turn. ${name} is not cast.`,
+        refused: "rules",
       };
     }
     const own = reactionSpellOnOwnTurn(budget, who, name);
@@ -507,7 +516,7 @@ export function turnCharge(input: {
       ? spendAction(budget, "bonus", `casting ${name}`, who)
       : spendCastAttack(budget, name, who);
   if (!spent.ok) {
-    return { error: spent.error };
+    return toolError(spent);
   }
   const note = [
     spent.note,
@@ -539,6 +548,7 @@ export function reactionSpellOnOwnTurn(
   if (budget.oncePerTurn.includes(BONUS_SPELL)) {
     return {
       error: `${who} has cast a spell with their bonus action this turn, so the only other spell they can cast on it is a cantrip with a casting time of one action; ${name} on their own turn is not one.`,
+      refused: "rules",
     };
   }
   return {

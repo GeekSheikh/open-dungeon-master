@@ -571,12 +571,12 @@ await test("The prose-spell check knows every leveled spell in the spell data, a
 await test("The empty-turn line shows a player only a rules refusal, never an argument fault meant for the model.", () => {
   const fault = [
     { role: "assistant", content: "", tool_calls: [{ id: "a", type: "function", function: { name: "pc_attack", arguments: "{}" } }] },
-    { role: "tool", tool_call_id: "a", content: JSON.stringify({ error: "Unknown targetEnemyId; use one from GAME STATE." }) },
+    { role: "tool", tool_call_id: "a", content: JSON.stringify({ error: "Unknown targetEnemyId; use one from GAME STATE.", retry: true }) },
   ];
   assert.doesNotMatch(emptyTurnLine(fault), /targetEnemyId/);
   const ruling = [
     { role: "assistant", content: "", tool_calls: [{ id: "b", type: "function", function: { name: "pc_attack", arguments: "{}" } }] },
-    { role: "tool", tool_call_id: "b", content: JSON.stringify({ error: "Kara is at 0 HP and cannot attack. They act again once they are healed above 0." }) },
+    { role: "tool", tool_call_id: "b", content: JSON.stringify({ error: "Kara is at 0 HP and cannot attack. They act again once they are healed above 0.", refused: "rules" }) },
   ];
   assert.match(emptyTurnLine(ruling), /0 HP/);
 });

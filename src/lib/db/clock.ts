@@ -20,6 +20,7 @@ import {
   type CampaignClock,
   type Instant,
 } from "@/lib/dm/calendar";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 // Reading and writing the campaign's in-world clock.
 //
@@ -49,7 +50,7 @@ export function advanceClock(
   campaignId: string,
   amount: number,
   unit: AdvanceUnit,
-): { clock: CampaignClock; minutes: number } | { error: string } {
+): { clock: CampaignClock; minutes: number } | ToolError {
   const current = getClock(campaignId);
   const moved = advance(current.instant, amount, unit);
   if ("error" in moved) {

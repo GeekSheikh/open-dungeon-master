@@ -216,7 +216,7 @@ function attackCards(sheet: CharacterSheet, turn: HandTurn, riders: CombatRiders
         campaignId: sheet.campaignId,
         shieldName,
       });
-      const opened: Gate = rule ? { reason: rule, spent: false } : null;
+      const opened: Gate = rule ? { reason: rule.error, spent: false } : null;
       return gated(card, standing, costGate("bonus", turn, sheet, `an off-hand attack with ${name}`), opened);
     }
     return gated(card, standing, handsGate, attackGate(turn, allowed, sheet, { unarmed: srd === null }), ammoGate);

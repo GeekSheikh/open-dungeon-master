@@ -20,6 +20,7 @@ import { heldInspiration } from "@/lib/dm/roll-riders";
 import type { SheetDerived } from "@/lib/srd";
 import { classLevelOf, holdsFeature } from "@/lib/srd/trait-rules";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 type Sheet = Pick<CharacterSheet, "name" | "class" | "level" | "classes" | "features" | "feats" | "conditions" | "resources" | "spellcasting">;
 
@@ -28,11 +29,11 @@ const holds = (sheet: Sheet, condition: string) => sheet.conditions.some((entry)
 
 // ---- Inspiration ----
 
-export function inspirationProblem(sheet: Sheet, asked: boolean | undefined): string | null {
+export function inspirationProblem(sheet: Sheet, asked: boolean | undefined): ToolError | null {
   if (!asked || heldInspiration(sheet)) {
     return null;
   }
-  return `${sheet.name} holds no Inspiration to spend. The DM awards it with set_condition condition "inspiration"; attack without useInspiration.`;
+  return { error: `${sheet.name} holds no Inspiration to spend. The DM awards it with set_condition condition "inspiration"; attack without useInspiration.`, retry: true };
 }
 
 // ---- Feral Senses ----
@@ -100,16 +101,16 @@ export function foeSlayerBonus(
 
 export const STROKE_OF_LUCK = "stroke_of_luck";
 
-export function strokeOfLuckProblem(sheet: Sheet, asked: boolean | undefined): string | null {
+export function strokeOfLuckProblem(sheet: Sheet, asked: boolean | undefined): ToolError | null {
   if (!asked) {
     return null;
   }
   if (!(classLevelOf(sheet, "rogue") >= 20 || holdsFeature(sheet, "stroke of luck"))) {
-    return `${sheet.name} does not have Stroke of Luck (a rogue's feature at 20th level); attack without strokeOfLuck.`;
+    return { error: `${sheet.name} does not have Stroke of Luck (a rogue's feature at 20th level); attack without strokeOfLuck.`, retry: true };
   }
   const state = sheet.resources?.[STROKE_OF_LUCK];
   if (!state || state.max - state.used <= 0) {
-    return `${sheet.name} has used Stroke of Luck; it comes back on a short or long rest. Attack without strokeOfLuck.`;
+    return { error: `${sheet.name} has used Stroke of Luck; it comes back on a short or long rest. Attack without strokeOfLuck.`, retry: true };
   }
   return null;
 }

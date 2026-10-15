@@ -28,6 +28,7 @@ import { spendInspirationCounter } from "@/lib/dm/roll-riders";
 import { spendLuckCounter } from "@/lib/srd/class-resources";
 import { moteBurst, moteOf } from "@/lib/dm/authored-mote";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 // Re-exported for the callers that learned them here.
 export { superiorityDie } from "@/lib/dm/pc-attack-riders";
@@ -268,21 +269,21 @@ export function handlePcAttack(
   sheetsById: Map<string, CharacterSheet>,
   realDiceUserIds: Set<string>,
   toolCallId: string | null,
-): Record<string, unknown> {
+): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter. Call start_encounter first." };
+    return { error: "No active encounter. Call start_encounter first.", retry: true };
   }
   let args: PcAttackArgs;
   try {
     args = pcAttackArgsSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: pc_attack needs characterId and targetEnemyId." };
+    return { error: "Invalid arguments: pc_attack needs characterId and targetEnemyId.", retry: true };
   }
   const staleSheet = resolveSheetRef(args.characterId, sheets, sheetsById);
   const sheet = staleSheet ? (getSheetById(staleSheet.id) ?? staleSheet) : null;
   if (!sheet) {
-    return { error: "Unknown characterId; use one from GAME STATE." };
+    return { error: "Unknown characterId; use one from GAME STATE.", retry: true };
   }
 
   // ---- refusals: everything that can stop this attack, before any spend ----

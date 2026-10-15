@@ -20,6 +20,7 @@ import { conditionExtraActions } from "@/lib/srd/condition-effects";
 import { combatRiders } from "@/lib/srd/feature-effects";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { summonAttacksPerTurn } from "@/lib/dm/summon-rules";
+import type { ToolError, ToolResult } from "@/lib/dm/tool-errors";
 
 // The combatant the initiative pointer is currently on, or null out of
 // combat and while initiative is still being rolled.
@@ -96,14 +97,14 @@ export function prepareReaction(
   sheet: CharacterSheet,
   label: string,
   timing: ReactionTiming = reactionTimingOf(label),
-): { error: string } | { commit: () => Record<string, unknown>; beforeDrop: boolean } {
+): ToolError | { commit: () => ToolResult; beforeDrop: boolean } {
   const refused = reactionRefusal(encounter.campaignId, sheet, encounter, label, timing);
   if (refused) {
-    return { error: refused };
+    return refused;
   }
   const { beforeDrop } = reactingSheet(encounter.campaignId, sheet, timing);
   if (encounter.reactionsUsed.includes(sheet.id)) {
-    return { error: `${sheet.name} has already used their reaction; it comes back at the start of their next turn. ${label} does not happen.` };
+    return { error: `${sheet.name} has already used their reaction; it comes back at the start of their next turn. ${label} does not happen.`, refused: "rules" };
   }
   return {
     beforeDrop,

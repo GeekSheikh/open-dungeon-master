@@ -852,8 +852,8 @@ await test("Ritual Caster's book: a fighter casts its two rituals as rituals and
   const facts = spellFactsFor("Detect Magic", []);
   assert.equal(canCastRituals(book), true, "Ritual Caster casts rituals");
   assert.equal(spellHeldProblem(book, "Detect Magic", facts, { ritual: true }), null, "a book ritual is held for a ritual cast");
-  assert.match(spellHeldProblem(book, "Detect Magic", facts) ?? "", /cannot be cast|cannot cast/, "a book ritual is not cast from a slot");
-  assert.match(spellHeldProblem(book, "Fireball", spellFactsFor("Fireball", []), { ritual: true }) ?? "", /cannot cast/);
+  assert.match(spellHeldProblem(book, "Detect Magic", facts)?.error ?? "", /cannot be cast|cannot cast/, "a book ritual is not cast from a slot");
+  assert.match(spellHeldProblem(book, "Fireball", spellFactsFor("Fireball", []), { ritual: true })?.error ?? "", /cannot cast/);
   world.close();
 
   const sniper = await table(

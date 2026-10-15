@@ -8,6 +8,7 @@ import { immutableForm } from "@/lib/dm/monster-traits";
 import { formatCr, type BeastForm } from "@/lib/srd/beast-forms";
 import { xpForCr } from "@/lib/srd/encounter-math";
 import type { EnemyAttack, EnemySaveMods, EnemyStats, SaveAbility } from "@/lib/bestiary/statblock";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 export type EnemyShapeSpell = {
   spell: string;
@@ -49,24 +50,24 @@ export function enemyShapeProblem(
   rule: EnemyShapeSpell,
   form: BeastForm,
   enemy: { displayName: string; currentHp: number; cr: number; stats: EnemyStats },
-): string | null {
+): ToolError | null {
   const name = enemy.displayName;
   if (enemy.stats.polymorphedFrom) {
-    return `${name} is already a ${enemy.stats.polymorphedFrom.form} under ${enemy.stats.polymorphedFrom.spell}; it takes no second form until that one ends. Nothing was spent.`;
+    return { error: `${name} is already a ${enemy.stats.polymorphedFrom.form} under ${enemy.stats.polymorphedFrom.spell}; it takes no second form until that one ends. Nothing was spent.`, refused: "rules" };
   }
   if (enemy.currentHp <= 0) {
-    return `${rule.spell} has no effect on a creature at 0 hit points, and ${name} is at 0. Nothing was spent; pick another target.`;
+    return { error: `${rule.spell} has no effect on a creature at 0 hit points, and ${name} is at 0. Nothing was spent; pick another target.`, retry: true };
   }
   // Immutable Form (the golems): no spell alters its form.
   if (immutableForm(enemy.stats)) {
-    return `${name} has Immutable Form: it is immune to any spell or effect that would alter its form, and ${rule.spell} is one. Nothing was spent; pick another target or another spell.`;
+    return { error: `${name} has Immutable Form: it is immune to any spell or effect that would alter its form, and ${rule.spell} is one. Nothing was spent; pick another target or another spell.`, refused: "rules" };
   }
   if (rule.sparesShapechangers && isShapechanger(enemy.stats)) {
-    return `${rule.spell} has no effect on a shapechanger, and ${name} is one. Nothing was spent; pick another target or another spell.`;
+    return { error: `${rule.spell} has no effect on a shapechanger, and ${name} is one. Nothing was spent; pick another target or another spell.`, refused: "rules" };
   }
   const cap = enemyCr(enemy);
   if (form.cr > cap) {
-    return `${form.name} is CR ${formatCr(form.cr)}, above the CR ${formatCr(cap)} ${rule.spell} allows for ${name}: the beast's challenge rating may be no higher than the creature's own. Nothing was spent; offer a lesser form.`;
+    return { error: `${form.name} is CR ${formatCr(form.cr)}, above the CR ${formatCr(cap)} ${rule.spell} allows for ${name}: the beast's challenge rating may be no higher than the creature's own. Nothing was spent; offer a lesser form.`, retry: true };
   }
   return null;
 }

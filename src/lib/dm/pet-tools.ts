@@ -16,6 +16,7 @@ import { resolveSheetRef } from "@/lib/dm/rolls";
 import type { CharacterSheet, SheetPet } from "@/lib/schemas/sheet";
 import { allSpellNames } from "@/lib/srd/spell-lists";
 import { FAMILIAR_FORMS } from "@/lib/srd/familiar-forms";
+import { toolError, type ToolError, type ToolResult } from "@/lib/dm/tool-errors";
 
 // The creatures bound to a character: familiars (Find Familiar, Pact of the
 // Chain), the Beast Master's companion, the Drakewarden's drake, and story
@@ -217,13 +218,14 @@ export function buildPet(
     hp?: number;
     ac?: number;
   },
-): SheetPet | { error: string } {
+): SheetPet | ToolError {
   const level = sheet.level;
   const pb = proficiencyBonus(level);
   if (args.kind === "familiar") {
     if (!knowsFindFamiliar(sheet) && !hasPactOfTheChain(sheet)) {
       return {
         error: `${sheet.name} does not know Find Familiar and has no Pact of the Chain; they cannot summon a familiar.`,
+        refused: "rules",
       };
     }
     const wanted = args.form.trim().toLowerCase();
@@ -232,11 +234,13 @@ export function buildPet(
     if (!form) {
       return {
         error: `Unknown familiar form "${args.form}". Offer: ${FAMILIAR_FORMS.filter((entry) => !entry.chainOnly).map((entry) => entry.form.toLowerCase()).join(", ")}${hasPactOfTheChain(sheet) ? ", imp, quasit, pseudodragon, sprite" : ""}.`,
+        retry: true,
       };
     }
     if (form.chainOnly && !hasPactOfTheChain(sheet)) {
       return {
         error: `A ${form.form} familiar needs Pact of the Chain; ${sheet.name} can take an ordinary form instead.`,
+        retry: true,
       };
     }
     return {
@@ -255,12 +259,14 @@ export function buildPet(
     if (!hasBeastCompanionFeature(sheet)) {
       return {
         error: `${sheet.name} has no Ranger's Companion feature; only a Beast Master gets a bonded beast.`,
+        refused: "rules",
       };
     }
     const beast = findBeastForm(args.form);
     if (!beast || beast.cr > 0.25) {
       return {
         error: `A ranger's companion must be a beast of CR 1/4 or lower (wolf, panther, boar, elk...).`,
+        retry: true,
       };
     }
     // PHB Beast Master: add the ranger's proficiency bonus to the beast's
@@ -284,7 +290,7 @@ export function buildPet(
   }
   if (args.kind === "drake") {
     if (!hasDrakeFeature(sheet)) {
-      return { error: `${sheet.name} has no Drake Companion feature; only a Drakewarden bonds a drake.` };
+      return { error: `${sheet.name} has no Drake Companion feature; only a Drakewarden bonds a drake.`, refused: "rules" };
     }
     return {
       name: args.name?.trim() || "Drake",
@@ -300,7 +306,7 @@ export function buildPet(
   }
   // Story pet: the model supplies honest numbers, clamped by the schema.
   if (!args.hp || !args.ac) {
-    return { error: `A story pet needs hp and ac from its stat block.` };
+    return { error: `A story pet needs hp and ac from its stat block.`, retry: true };
   }
   return {
     name: args.name?.trim() || args.form,
@@ -321,20 +327,20 @@ export function handleSummonPet(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   let args: z.infer<typeof summonSchema>;
   try {
     args = summonSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: summon_pet needs characterId, kind, and form." };
+    return { error: "Invalid arguments: summon_pet needs characterId, kind, and form.", retry: true };
   }
   const stale = resolveSheetRef(args.characterId, sheets, sheetsById);
   const sheet = stale ? (getSheetById(stale.id) ?? stale) : null;
   if (!sheet) {
-    return { error: "Unknown characterId; use one from GAME STATE." };
+    return { error: "Unknown characterId; use one from GAME STATE.", retry: true };
   }
   if (sheet.pets.length >= 3) {
-    return { error: `${sheet.name} already has ${sheet.pets.length} bound creatures; dismiss one first.` };
+    return { error: `${sheet.name} already has ${sheet.pets.length} bound creatures; dismiss one first.`, retry: true };
   }
   // One creature per source: a second familiar replaces the first (5e: the
   // ritual re-shapes the same spirit), companions and drakes are unique.
@@ -366,43 +372,44 @@ export function handlePetAttack(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   let args: z.infer<typeof petAttackSchema>;
   try {
     args = petAttackSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: pet_attack needs characterId and targetEnemyId." };
+    return { error: "Invalid arguments: pet_attack needs characterId and targetEnemyId.", retry: true };
   }
   const stale = resolveSheetRef(args.characterId, sheets, sheetsById);
   const sheet = stale ? (getSheetById(stale.id) ?? stale) : null;
   if (!sheet) {
-    return { error: "Unknown characterId; use one from GAME STATE." };
+    return { error: "Unknown characterId; use one from GAME STATE.", retry: true };
   }
   const pet = findPet(sheet, args.petName);
   if (!pet) {
-    return { error: `${sheet.name} has no bound creature${args.petName ? ` called "${args.petName}"` : ""}.` };
+    return { error: `${sheet.name} has no bound creature${args.petName ? ` called "${args.petName}"` : ""}.`, retry: true };
   }
   if (pet.hp <= 0) {
-    return { error: `${pet.name} is down; it cannot attack.` };
+    return { error: `${pet.name} is down; it cannot attack.`, refused: "rules" };
   }
   if (!pet.attacks.length) {
     return {
       error: `${pet.name} is an ordinary familiar and cannot attack (only Pact of the Chain forms fight). It can scout, deliver touch spells, and grant its senses instead.`,
+      refused: "rules",
     };
   }
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "pet_attack needs an active encounter and a target." };
+    return { error: "pet_attack needs an active encounter and a target.", retry: true };
   }
   const enemy = resolveEnemyRef(encounter.id, args.targetEnemyId);
   if (!enemy || enemy.status !== "alive") {
-    return { error: "pet_attack needs a living targetEnemyId from GAME STATE." };
+    return { error: "pet_attack needs a living targetEnemyId from GAME STATE.", retry: true };
   }
   // Commanding the pet is the owner's to do, on the owner's turn, and costs
   // what the feature says (src/lib/dm/pet-attack-cost.ts).
   const charge = petAttackCost(sheet, pet, encounter);
   if ("error" in charge) {
-    return { error: charge.error };
+    return toolError(charge);
   }
   const wantedAttack = (args.attack ?? "").trim().toLowerCase();
   const attack =
@@ -488,21 +495,21 @@ export function handleDamagePet(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   let args: z.infer<typeof damagePetSchema>;
   try {
     args = damagePetSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: damage_pet needs characterId and amount." };
+    return { error: "Invalid arguments: damage_pet needs characterId and amount.", retry: true };
   }
   const stale = resolveSheetRef(args.characterId, sheets, sheetsById);
   const sheet = stale ? (getSheetById(stale.id) ?? stale) : null;
   if (!sheet) {
-    return { error: "Unknown characterId; use one from GAME STATE." };
+    return { error: "Unknown characterId; use one from GAME STATE.", retry: true };
   }
   const pet = findPet(sheet, args.petName);
   if (!pet) {
-    return { error: `${sheet.name} has no bound creature${args.petName ? ` called "${args.petName}"` : ""}.` };
+    return { error: `${sheet.name} has no bound creature${args.petName ? ` called "${args.petName}"` : ""}.`, retry: true };
   }
   const hp = Math.max(0, pet.hp - args.amount);
   if (hp <= 0 && pet.kind === "familiar") {
@@ -534,21 +541,21 @@ export function handleDismissPet(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   let args: z.infer<typeof dismissSchema>;
   try {
     args = dismissSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: dismiss_pet needs characterId." };
+    return { error: "Invalid arguments: dismiss_pet needs characterId.", retry: true };
   }
   const stale = resolveSheetRef(args.characterId, sheets, sheetsById);
   const sheet = stale ? (getSheetById(stale.id) ?? stale) : null;
   if (!sheet) {
-    return { error: "Unknown characterId; use one from GAME STATE." };
+    return { error: "Unknown characterId; use one from GAME STATE.", retry: true };
   }
   const pet = findPet(sheet, args.petName);
   if (!pet) {
-    return { error: `${sheet.name} has no bound creature${args.petName ? ` called "${args.petName}"` : ""}.` };
+    return { error: `${sheet.name} has no bound creature${args.petName ? ` called "${args.petName}"` : ""}.`, retry: true };
   }
   patchSheet(sheet.id, { pets: sheet.pets.filter((entry) => entry !== pet) });
   publishSheet(campaign, sheet.id);

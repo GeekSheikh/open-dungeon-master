@@ -10,6 +10,8 @@
 // Pure by design: no "@/" value imports and no I/O, so the catalog and the
 // guard tests can load it.
 
+import type { ToolError } from "@/lib/dm/tool-errors";
+
 type Ability = "str" | "dex" | "con" | "int" | "wis" | "cha";
 
 export type UpdateSheetField = {
@@ -71,7 +73,7 @@ function fieldNamed(raw: string): UpdateSheetField | null {
   );
 }
 
-export type FoldedArgs = { args: Record<string, unknown> } | { error: string };
+export type FoldedArgs = { args: Record<string, unknown> } | ToolError;
 
 // The arguments with `field` and `value` folded into the sheet's own keys.
 // Arguments that carry no `field` pass through untouched, which is every
@@ -89,10 +91,11 @@ export function foldFieldValue(
   if (!found) {
     return {
       error: `A sheet has no field called "${String(field)}". Pick one of: ${UPDATE_SHEET_FIELDS.map((entry) => entry.name).join(", ")}.`,
+      retry: true,
     };
   }
   if (value === undefined || value === null) {
-    return { error: `Say what ${found.label.toLowerCase()} becomes.` };
+    return { error: `Say what ${found.label.toLowerCase()} becomes.`, retry: true };
   }
   if (found.kind === "list") {
     const list = Array.isArray(value)
@@ -108,7 +111,7 @@ export function foldFieldValue(
   const text = String(value).trim().replace(/,/g, "");
   const number = Number(text);
   if (!text || !Number.isFinite(number) || !Number.isInteger(number)) {
-    return { error: `${found.label} takes a whole number, and "${String(value)}" is not one.` };
+    return { error: `${found.label} takes a whole number, and "${String(value)}" is not one.`, retry: true };
   }
   if (found.kind === "ability") {
     const current = (rest.abilities ?? abilities) as Record<Ability, number>;

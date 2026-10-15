@@ -76,6 +76,7 @@ import { summonSlotProblem } from "@/lib/srd/summon-spells";
 import { spellSupportLine } from "@/lib/srd/spell-support";
 import { wardOnCast } from "@/lib/dm/arcane-ward";
 import { casterCost } from "@/lib/dm/spell-self";
+import { toolError, type ToolError, type ToolResult } from "@/lib/dm/tool-errors";
 
 // Which tool the cast came through. It decides two things only: whether a
 // casting whose shares are resolved one call at a time (Eldritch Blast's
@@ -109,7 +110,7 @@ export type CastHooks = {
   publish: () => void;
 };
 
-export type CastResult = Record<string, unknown>;
+export type CastResult = ToolResult;
 
 function inRunningFight(encounter: Encounter | null): encounter is Encounter {
   return Boolean(encounter && encounter.status === "active" && (encounter.kind ?? "fight") === "fight");
@@ -131,18 +132,18 @@ function namelessSlot(
   hooks: CastHooks,
 ): CastResult {
   if (input.ritual) {
-    return { error: "A ritual is a named spell with the ritual tag; name the spell being cast." };
+    return { error: "A ritual is a named spell with the ritual tag; name the spell being cast.", retry: true };
   }
   if (sheet.deathSaves?.dead || sheet.currentHp <= 0) {
-    return { error: `${sheet.name} is ${sheet.deathSaves?.dead ? "dead" : "at 0 HP"} and cannot spend a spell slot.` };
+    return { error: `${sheet.name} is ${sheet.deathSaves?.dead ? "dead" : "at 0 HP"} and cannot spend a spell slot.`, refused: "rules" };
   }
   const stopped = incapacitatedBy(sheet.conditions);
   if (stopped) {
-    return { error: `${sheet.name} is ${stopped} and cannot spend a spell slot until the condition ends.` };
+    return { error: `${sheet.name} is ${stopped} and cannot spend a spell slot until the condition ends.`, refused: "rules" };
   }
   const state = casterStateProblem(sheet);
   if (state && sheet.wildShape) {
-    return { error: state };
+    return state;
   }
   const plan = slotPlan(sheet, "", null, input.level);
   if ("error" in plan) {
@@ -189,7 +190,7 @@ function planTurn(
   spell: string,
   slotLevel: number | null,
   via: CastVia,
-): TurnPlan | { error: string } {
+): TurnPlan | ToolError {
   if (!inRunningFight(encounter)) {
     return { kind: "free" };
   }
@@ -214,6 +215,7 @@ function planTurn(
     if (encounter.reactionsUsed.includes(sheet.id)) {
       return {
         error: `${sheet.name} has already used their reaction; it comes back at the start of their next turn. ${facts?.name ?? spell} is not cast.`,
+        refused: "rules",
       };
     }
     return { kind: "reaction", ...(own.budget ? { budget: own.budget } : {}) };
@@ -264,7 +266,7 @@ export function castSpell(
   // A summoning spell's creatures come through cast_buff (summon-cast.ts).
   const summoning = via === "slot" && !input.dryRun ? summonSlotProblem(engine) : null;
   if (summoning) {
-    return { error: summoning };
+    return summoning;
   }
 
   // A slot level named is a real one. Level 0 is how some callers name a
@@ -278,6 +280,7 @@ export function castSpell(
     if (!(input.level === 0 && cantrip)) {
       return {
         error: `A spell slot has a level from 1 to 9, not ${input.level}. Name the slot ${name} is cast from, or leave the level out for the spell's own.`,
+        retry: true,
       };
     }
   }
@@ -318,12 +321,12 @@ export function castSpell(
   if (reactionTime) {
     const refused = reactionRefusal(campaign.id, sheet, encounter, name, reactionTimingOf(engine));
     if (refused) {
-      return { error: refused };
+      return refused;
     }
   } else {
     const able = canAct({ sheet, encounter, kind: "cast" });
     if (!able.ok) {
-      return { error: able.error };
+      return toolError(able);
     }
   }
   const held = spellHeldProblem(sheet, spell, facts, {
@@ -331,25 +334,25 @@ export function castSpell(
     extras: subclassExtrasForTable(campaign.id, sheet.userId),
   });
   if (held) {
-    return { error: held };
+    return held;
   }
   const state = casterStateProblem(sheet);
   if (state) {
-    return { error: state };
+    return state;
   }
   const voice = componentProblem(sheet, facts) ?? focusProblem(sheet, facts) ?? silenceProblem(campaign.id, sheet.id, sheet.name, facts) ?? antimagicProblem(campaign.id, sheet.id, sheet.name);
   if (voice) {
-    return { error: voice };
+    return voice;
   }
   if (input.ritual) {
     const ritual = ritualProblem(sheet, spell, facts, inFight);
     if (ritual) {
-      return { error: ritual };
+      return ritual;
     }
   } else {
     const long = longCastingProblem(facts, inFight);
     if (long) {
-      return { error: long };
+      return long;
     }
   }
   const material = materialPlan(sheet, facts, { inFight, units: input.units, slotLevel: input.level ?? facts?.level ?? null });
@@ -394,7 +397,7 @@ export function castSpell(
   const mantled =
     !input.ritual && !signature && !freeCast && /^command$/i.test(engine.trim()) &&
     sheet.conditions.some((entry) => entry.trim().toLowerCase().startsWith(MANTLE_OF_MAJESTY));
-  const slot: SlotPlan | { error: string } = input.ritual
+  const slot: SlotPlan | ToolError = input.ritual
     ? { kind: "none", note: `${name} cast as a ritual: no slot spent.` }
     : signature
       ? { kind: "none", note: `${name} is a Signature Spell: cast at 3rd level with no slot, once until a short rest.` }
@@ -492,7 +495,7 @@ export function castSpell(
   if (inFight && encounter && slotLevel && !input.ritual && (via === "enemy" || via === "aoe" || via === "attack")) {
     const answered = enemyCounterspell(campaign.id, null, encounter, sheet, name, slotLevel);
     if (answered?.countered) {
-      return { error: answered.note, countered: true, slotSpent: result.slot };
+      return { error: answered.note, refused: "rules", countered: true, slotSpent: result.slot };
     }
     if (answered) {
       result.counterspell = answered.note;

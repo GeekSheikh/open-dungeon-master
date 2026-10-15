@@ -22,6 +22,7 @@ import {
   type FieldOutcome,
 } from "@/lib/dm/effects-logic";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 // Applying and lifting active effects, and the one helper every engine that
 // wants a modified number calls.
@@ -187,16 +188,16 @@ export function handleSetEffect(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   let args: z.infer<typeof setSchema>;
   try {
     args = setSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: set_effect needs a name and at least one modifier." };
+    return { error: "Invalid arguments: set_effect needs a name and at least one modifier.", retry: true };
   }
   const target = resolveTarget(campaign, args, sheets, sheetsById);
   if (!target) {
-    return { error: "set_effect needs a characterId or an enemyId from GAME STATE." };
+    return { error: "set_effect needs a characterId or an enemyId from GAME STATE.", retry: true };
   }
   const checked = checkEffect({
     name: args.name,
@@ -235,20 +236,20 @@ export function handleClearEffect(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   let args: z.infer<typeof clearSchema>;
   try {
     args = clearSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: clear_effect needs a name." };
+    return { error: "Invalid arguments: clear_effect needs a name.", retry: true };
   }
   const target = resolveTarget(campaign, args, sheets, sheetsById);
   if (!target) {
-    return { error: "clear_effect needs a characterId or an enemyId from GAME STATE." };
+    return { error: "clear_effect needs a characterId or an enemyId from GAME STATE.", retry: true };
   }
   const removed = deleteEffectsByName(campaign.id, target, args.name);
   if (!removed) {
-    return { error: `${target.name} is not under "${args.name}".` };
+    return { error: `${target.name} is not under "${args.name}".`, retry: true };
   }
   publishEffects(campaign.id);
   tableNote(campaign, `${args.name} lifts from ${target.name}.`);

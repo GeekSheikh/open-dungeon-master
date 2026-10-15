@@ -1,5 +1,6 @@
 import { normalizeReputation } from "@/lib/dm/faction-logic";
 import { describeFormation, normalizeFormationChange, type FormationChange } from "@/lib/dm/formation-logic";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 // The party as a thing in its own right.
 //
@@ -123,10 +124,10 @@ function normalizeItem(raw: Record<string, unknown>): PartyItem | null {
 export function addPartyItem(
   inventory: PartyItem[],
   item: { name: string; qty?: number; weight?: number; identified?: boolean },
-): { inventory: PartyItem[] } | { error: string } {
+): { inventory: PartyItem[] } | ToolError {
   const name = item.name.trim().slice(0, PARTY_ITEM_NAME_MAX);
   if (!name) {
-    return { error: "Name what goes in the pack." };
+    return { error: "Name what goes in the pack.", retry: true };
   }
   const qty = Math.max(1, Math.round(item.qty ?? 1));
   const known = item.identified !== false;
@@ -136,7 +137,7 @@ export function addPartyItem(
   );
   if (index < 0) {
     if (inventory.length >= MAX_PARTY_ITEMS) {
-      return { error: `The pack holds ${MAX_PARTY_ITEMS} kinds of thing; hand something out first.` };
+      return { error: `The pack holds ${MAX_PARTY_ITEMS} kinds of thing; hand something out first.`, retry: true };
     }
     return {
       inventory: [
@@ -159,10 +160,10 @@ export function removePartyItem(
   inventory: PartyItem[],
   name: string,
   qty = 1,
-): { inventory: PartyItem[]; removed: number; item: PartyItem } | { error: string } {
+): { inventory: PartyItem[]; removed: number; item: PartyItem } | ToolError {
   const index = inventory.findIndex((row) => row.name.toLowerCase() === name.trim().toLowerCase());
   if (index < 0) {
-    return { error: `The pack does not hold "${name}".` };
+    return { error: `The pack does not hold "${name}".`, retry: true };
   }
   const item = inventory[index];
   const removed = Math.min(item.qty, Math.max(1, Math.round(qty)));

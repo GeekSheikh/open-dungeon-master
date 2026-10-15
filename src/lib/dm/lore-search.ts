@@ -10,6 +10,7 @@ import { getCampaignById } from "@/lib/db/campaigns";
 import { bestPassage } from "@/lib/dm/passage";
 import { placementOf } from "@/lib/dm/prep-logic";
 import { typeFor } from "@/lib/worldforge/model";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 // search_lore: the DM's world-knowledge search. One query runs against
 // every canon source at once: the lead's world lore entries, the
@@ -94,16 +95,16 @@ type LoreCandidate = {
 export async function handleSearchLore(
   campaignId: string,
   rawArguments: string,
-): Promise<Record<string, unknown>> {
+): Promise<ToolResult> {
   let args: { query?: unknown; category?: unknown };
   try {
     args = JSON.parse(rawArguments || "{}");
   } catch {
-    return { error: "Invalid arguments." };
+    return { error: "Invalid arguments.", retry: true };
   }
   const query = String(args.query ?? "").trim();
   if (!query) {
-    return { error: "Give a query describing what to look up." };
+    return { error: "Give a query describing what to look up.", retry: true };
   }
   const category = String(args.category ?? "any");
 

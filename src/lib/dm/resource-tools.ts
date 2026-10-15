@@ -23,6 +23,7 @@ import { kiTechnique, spendKiTechnique, spendQuickenedSpell } from "@/lib/dm/bon
 import { removeItemMath } from "@/lib/dm/mutation-math";
 import type { CharacterSheet, FullPatchSheetInput } from "@/lib/schemas/sheet";
 import { holdsMote } from "@/lib/srd/authored-effects-more";
+import type { ToolError, ToolResult } from "@/lib/dm/tool-errors";
 
 export { computePurchase } from "@/lib/dm/purchase-math";
 
@@ -37,7 +38,7 @@ export { RESOURCE_TOOL_NAMES, resourceTools } from "@/lib/dm/resource-tool-defs"
 
 export type Outcome = {
   patch: FullPatchSheetInput;
-  result: Record<string, unknown>;
+  result: ToolResult;
   // Extra target-sheet patch for use_item fed to someone else.
   healTarget?: { characterId: string; amount: number };
   // Extra target-sheet patch for a feature that lands on someone else
@@ -80,14 +81,14 @@ export function computeUseItem(
   sheet: CharacterSheet,
   target: CharacterSheet,
   itemName: string,
-): Outcome | { error: string } {
+): Outcome | ToolError {
   const carried = findCarriedItem(sheet.equipment, itemName);
   if (!carried) {
-    return { error: `${sheet.name} does not carry "${itemName}".` };
+    return { error: `${sheet.name} does not carry "${itemName}".`, retry: true };
   }
   const removal = removeItemMath(sheet.equipment, carried.name, 1);
   if (!removal) {
-    return { error: `${sheet.name} does not carry "${itemName}".` };
+    return { error: `${sheet.name} does not carry "${itemName}".`, retry: true };
   }
   const effect = consumableEffect(carried.name);
   const base: Outcome = {
@@ -100,7 +101,7 @@ export function computeUseItem(
   };
   if (effect.kind === "healing") {
     if (target.deathSaves?.dead) {
-      return { error: `${target.name} is DEAD; a potion cannot help.` };
+      return { error: `${target.name} is DEAD; a potion cannot help.`, refused: "rules" };
     }
     const total = rollHealing(campaign, target, carried.name, effect.expression);
     base.healTarget = { characterId: target.id, amount: Math.max(1, total) };
@@ -150,22 +151,23 @@ function computeFontOfMagic(
   displayName: string,
   state: { max: number; used: number },
   conversion: { direction: "create_slot" | "recover_points"; level: number },
-): Outcome | { error: string } {
+): Outcome | ToolError {
   const { direction, level } = conversion;
   if (!sheet.spellcasting) {
-    return { error: `${sheet.name} has no spellcasting to convert ${displayName} into.` };
+    return { error: `${sheet.name} has no spellcasting to convert ${displayName} into.`, refused: "rules" };
   }
   const slots = { ...sheet.spellcasting.slots };
   const key = String(level);
   if (direction === "create_slot") {
     const cost = FONT_SLOT_COST[level];
     if (!cost) {
-      return { error: `Font of Magic cannot create a slot above 5th level.` };
+      return { error: `Font of Magic cannot create a slot above 5th level.`, refused: "rules" };
     }
     const left = state.max - state.used;
     if (left < cost) {
       return {
         error: `Creating a level-${level} slot costs ${cost} sorcery points; ${sheet.name} has ${left}/${state.max} left.`,
+        refused: "rules",
       };
     }
     const slot = slots[key];
@@ -199,12 +201,14 @@ function computeFontOfMagic(
   if (!slot || slot.used >= slot.max) {
     return {
       error: `${sheet.name} has no unspent level-${level} slot to convert into ${displayName}.`,
+      retry: true,
     };
   }
   const refund = Math.min(level, state.used);
   if (refund <= 0) {
     return {
       error: `${sheet.name} is already at full ${displayName} (${state.max - state.used}/${state.max}); breaking a slot would waste it.`,
+      refused: "rules",
     };
   }
   slots[key] = { max: slot.max, used: slot.used + 1 };
@@ -245,7 +249,7 @@ export function computeUseResource(
   // that dropped them (a reaction that answers it, or one taken on dropping
   // to 0): the use goes ahead at 0 hit points (issue 233).
   reacting?: { beforeDrop?: boolean },
-): Outcome | { error: string } {
+): Outcome | ToolError {
   const def = matchResource(resourceName);
   const state = def ? sheet.resources[def.id] : undefined;
   if (!def || !state) {
@@ -254,26 +258,30 @@ export function computeUseResource(
       error: `${sheet.name} has no tracked resource "${resourceName}".${
         available.length ? ` Their resources: ${available.join(", ")}.` : " They have no limited-use resources."
       }`,
+      retry: true,
     };
   }
   if (def.passive) {
     return {
       error: `${def.displayName} is not spent by choice: ${def.guidance} Do not call use_resource for it.`,
+      retry: true,
     };
   }
   if (sheet.deathSaves?.dead) {
-    return { error: `${sheet.name} is dead and cannot use ${def.displayName}.` };
+    return { error: `${sheet.name} is dead and cannot use ${def.displayName}.`, refused: "rules" };
   }
   const standing = Boolean(reacting?.beforeDrop) && def.action === "reaction";
   if (sheet.currentHp <= 0 && !standing) {
     return {
       error: `${sheet.name} is at 0 HP and cannot use ${def.displayName}; they are unconscious and take no actions.`,
+      refused: "rules",
     };
   }
   const stoppedBy = standing ? null : incapacitatedBy(sheet.conditions);
   if (stoppedBy) {
     return {
       error: `${sheet.name} is ${stoppedBy} and cannot use ${def.displayName} until the condition ends.`,
+      refused: "rules",
     };
   }
 
@@ -319,6 +327,7 @@ export function computeUseResource(
   if (def.requires === "below_half" && sheet.currentHp >= effectiveMaxHp(sheet) / 2) {
     return {
       error: `${def.displayName} is used when ${sheet.name} has fewer than half of their hit points left, and they have ${sheet.currentHp}/${effectiveMaxHp(sheet)}. Nothing was spent.`,
+      refused: "rules",
     };
   }
   const left = state.max - state.used;
@@ -332,6 +341,7 @@ export function computeUseResource(
       error: `${sheet.name} has ${left}/${state.max} ${def.displayName} left; they cannot spend ${amount}.${
         fallback ? ` With none left it costs ${fallback.amount} ${fallback.id.replace(/_/g, " ")}, and they have ${fallbackState ? fallbackState.max - fallbackState.used : 0}.` : ""
       } The feature is not available; narrate accordingly.`,
+      refused: "rules",
     };
   }
   // A feature with no limit is used, not counted down.
@@ -368,7 +378,7 @@ export function computeUseResource(
     }
     case "heal_pool": {
       if (target.deathSaves?.dead) {
-        return { error: `${target.name} is DEAD; ${def.displayName} cannot help.` };
+        return { error: `${target.name} is DEAD; ${def.displayName} cannot help.`, refused: "rules" };
       }
       outcome.healTarget = { characterId: target.id, amount };
       outcome.result.healed = `${amount} HP to ${target.name}`;
@@ -377,7 +387,7 @@ export function computeUseResource(
     case "heal_dice_pool": {
       // Each spent use is one die of healing to the target.
       if (target.deathSaves?.dead) {
-        return { error: `${target.name} is DEAD; ${def.displayName} cannot help.` };
+        return { error: `${target.name} is DEAD; ${def.displayName} cannot help.`, refused: "rules" };
       }
       const total = rollHealing(campaign, target, def.displayName, `${amount}${def.effect.die}`);
       outcome.healTarget = { characterId: target.id, amount: Math.max(1, total) };
@@ -387,7 +397,7 @@ export function computeUseResource(
     }
     case "heal_target": {
       if (target.deathSaves?.dead) {
-        return { error: `${target.name} is DEAD; ${def.displayName} cannot help.` };
+        return { error: `${target.name} is DEAD; ${def.displayName} cannot help.`, refused: "rules" };
       }
       const expression = def.effect.dice(fxLevel, derived.abilityMods);
       const total = rollHealing(campaign, target, def.displayName, expression);
@@ -426,7 +436,7 @@ export function computeUseResource(
           : effect.condition;
       const recipient = effect.target === "ally" ? target : sheet;
       if (recipient.conditions.some((entry) => entry.toLowerCase() === condition)) {
-        return { error: `${recipient.name} is already ${condition}; the feature is already running.` };
+        return { error: `${recipient.name} is already ${condition}; the feature is already running.`, refused: "rules" };
       }
       const conditionPatch = {
         conditions: [...recipient.conditions, condition],
@@ -501,7 +511,7 @@ export function computeUseResource(
     case "condition": {
       const condition = def.effect.condition;
       if (sheet.conditions.some((entry) => entry.toLowerCase() === condition)) {
-        return { error: `${sheet.name} is already ${condition}; the feature is already running.` };
+        return { error: `${sheet.name} is already ${condition}; the feature is already running.`, refused: "rules" };
       }
       // A rage ends any spell the barbarian was concentrating on (SRD 5.1,
       // Rage). Nothing is refused past this point, so it is ended here, and
@@ -529,12 +539,13 @@ export function computeUseResource(
       if (target.id === sheet.id) {
         return {
           error: `${def.displayName} goes to another creature, never to the bard themselves. Pass targetCharacterId.`,
+          retry: true,
         };
       }
       const die = def.effect.die(fxLevel);
       const condition = inspirationCondition(die);
       if (target.conditions.some((entry) => entry.toLowerCase() === condition)) {
-        return { error: `${target.name} already holds an unspent inspiration die.` };
+        return { error: `${target.name} already holds an unspent inspiration die.`, refused: "rules" };
       }
       outcome.patchTarget = {
         characterId: target.id,
@@ -570,6 +581,7 @@ export function computeUseResource(
       if (!name) {
         return {
           error: `${def.displayName} needs the beast being assumed: pass form (e.g. 'wolf', 'brown bear').`,
+          retry: true,
         };
       }
       // A known form loads its real stat block and is validated against the
@@ -585,16 +597,19 @@ export function computeUseResource(
         if (known.cr > caps.maxCr) {
           return {
             error: `${known.name} is CR ${formatCr(known.cr)}; at level ${druidLevel}${moonDruid ? " (Circle of the Moon)" : ""} ${sheet.name} can Wild Shape into beasts of CR ${formatCr(caps.maxCr)} or lower. Offer a form within the limit.`,
+            retry: true,
           };
         }
         if (known.fly && !caps.fly) {
           return {
             error: `${known.name} has a flying speed; Wild Shape allows flying forms only from druid level 8. Offer a ground form instead.`,
+            retry: true,
           };
         }
         if (known.swim && !caps.swim) {
           return {
             error: `${known.name} has a swimming speed; Wild Shape allows swimming forms only from druid level 4. Offer a land form instead.`,
+            retry: true,
           };
         }
         outcome.patch.wildShape = {
@@ -633,27 +648,32 @@ export function computeUseResource(
       if (!form?.hp || !form?.ac || form.cr === undefined) {
         return {
           error: `"${name}" is not in the beast-form table; pass formHp, formAc and formCr from its stat block (and formFlies or formSwims if it does). At druid level ${druidLevel} the form must be ${limits}.`,
+          retry: true,
         };
       }
       if (form.cr > caps.maxCr) {
         return {
           error: `${name} is CR ${formatCr(form.cr)}; at level ${druidLevel}${moonDruid ? " (Circle of the Moon)" : ""} ${sheet.name} can Wild Shape into beasts of ${limits}. Offer a form within the limit.`,
+          retry: true,
         };
       }
       if (form.flies && !caps.fly) {
         return {
           error: `${name} has a flying speed; Wild Shape allows flying forms only from druid level 8. Offer a ground form instead.`,
+          retry: true,
         };
       }
       if (form.swims && !caps.swim) {
         return {
           error: `${name} has a swimming speed; Wild Shape allows swimming forms only from druid level 4. Offer a land form instead.`,
+          retry: true,
         };
       }
       const hpCeiling = hitPointCeilingForCr(form.cr);
       if (form.hp > hpCeiling || form.ac > UNLISTED_FORM_MAX_AC) {
         return {
           error: `A CR ${formatCr(form.cr)} beast has at most ${hpCeiling} hit points and AC ${UNLISTED_FORM_MAX_AC}; ${form.hp} HP and AC ${form.ac} are not ${name}'s numbers at that challenge rating. Send its real stat block, or a form from the table.`,
+          retry: true,
         };
       }
       const beastHp = Math.max(1, form.hp);
@@ -676,6 +696,7 @@ export function computeUseResource(
       // slots; spending it by hand here would burn the use for nothing.
       return {
         error: `${def.displayName} happens as part of a short rest, not on its own. Call take_rest with kind=short and the server applies it.`,
+        retry: true,
       };
     }
     case "narrative":

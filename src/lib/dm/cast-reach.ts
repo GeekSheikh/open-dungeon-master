@@ -17,6 +17,7 @@ import { globeProblem } from "@/lib/dm/zone-rules";
 import { spellAuthorsFor } from "@/lib/dm/spell-authors";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import type { SpellFacts } from "@/lib/srd/spell-facts";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 const FEET_PER_TILE = 5;
 
@@ -42,7 +43,7 @@ export function spellReachProblem(input: {
   targetId: string;
   targetName: string;
   facts: SpellFacts | null;
-}): string | null {
+}): ToolError | null {
   const { facts } = input;
   if (!facts) {
     return null;
@@ -58,12 +59,12 @@ export function spellReachProblem(input: {
         : null
       : spellReachTiles(facts);
   if (reach !== null && apart > reach) {
-    return facts.range.kind === "touch"
+    return { error: facts.range.kind === "touch"
       ? `${facts.name} is a touch spell and ${input.targetName} is ${apart * FEET_PER_TILE} ft from ${input.casterName}. They must move next to them first. No slot was spent.`
-      : `${input.targetName} is ${apart * FEET_PER_TILE} ft from ${input.casterName}, beyond ${facts.name}'s reach of ${facts.range.kind === "feet" ? facts.range.feet : reach * FEET_PER_TILE} ft. They must move closer or pick another target. No slot was spent.`;
+      : `${input.targetName} is ${apart * FEET_PER_TILE} ft from ${input.casterName}, beyond ${facts.name}'s reach of ${facts.range.kind === "feet" ? facts.range.feet : reach * FEET_PER_TILE} ft. They must move closer or pick another target. No slot was spent.`, retry: true };
   }
   if (apart > 1 && wallBetween(input.encounterId, input.casterId, input.targetId)) {
-    return `${input.targetName} is behind total cover from ${input.casterName}: a spell needs a clear path to its target. They must move to a clear line first or pick another target. No slot was spent.`;
+    return { error: `${input.targetName} is behind total cover from ${input.casterName}: a spell needs a clear path to its target. They must move to a clear line first or pick another target. No slot was spent.`, retry: true };
   }
   // A Globe of Invulnerability around the target (src/lib/dm/zone-rules.ts).
   return globeProblem(input.encounterId, input.casterId, input.targetId, input.targetName, facts.name, facts.level);

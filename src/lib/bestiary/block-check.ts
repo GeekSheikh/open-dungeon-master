@@ -8,6 +8,7 @@ import type {
   MonsterSpellcasting,
   Regeneration,
 } from "@/lib/dm/monster-abilities";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 // The parts of a stat block the engine runs beyond the six numbers and the
 // attack names: an attack's reach, range, rider dice and on-hit effect; the
@@ -67,7 +68,7 @@ function dice(value: unknown): string | null {
   return expression && isValidExpression(expression) ? expression : null;
 }
 
-export type Checked<T> = { value: T } | { error: string };
+export type Checked<T> = { value: T } | ToolError;
 
 // ---- an attack's printed extras ----
 
@@ -77,7 +78,7 @@ function checkRiders(raw: unknown, attack: string): Checked<TypedDice[]> {
     const source = (entry ?? {}) as Raw;
     const rolled = dice(source.dice);
     if (!rolled) {
-      return { error: `${attack}: "${String(source.dice ?? "")}" is not rider dice the table can roll.` };
+      return { error: `${attack}: "${String(source.dice ?? "")}" is not rider dice the table can roll.`, retry: true };
     }
     out.push({ dice: rolled, type: text(source.type, BLOCK_LIMITS.damageType).toLowerCase() || "untyped" });
   }
@@ -106,7 +107,7 @@ function checkOnHit(raw: unknown, attack: string): Checked<OnHitRider | null> {
   if (source.damage !== undefined && source.damage !== "") {
     const rolled = dice(source.damage);
     if (!rolled) {
-      return { error: `${attack}: "${String(source.damage)}" is not on-hit damage the table can roll.` };
+      return { error: `${attack}: "${String(source.damage)}" is not on-hit damage the table can roll.`, retry: true };
     }
     rider.damage = rolled;
     rider.damageType = text(source.damageType, BLOCK_LIMITS.damageType).toLowerCase() || "untyped";
@@ -240,7 +241,7 @@ export function checkSpecials(raw: unknown): Checked<MonsterAbility[]> {
     if (source.damage !== undefined && source.damage !== "") {
       const rolled = dice(source.damage);
       if (!rolled) {
-        return { error: `${name}: "${String(source.damage)}" is not damage the table can roll.` };
+        return { error: `${name}: "${String(source.damage)}" is not damage the table can roll.`, retry: true };
       }
       ability.damage = rolled;
       ability.damageType = text(source.damageType, BLOCK_LIMITS.damageType).toLowerCase() || "untyped";

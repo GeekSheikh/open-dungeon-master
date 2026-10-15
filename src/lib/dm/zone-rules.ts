@@ -30,6 +30,7 @@ import { liveZones } from "@/lib/dm/zone-store";
 import { zoneRowFor } from "@/lib/battlemap/zones-spells";
 import type { SpellFacts } from "@/lib/srd/spell-facts";
 import { spellFactsFor } from "@/lib/content";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 function zonesOf(map: BattleMap | null): SpellZone[] {
   if (!map?.spellZones.length) {
@@ -108,7 +109,7 @@ export function sightTerrainFor(map: BattleMap, senses: ZoneSenses = {}): string
 
 // Silence around a caster: no spell with a verbal component (SRD 5.1).
 // The refusal, or null.
-export function silenceProblem(campaignId: string, casterId: string, casterName: string, facts: SpellFacts | null): string | null {
+export function silenceProblem(campaignId: string, casterId: string, casterName: string, facts: SpellFacts | null): ToolError | null {
   if (!facts?.verbal) {
     return null;
   }
@@ -120,7 +121,7 @@ export function silenceProblem(campaignId: string, casterId: string, casterName:
   }
   const hush = silentAt(zonesOf(map), tileIndex(map.width, token.x, token.y));
   return hush
-    ? `${casterName} stands inside ${hush.casterName ? `${hush.casterName}'s ` : ""}Silence, where no sound is made: ${facts.name} has a verbal component and cannot be cast there. Step out of the silence first, or cast a spell with no verbal component. Nothing was spent.`
+    ? { error: `${casterName} stands inside ${hush.casterName ? `${hush.casterName}'s ` : ""}Silence, where no sound is made: ${facts.name} has a verbal component and cannot be cast there. Step out of the silence first, or cast a spell with no verbal component. Nothing was spent.`, refused: "rules" }
     : null;
 }
 
@@ -146,13 +147,13 @@ export function zoneCoverBetween(encounterId: string, attackerRef: string, targe
 
 // A Wind Wall between a shooter and its target: the refusal a ranged weapon
 // attack meets, or null.
-export function missileProblem(encounterId: string, attackerRef: string, targetRef: string, targetName: string): string | null {
+export function missileProblem(encounterId: string, attackerRef: string, targetRef: string, targetName: string): ToolError | null {
   const map = getBattleMapForEncounter(encounterId);
   const from = map ? getTokenByRef(map.id, attackerRef) : null;
   const to = map ? getTokenByRef(map.id, targetRef) : null;
   const wall = map && from && to ? missileDeflectedBy(zonesOf(map), map.width, from, to) : null;
   return wall
-    ? `${wall.casterName ? `${wall.casterName}'s ` : ""}Wind Wall stands between them: arrows, bolts and other ranged weapon attacks at ${targetName} are blown aside and miss. Attack in melee, with a spell, or from a clear line.`
+    ? { error: `${wall.casterName ? `${wall.casterName}'s ` : ""}Wind Wall stands between them: arrows, bolts and other ranged weapon attacks at ${targetName} are blown aside and miss. Attack in melee, with a spell, or from a clear line.`, refused: "rules" }
     : null;
 }
 
@@ -184,7 +185,7 @@ export function obscuredFor(campaignId: string, refId: string): string | null {
 // anything within it. The refusal a spell at a creature inside meets before
 // anything is spent, or null. `spellLevel` is the level the spell is cast
 // at, its own when the slot is not yet known.
-export function globeProblem(encounterId: string, casterRef: string, targetRef: string, targetName: string, spell: string, spellLevel: number): string | null {
+export function globeProblem(encounterId: string, casterRef: string, targetRef: string, targetName: string, spell: string, spellLevel: number): ToolError | null {
   const map = getBattleMapForEncounter(encounterId);
   const caster = map ? getTokenByRef(map.id, casterRef) : null;
   const target = map ? getTokenByRef(map.id, targetRef) : null;
@@ -203,15 +204,15 @@ export function globeProblem(encounterId: string, casterRef: string, targetRef: 
     return spellLevel <= ward + (row?.antimagic ? 0 : Math.max(0, (zone.slotLevel ?? 6) - 6));
   });
   if (globe && zoneRowFor(globe)?.antimagic) {
-    return `${targetName} stands inside ${globe.casterName ? `${globe.casterName}'s ` : ""}Antimagic Field: no spell from outside has any effect there. Nothing was spent; choose another target.`;
+    return { error: `${targetName} stands inside ${globe.casterName ? `${globe.casterName}'s ` : ""}Antimagic Field: no spell from outside has any effect there. Nothing was spent; choose another target.`, refused: "rules" };
   }
   return globe
-    ? `${targetName} stands inside ${globe.casterName ? `${globe.casterName}'s ` : ""}Globe of Invulnerability: ${spell} is cast from outside it at ${spellLevel === 0 ? "cantrip level" : `level ${spellLevel}`}, too low to reach through it, and has no effect there. Nothing was spent; cast from inside the globe, with a higher slot, or at another target.`
+    ? { error: `${targetName} stands inside ${globe.casterName ? `${globe.casterName}'s ` : ""}Globe of Invulnerability: ${spell} is cast from outside it at ${spellLevel === 0 ? "cantrip level" : `level ${spellLevel}`}, too low to reach through it, and has no effect there. Nothing was spent; cast from inside the globe, with a higher slot, or at another target.`, refused: "rules" }
     : null;
 }
 
 // The same for a spell named by the caller, at the level named or its own.
-export function globeProblemFor(encounterId: string, casterRef: string, targetRef: string, targetName: string, spell: string | undefined, level?: number | null): string | null {
+export function globeProblemFor(encounterId: string, casterRef: string, targetRef: string, targetName: string, spell: string | undefined, level?: number | null): ToolError | null {
   if (!spell) {
     return null;
   }
@@ -221,7 +222,7 @@ export function globeProblemFor(encounterId: string, casterRef: string, targetRe
 
 // Antilife Shell between a living attacker and its target in melee: the
 // refusal (the attack cannot reach through the barrier), or null.
-export function reachThroughProblem(encounterId: string, attackerRef: string, targetRef: string, attackerType: string | null | undefined, attackerName: string): string | null {
+export function reachThroughProblem(encounterId: string, attackerRef: string, targetRef: string, attackerType: string | null | undefined, attackerName: string): ToolError | null {
   if (!barredByShell(attackerType)) {
     return null;
   }
@@ -235,13 +236,13 @@ export function reachThroughProblem(encounterId: string, attackerRef: string, ta
   const b = tileIndex(map.width, to.x, to.y);
   const shell = zonesOf(map).find((zone) => zoneRowFor(zone)?.barsLiving && zone.casterId !== attackerRef && zone.cells.includes(a) !== zone.cells.includes(b));
   return shell
-    ? `${shell.casterName ? `${shell.casterName}'s ` : ""}Antilife Shell stands between them: ${attackerName} cannot reach through it with a melee attack. It may attack at range, cast, or take another action.`
+    ? { error: `${shell.casterName ? `${shell.casterName}'s ` : ""}Antilife Shell stands between them: ${attackerName} cannot reach through it with a melee attack. It may attack at range, cast, or take another action.`, retry: true }
     : null;
 }
 
 // A caster standing in an Antimagic Field casts nothing: the refusal, or
 // null.
-export function antimagicProblem(campaignId: string, casterId: string, casterName: string): string | null {
+export function antimagicProblem(campaignId: string, casterId: string, casterName: string): ToolError | null {
   const encounter = getActiveEncounter(campaignId) ?? getActiveBoard(campaignId);
   const map = encounter ? getBattleMapForEncounter(encounter.id) : null;
   const token = map ? getTokenByRef(map.id, casterId) : null;
@@ -251,6 +252,6 @@ export function antimagicProblem(campaignId: string, casterId: string, casterNam
   const cell = tileIndex(map.width, token.x, token.y);
   const field = zonesOf(map).find((zone) => zoneRowFor(zone)?.antimagic && zone.cells.includes(cell));
   return field
-    ? `${casterName} stands inside ${field.casterName ? `${field.casterName}'s ` : ""}Antimagic Field, where no spell can be cast. Step out of it first. Nothing was spent.`
+    ? { error: `${casterName} stands inside ${field.casterName ? `${field.casterName}'s ` : ""}Antimagic Field, where no spell can be cast. Step out of it first. Nothing was spent.`, refused: "rules" }
     : null;
 }
