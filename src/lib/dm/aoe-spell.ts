@@ -24,7 +24,7 @@ import { spellSaveDcFor } from "@/lib/srd";
 import { spellDamageFor, spellFactsFor, spellMechanicsFor, spellSchoolFor } from "@/lib/content";
 import { castShares, type SpellMech } from "@/lib/srd/spell-mechanics";
 import { spellDamageRiders } from "@/lib/srd/spell-damage-riders";
-import { applyDmMutation, canonicalCondition } from "@/lib/dm/mutations";
+import { applyDmMutation, canonicalCondition, castBarred } from "@/lib/dm/mutations";
 import { resolveSheetRef } from "@/lib/dm/rolls";
 import { spellAuthorsFor } from "@/lib/dm/spell-authors";
 import { spellReachProblem } from "@/lib/dm/cast-reach";
@@ -114,6 +114,10 @@ export function planAoeSpell(
   // (Animate Objects makes creatures; it is no blast of damage).
   if (mech && mech.resolution !== "save" && mech.resolution !== "auto") {
     return { error: `${castRedirect(resolved, "save")?.error ?? `${name} is not resolved with aoe_damage.`} Nothing was spent.`, retry: true };
+  }
+  const barred = castBarred(campaign, turn.id, { characterId: caster.id, spell: input.spell, ...(input.level ? { level: input.level } : {}), via: "aoe" }, sheets, sheetsById);
+  if (barred) {
+    return barred;
   }
   // The save and the DC come from the spell and the caster's sheet; only a
   // spell the server has no row for needs the caller's, refused before any

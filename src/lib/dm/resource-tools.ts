@@ -14,7 +14,7 @@ import {
   wildShapeCapsFor,
   wildShapeHours,
 } from "@/lib/srd/beast-forms";
-import { isUnlimited, matchResource, RAGING, resourceLevel } from "@/lib/srd/class-resources";
+import { isUnlimited, matchResource, RAGING, resourceLevel, type ResourceDef } from "@/lib/srd/class-resources";
 import { effectiveMaxHp, incapacitatedBy, wearsHeavyArmor } from "@/lib/dm/condition-logic";
 import { classLevelFor, classListFor } from "@/lib/srd/multiclass";
 import { conditionEffectsFor } from "@/lib/srd/condition-effects";
@@ -229,6 +229,34 @@ function computeFontOfMagic(
   };
 }
 
+type PoolState = CharacterSheet["resources"][string];
+
+// What pays for a use: the pool itself or, with no use left, a pool that
+// pays for one instead (Breath of the Dragon's 2 ki); the refusal when
+// neither can. Asked before an option is asked for too (mutations.ts).
+export function payForUse(
+  sheet: CharacterSheet,
+  def: ResourceDef,
+  state: PoolState,
+  amount: number,
+): { fallback: { id: string; amount: number; state: PoolState } | null } | ToolError {
+  const left = state.max - state.used;
+  if (left >= amount) {
+    return { fallback: null };
+  }
+  const fallback = def.fallbackPool ?? null;
+  const fallbackState = fallback ? sheet.resources[fallback.id] : undefined;
+  if (fallback && fallbackState && fallbackState.max - fallbackState.used >= fallback.amount) {
+    return { fallback: { ...fallback, state: fallbackState } };
+  }
+  return {
+    error: `${sheet.name} has ${left}/${state.max} ${def.displayName} left; they cannot spend ${amount}.${
+      fallback ? ` With none left it costs ${fallback.amount} ${fallback.id.replace(/_/g, " ")}, and they have ${fallbackState ? fallbackState.max - fallbackState.used : 0}.` : ""
+    } The feature is not available; narrate accordingly.`,
+    refused: "rules",
+  };
+}
+
 export function computeUseResource(
   campaign: Campaign,
   sheet: CharacterSheet,
@@ -330,23 +358,15 @@ export function computeUseResource(
     };
   }
   const left = state.max - state.used;
-  // With no use left, a pool that pays for one instead (Breath of the
-  // Dragon's 2 ki).
-  const fallback = def.fallbackPool && left < amount ? def.fallbackPool : null;
-  const fallbackState = fallback ? sheet.resources[fallback.id] : undefined;
-  const paysFallback = Boolean(fallback && fallbackState && fallbackState.max - fallbackState.used >= fallback.amount);
-  if (left < amount && !paysFallback) {
-    return {
-      error: `${sheet.name} has ${left}/${state.max} ${def.displayName} left; they cannot spend ${amount}.${
-        fallback ? ` With none left it costs ${fallback.amount} ${fallback.id.replace(/_/g, " ")}, and they have ${fallbackState ? fallbackState.max - fallbackState.used : 0}.` : ""
-      } The feature is not available; narrate accordingly.`,
-      refused: "rules",
-    };
+  const payment = payForUse(sheet, def, state, amount);
+  if ("error" in payment) {
+    return payment;
   }
+  const paid = payment.fallback;
   // A feature with no limit is used, not counted down.
   const unlimited = isUnlimited(state);
-  const spent = paysFallback
-    ? { ...sheet.resources, [fallback!.id]: { max: fallbackState!.max, used: fallbackState!.used + fallback!.amount } }
+  const spent = paid
+    ? { ...sheet.resources, [paid.id]: { max: paid.state.max, used: paid.state.used + paid.amount } }
     : unlimited
       ? sheet.resources
       : { ...sheet.resources, [def.id]: { max: state.max, used: state.used + amount } };
@@ -355,8 +375,8 @@ export function computeUseResource(
     result: {
       ok: true,
       resource: def.displayName,
-      spent: paysFallback ? `${fallback!.amount} ${fallback!.id.replace(/_/g, " ")} (no use was left)` : amount,
-      left: unlimited ? "unlimited" : paysFallback ? `0/${state.max}` : `${left - amount}/${state.max}`,
+      spent: paid ? `${paid.amount} ${paid.id.replace(/_/g, " ")} (no use was left)` : amount,
+      left: unlimited ? "unlimited" : paid ? `0/${state.max}` : `${left - amount}/${state.max}`,
       refills: def.recharge === "short" ? "on any rest" : "on a long rest",
       effect: def.guidance,
     },

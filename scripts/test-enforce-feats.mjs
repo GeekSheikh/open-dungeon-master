@@ -748,7 +748,7 @@ await test("ODM's 2014 Alert is written in ODM's own words, not the Player's Han
 
 // ---- the spells a feat teaches (issue #125, src/lib/srd/feat-spells.ts) ----
 
-const { fightDummies } = await import("./lib/enforce-spells.mjs");
+const { fightDummies, freshTurn } = await import("./lib/enforce-spells.mjs");
 
 await test("a Fey Touched fighter knows misty step and the spell picked, each cast once a day without a slot, with the score the feat raised (issue #125)", async () => {
   const fey = madeFighter({
@@ -820,7 +820,9 @@ await test("the free cast spends its counter instead of a slot, is refused once 
   assert.match(String(cast.result.slot ?? ""), /free cast/i);
   assert.deepEqual(world.sheet(hero.id).resources.free_cast_charm_person, { max: 1, used: 1 });
   assert.deepEqual(world.sheet(hero.id).spellcasting.slots, {}, "no slot appeared");
-  // The use spent and no slot to fall back on: the second cast is refused.
+  // The use spent and no slot to fall back on: the second cast, on a turn
+  // with its action, is refused.
+  await freshTurn(world);
   const again = await world.invoke("cast_at_enemy", { characterId: hero.id, targetEnemyId: goblin.id, spell: "Charm Person", saveAbility: "wis" });
   assert.equal(again.ok, false, `a second Charm Person with the free cast spent and no slots was allowed: ${JSON.stringify(again.result ?? {}).slice(0, 200)}`);
   assert.match(String(again.error ?? again.result?.error ?? ""), /no spell slot of level 1 or higher left/);

@@ -26,7 +26,7 @@ export { castRedirect };
 import { conditionEffectsFor } from "@/lib/srd/condition-effects";
 import { conditionUntargetable } from "@/lib/srd/condition-effect-queries";
 import type { SaveAbility } from "@/lib/bestiary/statblock";
-import { applyDmMutation, canonicalCondition } from "@/lib/dm/mutations";
+import { applyDmMutation, canonicalCondition, castBarred } from "@/lib/dm/mutations";
 import { publishEncounter, resolveEnemyRef } from "@/lib/dm/enemy-damage";
 import { resolveSheetRef } from "@/lib/dm/rolls";
 import { normalizeAbility } from "@/lib/dm/arg-coerce";
@@ -113,6 +113,10 @@ export function handleCastAtEnemy(
   const enemy = resolveEnemyRef(encounter.id, args.targetEnemyId);
   if (!enemy) {
     return { error: "Unknown targetEnemyId; use one from GAME STATE.", retry: true };
+  }
+  const barred = castBarred(campaign, turn.id, { characterId: sheet.id, spell: args.spell, ...(args.level ? { level: args.level } : {}), via: "enemy", units: hitDiceOf(enemy) }, sheets, sheetsById);
+  if (barred) {
+    return barred;
   }
   if (enemy.status !== "alive") {
     return { error: `${enemy.displayName} is already ${enemy.status}. Ask the player which living enemy in GAME STATE to target instead.`, retry: true };

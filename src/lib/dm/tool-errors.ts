@@ -11,6 +11,15 @@
 // Each error states its kind where its sentence is written, in the keys the
 // model reads (retry: true, refused: "rules" | "limit"), so a reworded
 // sentence keeps its kind and an error without one does not compile.
+//
+// The order a tool refuses in: what bars the act itself (whose turn, the
+// character's state, the feature or spell held, the action, the slots or
+// uses) before any question for the player or any part the act can go
+// without, so neither is asked of an act that cannot happen. Each family
+// asks its gate first: a spell tool the cast guard's dry run (mutations.ts
+// castBarred), an attack the swing the turn can pay for (pc-attack-plan.ts),
+// a feature its uses and its part of the turn (resource-turn.ts).
+// scripts/test-check-order.mjs holds every family to it.
 
 export type ToolError = { error: string; retry: true } | { error: string; refused: "rules" | "limit" };
 

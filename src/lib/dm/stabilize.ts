@@ -148,6 +148,15 @@ export function handleStabilize(
   if (far) {
     return far;
   }
+  // The action (or bonus action) before the method: asking whether to try
+  // the check instead is moot when it cannot be paid for.
+  const budget = encounter && !readied
+    ? budgetFor(encounter, healer.id, attacksAllowedFor(healer))
+    : null;
+  const spent = budget ? spendAction(budget, quick ? "bonus" : "action", quick ? `Stabilizing a creature (${quick})` : "Stabilizing a creature", healer.name) : null;
+  if (spent && !spent.ok) {
+    return toolError(spent);
+  }
   const method = stabilizeMethod(input.method);
   let kitPatch: FullPatchSheetInput | null = null;
   let how = "";
@@ -175,13 +184,6 @@ export function handleStabilize(
       };
     }
     how = `${healer.name} casts Spare the Dying`;
-  }
-  const budget = encounter && !readied
-    ? budgetFor(encounter, healer.id, attacksAllowedFor(healer))
-    : null;
-  const spent = budget ? spendAction(budget, quick ? "bonus" : "action", quick ? `Stabilizing a creature (${quick})` : "Stabilizing a creature", healer.name) : null;
-  if (spent && !spent.ok) {
-    return toolError(spent);
   }
 
   let check: Record<string, unknown> = {};

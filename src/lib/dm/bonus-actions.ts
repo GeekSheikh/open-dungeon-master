@@ -114,20 +114,24 @@ export function spendKiTechnique(
   const budget = inFight
     ? budgetFor(encounter, sheet.id, attacksAllowedFor(sheet), conditionExtraActions(sheet.conditions))
     : null;
-  if (technique === "flurry") {
-    if (!budget || !encounter) {
-      return { error: `Flurry of Blows is made in a fight, right after the Attack action on ${sheet.name}'s own turn.`, refused: "rules" };
-    }
-    if (budget.attacksMade < 1 || budget.castThisAction) {
-      return {
-        error: `Flurry of Blows comes immediately after the Attack action; ${sheet.name} has not taken the Attack action this turn. Attack first, then spend the ki.`,
-        retry: true,
-      };
-    }
+  if (technique === "flurry" && (!budget || !encounter)) {
+    return { error: `Flurry of Blows is made in a fight, right after the Attack action on ${sheet.name}'s own turn.`, refused: "rules" };
   }
+  // The ki and the bonus action first: "attack first" would send the model
+  // to attack for a technique they cannot pay for.
   const spent = kiSpend(sheet, 1, name);
   if ("error" in spent) {
     return spent;
+  }
+  const price = budget ? spendAction(budget, "bonus", name, sheet.name) : null;
+  if (price && !price.ok) {
+    return toolError(price);
+  }
+  if (technique === "flurry" && budget && (budget.attacksMade < 1 || budget.castThisAction)) {
+    return {
+      error: `Flurry of Blows comes immediately after the Attack action; ${sheet.name} has not taken the Attack action this turn. Attack first, then spend the ki.`,
+      retry: true,
+    };
   }
   let flags: { dashed?: boolean; disengaged?: boolean; flurryStrikes?: number } = {};
   const dash = technique === "step of the wind" && /dash/i.test(variant ?? "");
@@ -137,11 +141,7 @@ export function spendKiTechnique(
   } else if (technique === "step of the wind") {
     flags = dash ? { dashed: true } : { disengaged: true };
   }
-  if (budget && encounter) {
-    const price = spendAction(budget, "bonus", name, sheet.name);
-    if (!price.ok) {
-      return toolError(price);
-    }
+  if (price?.ok && encounter) {
     storeBudget(encounter, { ...price.budget, ...flags });
   }
   const patch: FullPatchSheetInput = { resources: spent.resources };

@@ -408,7 +408,10 @@ export function castSpell(
         : // A slot the player marked spent by hand for this cast pays for it.
           paidByManualTick(sheet, slotPlan(sheet, spell, facts, input.level), input.level ?? facts?.level, facts?.level, Boolean(input.dryRun));
   if ("error" in slot) {
-    return slot;
+    // A cast the turn cannot pay for is refused for that first: which slot
+    // to spend is moot when the action is gone.
+    const barred = planTurn(sheet, encounter, facts, spell, input.level ?? facts?.level ?? null, via);
+    return barred && "error" in barred ? barred : slot;
   }
   const slotLevel = slot.kind === "none" ? null : slot.level;
   const turn = input.ritual ? ({ kind: "free" } as const) : planTurn(sheet, encounter, facts, spell, slotLevel, via);

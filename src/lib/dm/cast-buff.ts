@@ -19,7 +19,7 @@ import { findSpellByName, spellEngineName, spellFactsFor, spellMechanicsFor } fr
 import { findBeastForm, formatCr } from "@/lib/srd/beast-forms";
 import { shapedAbilities, shapeProblem, shapeRuleFor } from "@/lib/srd/shape-rules";
 import { conditionEffectsFor } from "@/lib/srd/condition-effects";
-import { applyDmMutation } from "@/lib/dm/mutations";
+import { applyDmMutation, castBarred } from "@/lib/dm/mutations";
 import { resolveEnemyRef } from "@/lib/dm/enemy-damage";
 import { resolveSheetRef } from "@/lib/dm/rolls";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
@@ -88,6 +88,10 @@ export function handleCastBuff(
   }
   if (!castsSpells(sheet)) {
     return { error: `${sheet.name} cannot cast spells.`, refused: "rules" };
+  }
+  const barred = castBarred(campaign, turn.id, { characterId: sheet.id, spell: args.spell, ...(args.level ? { level: args.level } : {}), via: "buff" }, sheets, sheetsById);
+  if (barred) {
+    return barred;
   }
   const authors = spellAuthorsFor(campaign);
   // The published spell a table's workshop copy runs as, for every rule

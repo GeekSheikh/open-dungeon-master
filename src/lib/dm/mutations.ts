@@ -48,7 +48,7 @@ import { canonicalCondition, handleSetCondition } from "@/lib/dm/set-condition";
 import { exhaustionPatch, namesExhaustion, PRONE, SUFFOCATING } from "@/lib/dm/vitals-logic";
 import { castMarkCharge, prepareResourceCharge } from "@/lib/dm/resource-turn";
 import { planCounterReaction } from "@/lib/dm/reaction-counters";
-import { channelOptionsHeld, optionCost } from "@/lib/dm/option-costs";
+import { channelOptions, channelOptionsHeld, optionCost } from "@/lib/dm/option-costs";
 import { BONUS_ATTACK_COUNTERS } from "@/lib/dm/feature-bonus-attacks";
 import { matchResource } from "@/lib/srd/class-resources";
 import { prepareUseItem } from "@/lib/dm/object-actions";
@@ -60,6 +60,10 @@ import { ZONE_ARGS, zoneArgsSchema, zonePlacement } from "@/lib/dm/zone-args";
 import { castHealingSpell } from "@/lib/dm/heal-spell";
 import { advanceClock, recordShapeEnd } from "@/lib/db/clock";
 import { getActiveEncounter } from "@/lib/db/encounters";
+import { canAct } from "@/lib/dm/can-act";
+import { spendAction } from "@/lib/dm/action-budget";
+import { attacksAllowedFor, budgetFor, storeBudget } from "@/lib/dm/turn-budget";
+import { conditionExtraActions } from "@/lib/srd/condition-effects";
 import { payToStand } from "@/lib/dm/stand-up";
 import { copyCost, learnProblem } from "@/lib/dm/learn-rules";
 import { getAuditPreImage, listAuditForTurn, listAuditSince } from "@/lib/db/sheet-audit";
@@ -75,6 +79,7 @@ import {
   computePurchase,
   computeUseItem,
   computeUseResource,
+  payForUse,
   parseFontOfMagic,
   rollHealing,
 } from "@/lib/dm/resource-tools";
@@ -517,6 +522,22 @@ function publishSheet(campaign: Campaign, sheetId: string) {
     publishPersisted(campaign.id, "sheet_updated", { sheet: updated });
   }
   return updated;
+}
+
+// The cast guard asked without spending (src/lib/dm/cast-guard.ts): the
+// refusal the cast would meet, or null. A spell tool asks it before its own
+// questions and options, so nobody is asked which beast, which targets or
+// whether to drop Overchannel for a cast the caster, the turn or the slots
+// bar.
+export function castBarred(
+  campaign: Campaign,
+  turnId: string,
+  cast: { characterId: string; spell: string; level?: number; via: string; units?: number },
+  sheets: CharacterSheet[],
+  sheetsById: Map<string, CharacterSheet>,
+): ToolError | null {
+  const check = applyDmMutation(campaign, turnId, "use_spell_slot", JSON.stringify({ ...cast, dryRun: true }), sheets, sheetsById).result;
+  return typeof check.error === "string" ? toolError(check) : null;
 }
 
 // Applies one mutation tool call. Returns the compact tool result the model
@@ -1198,7 +1219,20 @@ export function applyDmMutation(
       if (option && "refused" in option) {
         return { result: option.refused };
       }
-      if (!option && counter?.id === "channel_divinity" && fighting) {
+      const pool = counter ? sheet.resources[counter.id] : undefined;
+      if (!option && counter?.id === "channel_divinity" && fighting && pool) {
+        // The uses and the turn before the option: which one is moot when
+        // none can be paid for. The turn is held to the cheapest option.
+        const payment = payForUse(sheet, counter, pool, 1);
+        if ("error" in payment) {
+          return { result: payment };
+        }
+        const costs = channelOptions(sheet).map((entry) => entry.cost);
+        const cheapest = (["none", "bonus", "reaction", "action"] as const).find((cost) => costs.includes(cost)) ?? "action";
+        const turnGate = prepareResourceCharge(campaign, sheet, resourceName, cheapest);
+        if ("error" in turnGate) {
+          return { result: turnGate };
+        }
         const held = channelOptionsHeld(sheet);
         return {
           result: {
@@ -1397,6 +1431,19 @@ export function applyDmMutation(
             },
           };
         }
+        // A bonus action (SRD 5.1, Circle of the Moon): the turn before which
+        // slot to burn.
+        const encounter = getActiveEncounter(campaign.id);
+        const fighting = encounter && (encounter.kind ?? "fight") === "fight" ? encounter : null;
+        const able = fighting ? canAct({ sheet, encounter: fighting, kind: "bonus" }) : null;
+        if (able && !able.ok) {
+          return { result: toolError(able) };
+        }
+        const budget = fighting ? budgetFor(fighting, sheet.id, attacksAllowedFor(sheet), conditionExtraActions(sheet.conditions)) : null;
+        const bonus = budget ? spendAction(budget, "bonus", "Combat Wild Shape", sheet.name) : null;
+        if (bonus && !bonus.ok) {
+          return { result: toolError(bonus) };
+        }
         if (level < 1) {
           return {
             result: {
@@ -1422,6 +1469,9 @@ export function applyDmMutation(
           wildShape: { ...sheet.wildShape, beastHp },
         };
         patchSheet(sheet.id, patch);
+        if (fighting && bonus?.ok) {
+          storeBudget(fighting, bonus.budget);
+        }
         audit(
           campaign,
           turnId,
