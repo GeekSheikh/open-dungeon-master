@@ -17,7 +17,8 @@ export default {
       const button = visible(page, root, /Level up to \d+/);
       return (await button.count()) ? button.first() : null;
     }, { label: "the Level up button" });
-    const target = Number(/Level up to (\d+)/.exec(await level.innerText())?.[1]);
+    // textContent, not innerText: the button is set in capitals by CSS.
+    const target = Number(/level up to (\d+)/i.exec((await level.textContent()) ?? "")?.[1]);
     await t.tap(level);
     await page.locator(`${root}input[aria-label="Name"]`).locator("visible=true").first().waitFor({ state: "visible", timeout: 30_000 });
     await eventually(async () => {
