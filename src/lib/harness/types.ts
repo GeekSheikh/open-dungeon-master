@@ -40,10 +40,11 @@ export type HarnessModel = {
   // it (Claude Code's "opus" stands for whichever Opus model it currently
   // runs): what the catalog is asked about it.
   catalogId?: string;
-  // The efforts this model offers, where the program lists them (opencode's
-  // variants); one it lacks runs at the model's own default. An empty list
-  // means it has none, and no list at all that the program does not say.
-  efforts?: string[];
+  // The efforts this model offers, as the program lists them (Claude Code's
+  // effort levels, Codex's reasoning efforts, opencode's variants); one it
+  // lacks runs at the model's own default. An empty list means it has none,
+  // and no list at all that the program does not say.
+  efforts?: HarnessEffort[];
 };
 
 export type HarnessAuth = {
@@ -64,6 +65,9 @@ export type HarnessStatus = {
   path?: string;
   auth: HarnessAuth;
   models: HarnessModel[];
+  // The efforts of the model the program runs when none is chosen, where it
+  // says which that is: the Effort picker's choices for a blank model.
+  defaultEfforts?: HarnessEffort[];
   // What this program's lockdown can achieve. "unproven" = built from its
   // documentation and not yet run on this machine.
   lockdown: Lockdown;
@@ -80,12 +84,23 @@ export type HarnessStatus = {
   checkedAt: number;
 };
 
+// The efforts the admin can choose (HarnessConfig.effort, "" being the
+// program's own default), as the programs name them, lightest first; a
+// program's own extra levels are not offered.
+export const HARNESS_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+
+export type HarnessEffort = (typeof HARNESS_EFFORTS)[number];
+
+export function isHarnessEffort(value: unknown): value is HarnessEffort {
+  return typeof value === "string" && (HARNESS_EFFORTS as readonly string[]).includes(value);
+}
+
 export type HarnessConfig = {
   id: HarnessId | "";
   binaryPath: string;
   model: string;
   utilityModel: string;
-  effort: "" | "low" | "medium" | "high" | "xhigh" | "max";
+  effort: "" | HarnessEffort;
   speed: "" | "fast";
   utilitySpeed: "" | "fast";
   images: "off" | "native";
