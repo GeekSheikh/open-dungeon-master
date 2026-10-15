@@ -218,7 +218,7 @@ export default function CatalogBrowser({
 
           {recommended?.entries.length ? (
             <div className="mb-2">
-              <p className="eyebrow px-1 pb-1 text-[10px] text-amber-300/80">
+              <p className="eyebrow px-1 pb-1 text-[0.6875rem] text-amber-300/80">
                 {recommended.label}
               </p>
               {recommended.note ? (
@@ -312,7 +312,7 @@ export default function CatalogBrowser({
                       {groupRows(visible, section.bucketOf ?? bucketOf).map((bucket) => (
                         <li key={bucket.key}>
                           {bucket.label ? (
-                            <p className="eyebrow sticky top-0 bg-stone-950/95 px-1 py-1 text-[10px] text-amber-300/70">
+                            <p className="eyebrow sticky top-0 bg-stone-950/95 px-1 py-1 text-[0.6875rem] text-amber-300/70">
                               {bucket.label}
                             </p>
                           ) : null}

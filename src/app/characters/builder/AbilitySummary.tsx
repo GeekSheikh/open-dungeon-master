@@ -55,7 +55,7 @@ export function AbilitySummary({
           <span
             key={label}
             className={cn(
-              "pb-1.5 font-display text-[8.5px] font-semibold uppercase tracking-[0.12em] text-stone-500 sm:tracking-[0.2em]",
+              "pb-1.5 font-display text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-stone-500 sm:tracking-[0.2em]",
               index === 0 ? "text-left" : "text-center",
             )}
           >

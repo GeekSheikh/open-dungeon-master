@@ -137,7 +137,7 @@ export function AncestryStep({
           <span className="mb-3 flex items-start gap-1 text-xs text-stone-500">
             <span className="line-clamp-2 grow">
               <span className="text-amber-200">{race.name}</span>
-              {race.source ? <span className="font-mono text-[10px] text-stone-500"> · {race.source}</span> : null}
+              {race.source ? <span className="font-mono text-[0.6875rem] text-stone-500"> · {race.source}</span> : null}
               <span className="text-amber-200">: </span>
               {race.note}
             </span>

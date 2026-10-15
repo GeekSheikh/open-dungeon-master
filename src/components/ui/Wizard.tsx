@@ -201,7 +201,9 @@ export function Wizard({
             <button
               type="button"
               onClick={back}
-              className="-ml-1.5 rounded-md p-1.5 text-stone-400 transition-colors hover:bg-stone-800 hover:text-stone-200"
+              // 44px to tap, drawn as before: the negative margin keeps the
+              // header where it was.
+              className="-my-2 -ml-3 flex size-11 shrink-0 items-center justify-center rounded-md text-stone-400 transition-colors hover:bg-stone-800 hover:text-stone-200"
               aria-label={step === 0 ? "Cancel" : "Back"}
             >
               <ChevronLeft className="size-4" />
@@ -211,11 +213,11 @@ export function Wizard({
             {title}
           </h2>
           {aside ? (
-            <span className="mx-1 hidden min-w-0 shrink truncate font-mono text-[10px] text-stone-600 sm:inline">
+            <span className="mx-1 hidden min-w-0 shrink truncate font-mono text-xs text-stone-400 sm:inline">
               {aside}
             </span>
           ) : null}
-          <span className="eyebrow shrink-0 text-[10px] text-stone-500" aria-live="polite">
+          <span className="eyebrow shrink-0 text-xs text-stone-400" aria-live="polite">
             Step {step + 1} / {total}
             {variant === "diamonds" && current ? (
               // The gold step title sits right under the header on a phone,
@@ -257,7 +259,7 @@ export function Wizard({
               <button
                 type="button"
                 onClick={showNotice}
-                className="shrink-0 whitespace-nowrap font-mono text-[10px] text-amber-300 underline-offset-2 hover:text-amber-200 hover:underline"
+                className="-my-2 min-h-11 shrink-0 whitespace-nowrap px-1 font-mono text-xs text-amber-300 underline-offset-2 hover:text-amber-200 hover:underline"
               >
                 Show me
               </button>
@@ -266,7 +268,7 @@ export function Wizard({
               type="button"
               onClick={notice.onDismiss}
               aria-label="Dismiss"
-              className="-mr-1 shrink-0 rounded p-0.5 text-stone-500 transition-colors hover:text-stone-300"
+              className="-my-2 -mr-3 flex size-11 shrink-0 items-center justify-center rounded text-stone-400 transition-colors hover:text-stone-200"
             >
               <X className="size-3.5" />
             </button>
@@ -331,7 +333,7 @@ export function Wizard({
               className="wizard-blocker reveal min-w-0 flex-1 text-left text-xs text-amber-300/90 underline-offset-2 hover:text-amber-200 hover:underline"
             >
               <span role="status">{blocker}</span>
-              <span className="ml-1 whitespace-nowrap font-mono text-[10px] text-stone-500">Show me</span>
+              <span className="ml-1 whitespace-nowrap font-mono text-xs text-stone-400">Show me</span>
             </button>
           ) : (
             <p id={blockerId} role="status" className="wizard-blocker reveal min-w-0 flex-1 text-xs text-amber-300/90">

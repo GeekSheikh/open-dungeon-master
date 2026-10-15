@@ -357,9 +357,9 @@ export default function AbilityEditor({
         {method === "roll" ? (
           <>
             <span className="inline-flex items-center gap-2">
-              <span className="eyebrow text-[10px] tracking-[0.18em] text-amber-500/80">4d6 drop lowest</span>
+              <span className="eyebrow text-[0.6875rem] tracking-[0.18em] text-amber-500/80">4d6 drop lowest</span>
               {pool ? (
-                <span className="font-mono text-[10.5px] text-stone-500" aria-live="polite">
+                <span className="font-mono text-[0.6875rem] text-stone-500" aria-live="polite">
                   {placedCount} / 6 placed
                 </span>
               ) : null}
@@ -564,7 +564,7 @@ export default function AbilityEditor({
                   <GameTerm id={ability}>{label}</GameTerm>
                 </span>
                 {notes.length ? (
-                  <span className="flex flex-wrap gap-x-1 font-mono text-[10px] leading-snug text-stone-400" data-ability-notes={ability}>
+                  <span className="flex flex-wrap gap-x-1 font-mono text-[0.6875rem] leading-snug text-stone-400" data-ability-notes={ability}>
                     {notes.map((note, index) => (
                       <span key={note.key} className={cn("whitespace-nowrap", note.motion)}>
                         {index ? <span className="text-stone-600">· </span> : null}
@@ -642,7 +642,7 @@ export default function AbilityEditor({
                   </button>
                   <span className="flex flex-1 flex-col items-center leading-none" aria-live="polite">
                     <span className="font-display text-[19px] font-bold text-amber-100">{assigned ?? POINT_BUY_MIN}</span>
-                    <span className="mt-0.5 font-mono text-[9px] text-stone-500">
+                    <span className="mt-0.5 font-mono text-[0.6875rem] text-stone-500">
                       costs {pointBuyCost(assigned ?? POINT_BUY_MIN)}
                     </span>
                   </span>
