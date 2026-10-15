@@ -150,6 +150,11 @@ export type UserSettings = {
   // Written only through recordFinishedTours, which merges per tour: the
   // profile PATCH replaces a key whole and does not accept this one.
   tours?: TourLedger;
+  // The person's own new-campaign defaults (src/lib/campaign-defaults.ts).
+  // Written only through setCampaignDefaults and clearCampaignDefaults; the
+  // profile PATCH does not accept it, and it is read back through
+  // readStoredDefaults, never trusted as stored.
+  campaignDefaults?: unknown;
 };
 
 export function getUserSettings(userId: string): UserSettings {
@@ -165,6 +170,20 @@ export function updateUserSettings(userId: string, patch: UserSettings): UserSet
     .prepare(`UPDATE users SET settings_json = ? WHERE id = ?`)
     .run(JSON.stringify(merged), userId);
   return merged;
+}
+
+// Saving defaults touches only this key: the audio, dice and tour
+// preferences beside it stay as they were.
+export function setCampaignDefaults(userId: string, defaults: unknown) {
+  updateUserSettings(userId, { campaignDefaults: defaults });
+}
+
+export function clearCampaignDefaults(userId: string) {
+  const { campaignDefaults: _removed, ...rest } = getUserSettings(userId);
+  void _removed;
+  getDatabase()
+    .prepare(`UPDATE users SET settings_json = ? WHERE id = ?`)
+    .run(JSON.stringify(rest), userId);
 }
 
 export function finishedTours(userId: string): TourLedger {
