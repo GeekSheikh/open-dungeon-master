@@ -40,6 +40,8 @@ import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { addCopper, formatCopper } from "@/lib/srd/currency";
 import { waypointProperty } from "@/lib/dm/waypoint-logic";
 import type { ToolResult } from "@/lib/dm/tool-errors";
+import { notCarried } from "@/lib/dm/item-logic";
+import { isTableGearName } from "@/lib/db/homebrew";
 
 // The shop tools (docs/vtt-parity-implementation-plan.md 11.1). The server
 // prices everything: the model names the item, the shelf says what it
@@ -327,7 +329,7 @@ export function handleSellItem(campaign: Campaign, rawArguments: string): ToolRe
   }
   const removal = removeItemMath(sheet.equipment, args.item, args.qty);
   if (!removal) {
-    return { error: `${sheet.name} does not carry "${args.item}".`, retry: true };
+    return notCarried(sheet.name, sheet.equipment.map((item) => item.name), args.item, isTableGearName(campaign.id, args.item));
   }
   const carried = sheet.equipment.find((item) => item.name.toLowerCase() === args.item.toLowerCase())?.name ?? args.item;
   // Gems, jewelry, art and trade goods keep their full value (SRD 5.1,

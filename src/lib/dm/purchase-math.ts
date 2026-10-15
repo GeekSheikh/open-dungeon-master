@@ -8,6 +8,8 @@ import { keepsFullValue, listPriceCp, saleValueCp } from "@/lib/dm/trade-value";
 import { addCopper, formatCopper, purseCopper } from "@/lib/srd/currency";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import type { ToolError } from "@/lib/dm/tool-errors";
+import { notCarried } from "@/lib/dm/item-logic";
+import { isTableGearName } from "@/lib/db/homebrew";
 
 // A purchase or a sale outside a shop. The table prices it, not the model:
 // the content pack's list price (or the value a treasure's name carries) is
@@ -52,7 +54,7 @@ export function computePurchase(
   }
   const removal = removeItemMath(sheet.equipment, args.item, args.qty);
   if (!removal) {
-    return { error: `${sheet.name} does not carry "${args.item}" to sell.`, retry: true };
+    return notCarried(sheet.name, sheet.equipment.map((item) => item.name), args.item, isTableGearName(sheet.campaignId, args.item), " to sell");
   }
   // A sale pays for what changes hands, so more than is held is no sale.
   if (removal.removed < args.qty) {

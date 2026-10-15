@@ -49,6 +49,7 @@ import { maximumOf } from "@/lib/dm/heal-spell";
 import { castingHold } from "@/lib/dm/spell-planes";
 import { castShapeAtEnemy, enemyShapeSpellFor } from "@/lib/dm/enemy-polymorph";
 import type { ToolResult } from "@/lib/dm/tool-errors";
+import { spellHeldProblem } from "@/lib/dm/cast-rules";
 
 const castArgsSchema = z.object({
   characterId: z.string(),
@@ -162,6 +163,12 @@ export function handleCastAtEnemy(
   const facts = spellFactsFor(args.spell, authors);
   const mech = resolvedMech?.mech ?? null;
   const corrections: string[] = [];
+  // A name the server does not know is read against the sheet first: a typo
+  // or another language is fixed from the caster's list, not sent a save.
+  const unheld = !mech && !facts ? spellHeldProblem(sheet, args.spell, null) : null;
+  if (unheld) {
+    return { ...unheld, error: `${unheld.error} Nothing was spent.` };
+  }
   if (!mech?.save && !args.saveAbility && mech?.resolution !== "auto") {
     return { error: "cast_at_enemy needs saveAbility for a spell the server does not know.", retry: true };
   }

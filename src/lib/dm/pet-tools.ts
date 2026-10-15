@@ -186,6 +186,18 @@ function hasDrakeFeature(sheet: CharacterSheet): boolean {
   );
 }
 
+// A creature the call names that the sheet does not hold: the call's to fix,
+// from the creatures they have.
+function noPet(sheet: CharacterSheet, petName?: string): ToolError {
+  const held = sheet.pets.map((pet) => `${pet.name} (${pet.form})`);
+  return {
+    error: `${sheet.name} has no bound creature${petName ? ` called "${petName}"` : ""}.${
+      held.length ? ` Their creatures: ${held.join(", ")}.` : " They have none."
+    }`,
+    retry: true,
+  };
+}
+
 function findPet(sheet: CharacterSheet, petName?: string): SheetPet | null {
   const wanted = (petName ?? "").trim().toLowerCase();
   if (!wanted) {
@@ -386,7 +398,7 @@ export function handlePetAttack(
   }
   const pet = findPet(sheet, args.petName);
   if (!pet) {
-    return { error: `${sheet.name} has no bound creature${args.petName ? ` called "${args.petName}"` : ""}.`, retry: true };
+    return noPet(sheet, args.petName);
   }
   if (pet.hp <= 0) {
     return { error: `${pet.name} is down; it cannot attack.`, refused: "rules" };
@@ -509,7 +521,7 @@ export function handleDamagePet(
   }
   const pet = findPet(sheet, args.petName);
   if (!pet) {
-    return { error: `${sheet.name} has no bound creature${args.petName ? ` called "${args.petName}"` : ""}.`, retry: true };
+    return noPet(sheet, args.petName);
   }
   const hp = Math.max(0, pet.hp - args.amount);
   if (hp <= 0 && pet.kind === "familiar") {
@@ -555,7 +567,7 @@ export function handleDismissPet(
   }
   const pet = findPet(sheet, args.petName);
   if (!pet) {
-    return { error: `${sheet.name} has no bound creature${args.petName ? ` called "${args.petName}"` : ""}.`, retry: true };
+    return noPet(sheet, args.petName);
   }
   patchSheet(sheet.id, { pets: sheet.pets.filter((entry) => entry !== pet) });
   publishSheet(campaign, sheet.id);

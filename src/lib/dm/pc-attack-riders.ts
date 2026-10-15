@@ -21,6 +21,7 @@ import { applyDmMutation } from "@/lib/dm/mutations";
 import { GRAPPLING_STRIKE, MANEUVERED, maneuverDieFor, maneuverUse, offSwingRefusal, type ManeuverUse } from "@/lib/dm/maneuver-rules";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import type { ToolError } from "@/lib/dm/tool-errors";
+import { optionsOfKind } from "@/lib/srd/options";
 
 export { superiorityDie, maneuverDieFor } from "@/lib/dm/maneuver-rules";
 
@@ -55,10 +56,13 @@ export function pickManeuver(
     return bare.includes(term) || term.includes(bare);
   });
   if (!known) {
+    const theirs = picks.length ? ` Their maneuvers: ${picks.join(", ")}.` : " They have no maneuver picks.";
+    // A maneuver the rules know that they did not pick is the game saying
+    // no; a name nobody knows is the call's to fix, from their picks.
     return {
-      refused: { error: `${sheet.name} knows no maneuver "${asked}".${
-        picks.length ? ` Their maneuvers: ${picks.join(", ")}.` : " They have no maneuver picks."
-      }`, retry: true },
+      refused: optionsOfKind("maneuver").some((option) => option.n.toLowerCase() === term.replace(/^maneuver:\s*/, ""))
+        ? { error: `${sheet.name} knows no maneuver "${asked}".${theirs}`, refused: "rules" }
+        : { error: `No maneuver called "${asked}" is known.${theirs} Send the one meant, by the name on the sheet.`, retry: true },
     };
   }
   // A reaction, a bonus action of its own or a check is not part of a swing.

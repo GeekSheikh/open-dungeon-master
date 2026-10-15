@@ -147,10 +147,14 @@ export function buildAttackProfile(
         spellName.toLowerCase().includes(entry.toLowerCase()),
     );
     if (!onList) {
-      return {
-        error: `${spellName} is not on ${sheet.name}'s spell list; they cannot cast it.`,
-        retry: true,
-      };
+      // A spell the rules know is one they lack; a name nobody knows is the
+      // call's to fix, from their list.
+      return spellFactsFor(spellName, sheetSpellAuthors(sheet))
+        ? { error: `${spellName} is not on ${sheet.name}'s spell list; they cannot cast it.`, refused: "rules" }
+        : {
+            error: `No spell called "${spellName}" is known. ${sheet.name}'s spells are ${spellList.join(", ") || "none"}: send the one meant, by the name on the sheet.`,
+            retry: true,
+          };
     }
     // The content pack knows what this spell rolls at this level, including
     // cantrip scaling the model routinely forgets. Its answer wins; the
@@ -277,7 +281,7 @@ export function buildAttackProfile(
     if (resolved.carried === false) {
       return {
         error: `${sheet.name} carries no ${resolved.displayName}. They attack with a weapon from their equipment, with an unarmed strike, or with something they pick up (an improvised weapon, named for what it is).`,
-        retry: true,
+        refused: "rules",
       };
     }
     // Hands: a shield on the arm leaves one free, and the off-hand swing

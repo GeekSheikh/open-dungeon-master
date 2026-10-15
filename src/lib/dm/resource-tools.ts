@@ -18,12 +18,13 @@ import { isUnlimited, matchResource, RAGING, resourceLevel } from "@/lib/srd/cla
 import { effectiveMaxHp, incapacitatedBy, wearsHeavyArmor } from "@/lib/dm/condition-logic";
 import { classLevelFor, classListFor } from "@/lib/srd/multiclass";
 import { conditionEffectsFor } from "@/lib/srd/condition-effects";
-import { consumableEffect, findCarriedItem } from "@/lib/dm/item-logic";
+import { consumableEffect, findCarriedItem, notCarried } from "@/lib/dm/item-logic";
 import { kiTechnique, spendKiTechnique, spendQuickenedSpell } from "@/lib/dm/bonus-actions";
 import { removeItemMath } from "@/lib/dm/mutation-math";
 import type { CharacterSheet, FullPatchSheetInput } from "@/lib/schemas/sheet";
 import { holdsMote } from "@/lib/srd/authored-effects-more";
 import type { ToolError, ToolResult } from "@/lib/dm/tool-errors";
+import { isTableGearName } from "@/lib/db/homebrew";
 
 export { computePurchase } from "@/lib/dm/purchase-math";
 
@@ -84,11 +85,11 @@ export function computeUseItem(
 ): Outcome | ToolError {
   const carried = findCarriedItem(sheet.equipment, itemName);
   if (!carried) {
-    return { error: `${sheet.name} does not carry "${itemName}".`, retry: true };
+    return notCarried(sheet.name, sheet.equipment.map((item) => item.name), itemName, isTableGearName(campaign.id, itemName));
   }
   const removal = removeItemMath(sheet.equipment, carried.name, 1);
   if (!removal) {
-    return { error: `${sheet.name} does not carry "${itemName}".`, retry: true };
+    return notCarried(sheet.name, sheet.equipment.map((item) => item.name), itemName, isTableGearName(campaign.id, itemName));
   }
   const effect = consumableEffect(carried.name);
   const base: Outcome = {
@@ -254,12 +255,12 @@ export function computeUseResource(
   const state = def ? sheet.resources[def.id] : undefined;
   if (!def || !state) {
     const available = Object.keys(sheet.resources);
-    return {
-      error: `${sheet.name} has no tracked resource "${resourceName}".${
-        available.length ? ` Their resources: ${available.join(", ")}.` : " They have no limited-use resources."
-      }`,
-      retry: true,
-    };
+    const theirs = available.length ? ` Their resources: ${available.join(", ")}.` : " They have no limited-use resources.";
+    // A resource the rules know that the sheet lacks is the game saying no;
+    // a name nobody knows is the call's to fix, from the list.
+    return def
+      ? { error: `${sheet.name} has no tracked resource "${resourceName}".${theirs}`, refused: "rules" }
+      : { error: `No resource called "${resourceName}" is known.${theirs} Send the one meant, by the name on the sheet.`, retry: true };
   }
   if (def.passive) {
     return {

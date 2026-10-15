@@ -10,6 +10,8 @@ import { grantItemMath, removeItemMath } from "@/lib/dm/mutation-math";
 import { addCopper, formatCopper, parseCoins, purseCopper } from "@/lib/srd/currency";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import type { ToolResult } from "@/lib/dm/tool-errors";
+import { notCarried } from "@/lib/dm/item-logic";
+import { isTableGearName } from "@/lib/db/homebrew";
 
 // Moving things between a character and the party.
 //
@@ -126,7 +128,7 @@ export function handlePartyStash(
     if (args.do === "stow") {
       const taken = removeItemMath(fresh.equipment, name, qty);
       if (!taken) {
-        return { error: `${fresh.name} is not carrying "${name}".`, retry: true };
+        return notCarried(fresh.name, fresh.equipment.map((item) => item.name), name, isTableGearName(campaign.id, name));
       }
       const added = addPartyItem(getParty(campaign.id).inventory, {
         name,
@@ -144,7 +146,7 @@ export function handlePartyStash(
     }
 
     const party = getParty(campaign.id);
-    const taken = removePartyItem(party.inventory, name, qty);
+    const taken = removePartyItem(party.inventory, name, isTableGearName(campaign.id, name), qty);
     if ("error" in taken) {
       return taken;
     }

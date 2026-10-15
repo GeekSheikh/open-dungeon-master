@@ -231,6 +231,13 @@ export function isPublishedGearName(name: string): boolean {
   );
 }
 
+// Whether the rules at this table know an item by that name: published gear,
+// or an item in the workshop of whoever runs it. A name they know that a
+// character lacks is the game saying no; one nobody knows is a call to fix.
+export function isTableGearName(campaignId: string, name: string): boolean {
+  return isPublishedGearName(name) || findHomebrewBySlug(tableAuthors(campaignId), "item", slugify(name)) !== null;
+}
+
 // Whose workshop counts at a table: whoever runs it. The owner made the
 // campaign and the DM seats referee it; a player's own entries are theirs to
 // write and the table's to admit, which a DM does by keeping the entry.

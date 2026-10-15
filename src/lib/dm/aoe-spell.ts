@@ -35,6 +35,7 @@ import { castRedirect } from "@/lib/dm/cast-redirect";
 import { overchannelProblem, payOverchannel, sculptedIds } from "@/lib/dm/caster-features";
 import { maximumOf } from "@/lib/dm/heal-spell";
 import { toolError, type ToolError } from "@/lib/dm/tool-errors";
+import { spellHeldProblem } from "@/lib/dm/cast-rules";
 
 const FEET_PER_TILE = 5;
 
@@ -117,6 +118,12 @@ export function planAoeSpell(
   // The save and the DC come from the spell and the caster's sheet; only a
   // spell the server has no row for needs the caller's, refused before any
   // slot is spent when they are missing.
+  // A name the server does not know is read against the sheet first: a typo
+  // or another language is fixed from the caster's list, not sent a save.
+  const unheld = !mech && !facts ? spellHeldProblem(caster, input.spell, null) : null;
+  if (unheld) {
+    return { ...unheld, error: `${unheld.error} Nothing was spent.` };
+  }
   if (mech?.resolution !== "auto" && !mech?.save && !input.saveAbility) {
     return { error: `The server does not know which save ${name} forces; send saveAbility (and dc) with it. Nothing was spent.`, retry: true };
   }

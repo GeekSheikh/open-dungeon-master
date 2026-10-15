@@ -114,12 +114,20 @@ export function spellHeldProblem(
     return null;
   }
   const ready = [...new Set(lists.flatMap((entry) => [...(entry.cantrips ?? []), ...entry.known, ...entry.prepared]))];
+  // A spell the rules know that the caster lacks is the game saying no; a
+  // name nobody knows (a typo, another language) is the call's to fix.
   return (
     notReadyReason(casting, facts?.name ?? spell) ??
-    notReadyReason(casting, spell) ?? {
-      error: `${sheet.name} cannot cast "${spell}": it is not among the spells they know or have prepared (${ready.join(", ") || "none"}).`,
-      retry: true,
-    }
+    notReadyReason(casting, spell) ??
+    (facts
+      ? {
+          error: `${sheet.name} cannot cast "${spell}": it is not among the spells they know or have prepared (${ready.join(", ") || "none"}).`,
+          refused: "rules",
+        }
+      : {
+          error: `No spell called "${spell}" is known. ${sheet.name} knows or has prepared ${ready.join(", ") || "no spells"}: send the one meant, by the name on the sheet.`,
+          retry: true,
+        })
   );
 }
 

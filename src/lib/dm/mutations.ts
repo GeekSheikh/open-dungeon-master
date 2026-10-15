@@ -91,6 +91,8 @@ import { casterViewsOf, spellbookOf, withCasterViews } from "@/lib/srd/spell-pre
 import { subclassSpellsFor } from "@/lib/srd/features";
 import { waypointProperty } from "@/lib/dm/waypoint-logic";
 import { toolError, type ToolError, type ToolResult } from "@/lib/dm/tool-errors";
+import { notCarried } from "@/lib/dm/item-logic";
+import { isTableGearName } from "@/lib/db/homebrew";
 
 // DM stat authority: the model changes sheets ONLY through these tools.
 // Every mutation is server-clamped, audit-logged, and published live.
@@ -986,7 +988,7 @@ export function applyDmMutation(
       }
       const math = removeItemMath(sheet.equipment, name, args.qty ?? 1);
       if (!math) {
-        return { result: { error: `${sheet.name} does not carry "${name}".`, retry: true } };
+        return { result: notCarried(sheet.name, sheet.equipment.map((item) => item.name), name, isTableGearName(campaign.id, name)) };
       }
       patchSheet(sheet.id, { equipment: math.equipment });
       audit(campaign, turnId, sheet, "remove_item", { name, removed: math.removed }, reason, {
@@ -1688,7 +1690,17 @@ export function applyDmMutation(
         return { result: { ok: true, learned: spell } };
       }
       if (!known.some(matches) && !prepared.some(matches) && !cantrips.some(matches) && !book.some(matches) && !pending.some(matches)) {
-        return { result: { error: `${sheet.name} does not know "${spell}".`, retry: true } };
+        // A spell the rules know is one they lack; a name nobody knows is the
+        // call's to fix, from the spells they hold.
+        const held = [...new Set([...cantrips, ...known, ...prepared, ...book, ...pending])];
+        return {
+          result: spellFactsFor(spell, spellAuthorsFor(campaign))
+            ? { error: `${sheet.name} does not know "${spell}".`, refused: "rules" }
+            : {
+                error: `No spell called "${spell}" is known. ${sheet.name} holds ${held.join(", ") || "no spells"}: send the one meant, by the name on the sheet.`,
+                retry: true,
+              },
+        };
       }
       const nextSpellcasting = {
         ...sheet.spellcasting,

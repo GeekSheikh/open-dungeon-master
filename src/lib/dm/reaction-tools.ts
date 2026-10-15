@@ -53,6 +53,7 @@ import { resolveSheetRef } from "@/lib/dm/rolls";
 import { spellAuthorsFor } from "@/lib/dm/spell-authors";
 import { PRONE } from "@/lib/dm/vitals-logic";
 import type { ToolError, ToolResult } from "@/lib/dm/tool-errors";
+import { engineFeatNamed } from "@/lib/srd/feat-effects";
 
 const useReactionSchema = z.object({
   characterId: z.string(),
@@ -545,10 +546,17 @@ export function handleUseReaction(
     return name.includes(lowered) || lowered.includes(name);
   });
   if (!held) {
-    return {
-      error: `${sheet.name} has no reaction called "${feature}" on their sheet: no feature by that name, and no reaction spell they can cast. Nothing was spent.`,
-      retry: true,
-    };
+    // A spell or feat the rules know is one they lack; a name nobody knows
+    // is the call's to fix, from what is on their sheet.
+    return spellFactsFor(feature, spellAuthorsFor(ctx.campaign)) || engineFeatNamed(feature)
+      ? {
+          error: `${sheet.name} has no reaction called "${feature}" on their sheet: no feature by that name, and no reaction spell they can cast. Nothing was spent.`,
+          refused: "rules",
+        }
+      : {
+          error: `No reaction called "${feature}" is known. ${sheet.name}'s features are ${sheet.features.map((entry) => entry.name).join(", ") || "none"}: send the one meant, by the name on the sheet. Nothing was spent.`,
+          retry: true,
+        };
   }
   spendReaction(ctx);
   return {
