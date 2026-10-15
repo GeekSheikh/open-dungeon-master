@@ -307,6 +307,8 @@ await test("out of a fight: a missing ritual name and a missing form are asked f
   expect(await ai(world, "use_spell_slot", { characterId: mage.id, ritual: true }), "retry", /name the spell being cast/);
   // Q3: Wild Shape needs the beast.
   expect(await ai(world, "use_resource", { characterId: druid.id, resource: "Wild Shape" }), "retry", /needs the beast being assumed/);
+  // A beast of its own the table lacks asks for its stat block; it never becomes the Elk inside its name.
+  expect(await ai(world, "use_resource", { characterId: druid.id, resource: "Wild Shape", form: "giant elk" }), "retry", /"giant elk" is not in the beast-form table/);
   // F1: a fight-only tool with no fight.
   expect(await ai(world, "aoe_damage", { saveAbility: "dex", dc: 12, damage: "2d6", characterIds: [kara.id] }), "retry", /No active encounter/);
   // S3: the DM's own bookkeeping with nothing to act on.

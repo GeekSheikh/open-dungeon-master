@@ -159,30 +159,29 @@ export const BEAST_FORMS: BeastForm[] = [
   },
 ];
 
-const byName = new Map(BEAST_FORMS.map((form) => [normalize(form.name), form]));
-
 function normalize(term: string) {
   return term.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-// Fuzzy find: exact first, then a form whose name sits inside the request
-// ("shaggy brown bear" -> Brown Bear). Longest name wins so "dire wolf"
-// never lands on "Wolf".
-export function findBeastForm(term: string): BeastForm | null {
-  const wanted = normalize(term);
+// A block by the name a caller gives: the name itself ("a wolf", "brown
+// bear form" too), or a part of one name only ("rex"). Anything else is no
+// block, never the one whose name sits inside it: a giant elk is no Elk,
+// a werewolf no Wolf, and the caller's refusal lists the names there are.
+export function findNamed<T extends { name: string }>(list: T[], term: string): T | null {
+  const wanted = normalize(term).replace(/^(an?|the) /, "").replace(/ (form|shape)$/, "");
   if (!wanted) {
     return null;
   }
-  const exact = byName.get(wanted);
+  const exact = list.find((entry) => normalize(entry.name) === wanted);
   if (exact) {
     return exact;
   }
-  const candidates = BEAST_FORMS.filter((form) => {
-    const name = normalize(form.name);
-    return wanted.includes(name) || name.includes(wanted);
-  });
-  candidates.sort((a, b) => b.name.length - a.name.length);
-  return candidates[0] ?? null;
+  const parts = list.filter((entry) => ` ${normalize(entry.name)} `.includes(` ${wanted} `));
+  return parts.length === 1 ? parts[0] : null;
+}
+
+export function findBeastForm(term: string): BeastForm | null {
+  return findNamed(BEAST_FORMS, term);
 }
 
 // SRD Wild Shape ceilings by druid level; Circle of the Moon raises the CR

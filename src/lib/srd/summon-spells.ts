@@ -2,7 +2,7 @@
 // (SRD 5.1). Pure: src/lib/dm/summon-cast.ts asks summonPlan before anything
 // is spent, and spawns what it answers.
 
-import { findSummonForm, type SummonForm } from "@/lib/srd/summon-forms";
+import { findSummonForm, summonFormsOf, type SummonForm } from "@/lib/srd/summon-forms";
 import type { ToolError } from "@/lib/dm/tool-errors";
 
 const HOUR = 600;
@@ -181,6 +181,28 @@ const crLabel = (cr: number) => (cr === 0.125 ? "1/8" : cr === 0.25 ? "1/4" : cr
 
 export type SummonPlan = { form: SummonForm; count: number; spell: SummonSpell };
 
+// The highest challenge rating a casting from `slotLevel` calls, for a spell
+// that calls by challenge rating.
+function crCeiling(spell: SummonSpell, slotLevel: number): number | null {
+  if (spell.byCr) {
+    return spell.byCr[0][0];
+  }
+  if (spell.maxCr === undefined) {
+    return null;
+  }
+  const bySlot = [...(spell.maxCrBySlot ?? [])].reverse().find(([slot]) => slotLevel >= slot)?.[1];
+  return bySlot ?? spell.maxCr + (spell.crPerSlot ?? 0) * Math.max(0, slotLevel - spell.level);
+}
+
+// The creatures a casting can be asked for, by name and challenge rating.
+function callable(spell: SummonSpell, slotLevel: number): string {
+  if (spell.forms) {
+    return spell.forms.join(", ");
+  }
+  const ceiling = crCeiling(spell, slotLevel);
+  return summonFormsOf(spell.types ?? [], ceiling ?? Infinity).map((form) => `${form.name} (CR ${crLabel(form.cr)})`).join(", ");
+}
+
 // What one casting of `spell` from `slotLevel` makes of the form the caller
 // names, or the rule it breaks. `wanted` caps the count below the most the
 // slot allows.
@@ -194,11 +216,11 @@ export function summonPlan(
   const named = formName.trim();
   // A spell with a fixed list reads the caller's word against that list
   // first, so "spider" is Giant Insect's Giant Spider.
-  const fromList = spell.forms?.map((name) => findSummonForm(name)).find((form) => form && key(form.name).includes(key(named)));
+  const fromList = named ? spell.forms?.map((name) => findSummonForm(name)).find((form) => form && key(form.name).includes(key(named))) : undefined;
   const form = fromList ?? (named ? findSummonForm(named) : spell.forms?.length === 1 ? findSummonForm(spell.forms[0]) : null);
   if (!form) {
-    const offer = spell.forms?.join(", ") ?? `a ${spell.types?.join(" or ")} the server knows`;
-    return { error: `${spell.name} needs the creature in variant (${offer}); "${named}" is not one the server has a stat block for. Nothing was spent.`, retry: true };
+    const asked = named ? `${spell.name} has no stat block here for "${named}"; it calls` : `${spell.name} needs the creature in variant`;
+    return { error: `${asked}: ${callable(spell, slotLevel)}. Ask the player which, unless they named one. Nothing was spent.`, retry: true };
   }
   if (spell.forms && !spell.forms.includes(form.name)) {
     return { error: `${spell.name} makes ${spell.forms.join(", ")}, not a ${form.name}. Nothing was spent.`, retry: true };
@@ -215,8 +237,7 @@ export function summonPlan(
     const factor = [...(spell.multiplier ?? [])].reverse().find(([slot]) => slotLevel >= slot)?.[1] ?? 1;
     most = tier[1] * factor;
   } else if (spell.maxCr !== undefined) {
-    const bySlot = [...(spell.maxCrBySlot ?? [])].reverse().find(([slot]) => slotLevel >= slot)?.[1];
-    const ceiling = bySlot ?? spell.maxCr + (spell.crPerSlot ?? 0) * above;
+    const ceiling = crCeiling(spell, slotLevel) ?? spell.maxCr;
     if (form.cr > ceiling) {
       return { error: `${spell.name} from a level ${slotLevel} slot calls a creature of challenge rating ${crLabel(ceiling)} or lower; a ${form.name} is CR ${crLabel(form.cr)}. Nothing was spent.`, retry: true };
     }
