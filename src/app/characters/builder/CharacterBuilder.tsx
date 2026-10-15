@@ -458,6 +458,10 @@ function CharacterBuilderForm({
         variant="diamonds"
         wipe
         goldTitles
+        // A player who went back to fix one pick returns by its diamond, and
+        // an edit of a stored character saves from whichever step it is on.
+        jumpAhead
+        finishFromAnyStep={Boolean(initial)}
         notice={notice}
         aside={
           race && klass

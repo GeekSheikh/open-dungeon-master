@@ -29,7 +29,10 @@ import { ui } from "@/lib/ui";
 // unchanged: `variant="diamonds"` swaps the bar for the diamond stepper (tap a
 // completed diamond to go back), `wipe` plays the gold step wipe instead of
 // the sideways slide, and `goldTitles` sets each step title in GoldTitle.
-// These need src/app/styles/creator.css.
+// These need src/app/styles/creator.css. Two more for long forms a player
+// comes back to: `jumpAhead` lets a diamond ahead be tapped once every gate
+// before it passes, and `finishFromAnyStep` offers the done button on every
+// step once every gate passes (an edit of something already complete).
 
 export type WizardStep = {
   key: string;
@@ -74,6 +77,8 @@ export function Wizard({
   goldTitles = false,
   aside,
   notice,
+  jumpAhead = false,
+  finishFromAnyStep = false,
 }: {
   steps: WizardStep[];
   title: ReactNode;
@@ -89,6 +94,8 @@ export function Wizard({
   // A quiet line at the right of the header (the character so far).
   aside?: ReactNode;
   notice?: WizardNotice;
+  jumpAhead?: boolean;
+  finishFromAnyStep?: boolean;
 }) {
   const [internalStep, setInternalStep] = useState(0);
   const controlled = controlledStep !== undefined;
@@ -103,6 +110,11 @@ export function Wizard({
   const canContinue = current?.canContinue !== false;
   const blocker = !canContinue && current?.blocker ? current.blocker : null;
   const blockerId = useId();
+  // A step ahead is reachable when no gate from here to it holds.
+  const reachable = (index: number) =>
+    jumpAhead && index > step && steps.slice(step, index).every((s) => s.canContinue !== false);
+  const finishEarly =
+    finishFromAnyStep && !last && steps.every((s) => s.canContinue !== false);
   const { wiping, run } = useStepWipe(wipe);
 
   const labelOf = (s: WizardStep, index: number) =>
@@ -194,6 +206,7 @@ export function Wizard({
             steps={steps.map((s, i) => ({ key: s.key, label: labelOf(s, i) }))}
             current={step}
             onSelect={go}
+            reachable={jumpAhead ? reachable : undefined}
           />
         ) : (
           <div
@@ -307,10 +320,19 @@ export function Wizard({
           aria-disabled={!canContinue || undefined}
           aria-describedby={blocker ? blockerId : undefined}
           title={blocker ?? undefined}
-          className={cn(ui.btnPrimary, "wizard-continue", blocker && "wizard-continue-held")}
+          className={cn(
+            finishEarly ? ui.btnSecondary : ui.btnPrimary,
+            "wizard-continue",
+            blocker && "wizard-continue-held",
+          )}
         >
           {last ? doneLabel : (current?.continueLabel ?? "Continue")}
         </button>
+        {finishEarly ? (
+          <button type="button" onClick={onDone} className={ui.btnPrimary}>
+            {doneLabel}
+          </button>
+        ) : null}
       </footer>
 
       <StepWipe active={wiping} />
