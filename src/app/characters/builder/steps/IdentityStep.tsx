@@ -184,7 +184,7 @@ export function IdentityStep({
               </>
             )}
           </Field>
-          <Field label="Background">
+          <Field label="Background" anchor="background">
             <OptionPicker
               value={background?.id ?? ""}
               groups={backgroundGroups}

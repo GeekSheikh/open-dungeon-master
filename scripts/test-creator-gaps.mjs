@@ -204,6 +204,17 @@ await test("each step blocker names the block that holds the missing pick (issue
   assert.equal(submit.abilitiesBlocker({ abilities: null }).target, "scores");
   assert.equal(submit.gearBlocker({ purse: { problems: ["Over budget by 3 gp."] } }).message, "Over budget by 3 gp.");
   assert.equal(submit.gearBlocker({ purse: { problems: [] } }), null);
+  // The save's own check names what is missing and where, as the gates do:
+  // it used to answer "Assign all six ability scores first." to everything.
+  const save = (input) => submit.validateBuilder({ state: named, derived: { abilities: null }, ...input });
+  assert.deepEqual(save({}), { kind: "error", message: "Pick a race.", target: "race" });
+  assert.equal(save({ race: race("half_orc") }).target, "class");
+  assert.equal(save({ race: race("half_orc"), klass: { id: "fighter" } }).target, "background");
+  assert.deepEqual(save({ race: race("half_orc"), klass: { id: "fighter" }, background: background("soldier") }), {
+    kind: "error",
+    message: "Assign all six ability scores first.",
+    target: "scores",
+  });
 });
 
 await test("the Core Rules acolyte asks for two languages, on top of the race's own", () => {
