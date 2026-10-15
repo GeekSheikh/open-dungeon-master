@@ -48,7 +48,7 @@ export function powerAttackFeat(
     return { refused: { error: "the accuracy-for-damage trade belongs to Great Weapon Master or Powerful Attacker (a heavy melee weapon) and Sharpshooter or Deadeye (a ranged weapon), and this character has none of them. They can make the attack without the trade.", retry: true } };
   }
   if (!attack.weaponAttack) {
-    return { refused: { error: "the accuracy-for-damage trade is for weapon attacks; a spell attack cannot take it. Ask the player whether to cast the spell without it.", retry: true } };
+    return { refused: { error: "the accuracy-for-damage trade is for weapon attacks; a spell attack cannot take it. Ask the player whether to cast it without the trade.", retry: true } };
   }
   if (attack.ranged) {
     if (sharp) {

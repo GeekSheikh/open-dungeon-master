@@ -93,7 +93,7 @@ import { waypointProperty } from "@/lib/dm/waypoint-logic";
 import { toolError, type ToolError, type ToolResult } from "@/lib/dm/tool-errors";
 import { notCarried } from "@/lib/dm/item-logic";
 import { isTableGearName } from "@/lib/db/homebrew";
-import { freeSlotLevels, spentSlotRefusal } from "@/lib/dm/cast-rules";
+import { freeSlotsLine, spentSlotRefusal } from "@/lib/dm/cast-rules";
 
 // DM stat authority: the model changes sheets ONLY through these tools.
 // Every mutation is server-clamped, audit-logged, and published live.
@@ -1202,7 +1202,7 @@ export function applyDmMutation(
         const held = channelOptionsHeld(sheet);
         return {
           result: {
-            error: `Channel Divinity in a fight is one of its options, each with its own cost: name it in variant${held.length ? ` (${sheet.name} has ${held.join(", ")})` : ""}, and ask the player which unless they named one. Nothing was spent.`,
+            error: `Channel Divinity in a fight is one of its options, each with its own cost: name it in variant${held.length ? ` (${sheet.name} has ${held.join(", ")})` : ""}. Ask the player which, unless they named one. Nothing was spent.`,
             retry: true,
           },
         };
@@ -1398,9 +1398,11 @@ export function applyDmMutation(
           };
         }
         if (level < 1) {
-          const free = freeSlotLevels(sheet.spellcasting, 1, false).map((entry) => entry.level).join(", ") || "none";
           return {
-            result: { error: `Combat Wild Shape healing needs the slot level to burn (free: ${free}): ask the player which, unless they named one.`, retry: true },
+            result: {
+              error: `Combat Wild Shape healing needs the slot level to burn. ${freeSlotsLine(sheet.spellcasting, 1, false)} Ask the player which, unless they named one.`,
+              retry: true,
+            },
           };
         }
         const slot = sheet.spellcasting?.slots[String(level)];

@@ -72,7 +72,7 @@ export function handleReaperCast(
     return { error: `${spell} already reaches more than one creature; Improved Reaper doubles a spell that targets only one. Ask the player whether to cast it as it is. Nothing was spent.`, retry: true };
   }
   if (!withinFeet(encounter.id, first.id, second.id, 5)) {
-    return { error: `${second.displayName} is not within 5 feet of ${first.displayName}; Improved Reaper's second target must be: ask the player for another, or whether to cast it at one creature. Nothing was spent.`, retry: true };
+    return { error: `${second.displayName} is not within 5 feet of ${first.displayName}; Improved Reaper's second target must be. Ask the player for another target, or whether to cast it at one creature. Nothing was spent.`, retry: true };
   }
   const budget = budgetFor(encounter, sheet.id, attacksAllowedFor(sheet), conditionExtraActions(sheet.conditions));
   if (!budget) {

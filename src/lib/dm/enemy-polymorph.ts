@@ -72,12 +72,12 @@ export function castShapeAtEnemy(
     return { error: "Unknown targetEnemyId; use one from GAME STATE. Nothing was spent.", retry: true };
   }
   if (enemy.status !== "alive") {
-    return { error: `${enemy.displayName} is already ${enemy.status}. Ask the player which living enemy in GAME STATE to target instead, unless they named one. Nothing was spent.`, retry: true };
+    return { error: `${enemy.displayName} is already ${enemy.status}. Ask the player which living enemy in GAME STATE to target instead. Nothing was spent.`, retry: true };
   }
   const form = findBeastForm(input.variant ?? "");
   if (!form) {
     return {
-      error: `${rule.spell} needs the beast in variant, one the table knows (e.g. 'wolf', 'brown bear', 'giant spider'): ask the caster's player which unless they named one. Nothing was spent.`,
+      error: `${rule.spell} needs the beast in variant, one the table knows (e.g. 'wolf', 'brown bear', 'giant spider'). Ask the caster's player which, unless they named one. Nothing was spent.`,
       retry: true,
     };
   }

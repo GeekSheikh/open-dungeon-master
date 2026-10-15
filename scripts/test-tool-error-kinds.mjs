@@ -77,7 +77,7 @@ const spent = (levels) => Object.fromEntries(Object.entries(levels).map(([level,
 await test("Magic Missile with its 1st-level slots spent and a 2nd free asks which level, naming the free ones lowest first; with none left the game says no", async () => {
   const world = await openWorld();
   const mage = world.addHero(wizard(5, { spellcasting: { slots: spent({ 1: [4, 4], 2: [3, 0], 3: [2, 1] }) } }));
-  expect(await ai(world, "use_spell_slot", { characterId: mage.id, spell: "Magic Missile" }), "retry", /Free, lowest first: level 2 \(3 left\), level 3 \(1 left\)/);
+  expect(await ai(world, "use_spell_slot", { characterId: mage.id, spell: "Magic Missile" }), "retry", /Free slots, lowest first: level 2 \(3 left\), level 3 \(1 left\)\. Ask the player which, unless they named one\./);
   world.patch(mage.id, { spellcasting: { ...world.sheet(mage.id).spellcasting, slots: spent({ 1: [4, 4], 2: [3, 3], 3: [2, 2] }) } });
   expect(await ai(world, "use_spell_slot", { characterId: mage.id, spell: "Magic Missile" }), "rules", /no spell slot of level 1 or higher left/);
   world.close();
@@ -158,7 +158,7 @@ await test("Divine Smite at a spent level asks which free level; Stunning Strike
   expect(
     await aiEncounter(world, "pc_attack", { characterId: paladin.id, targetEnemyId: goblin.id, weapon: "Longsword", smite: 1 }, paladin),
     "retry",
-    /Free, lowest first: level 2 \(2 left\)/,
+    /Free slots, lowest first: level 2 \(2 left\)/,
   );
   const ki = world.sheet(monk.id).resources;
   const kiKey = Object.keys(ki).find((key) => /ki/i.test(key));
@@ -278,7 +278,7 @@ await test("Dispel Magic on a creature with no spell on it is cast: the slot is 
   const before = world.enemies().find((enemy) => enemy.id === goblin.id).conditions;
   const cast = await ai(world, "cast_at_enemy", { characterId: mage.id, targetEnemyId: goblin.id, spell: "Dispel Magic" }, mage);
   assert.equal(kindOf(cast), "ok", JSON.stringify(cast));
-  assert.match(String(cast.note), /nothing ended/);
+  assert.match(String(cast.note), /nothing the server tracks ended/);
   assert.equal(world.sheet(mage.id).spellcasting.slots["3"].used, 1);
   assert.deepEqual(world.enemies().find((enemy) => enemy.id === goblin.id).conditions, before);
   world.close();
@@ -398,20 +398,20 @@ await test("choices only the player makes are asked for: a Channel Divinity opti
   const mira = world.addHero(fighter({ name: "Mira" }));
   const dax = world.addHero(fighter({ name: "Dax" }));
   // Q6: more than they can carry.
-  expect(await ai(world, "grant_item", { characterId: weak.id, name: "Plate Armor", qty: 3, reason: "the test asks" }), "retry", /ask the player which/);
+  expect(await ai(world, "grant_item", { characterId: weak.id, name: "Plate Armor", qty: 3, reason: "the test asks" }), "retry", /Ask the player which/);
   // Q8: stabilize with a kit they do not have.
   world.patch(kara.id, { currentHp: 0, deathSaves: { successes: 0, failures: 0, stable: false, dead: false } });
-  expect(await ai(world, "stabilize", { healerId: mira.id, characterId: kara.id, method: "kit" }), "retry", /ask the player whether to try it/);
+  expect(await ai(world, "stabilize", { healerId: mira.id, characterId: kara.id, method: "kit" }), "retry", /Ask the player whether to try it/);
   // Q9: the companion limit.
   const companion = { class: "rogue", gender: "Unknown", personality: "wry", kind: "party" };
   assert.equal(kindOf(await ai(world, "add_companion", { ...companion, name: "Pip" })), "ok");
-  expect(await ai(world, "add_companion", { ...companion, name: "Tam" }), "retry", /ask the players which/);
+  expect(await ai(world, "add_companion", { ...companion, name: "Tam" }), "retry", /Ask the players which/);
   await fightDummies(world, 1, { heroFaces: { [cleric.id]: 20 } });
   await turnTo(world, cleric.id);
   // Q7: more targets than the spell takes.
   expect(await ai(world, "cast_buff", { characterId: cleric.id, spell: "Bless", targetCharacterIds: [kara.id, mira.id, dax.id, weak.id], level: 1 }, cleric), "retry", /affects at most 3/);
   // Q2: an option the player picks.
-  expect(await ai(world, "use_resource", { characterId: cleric.id, resource: "Channel Divinity" }, cleric), "retry", /ask the player which unless they named one/);
+  expect(await ai(world, "use_resource", { characterId: cleric.id, resource: "Channel Divinity" }, cleric), "retry", /Ask the player which, unless they named one/);
   world.close();
 });
 

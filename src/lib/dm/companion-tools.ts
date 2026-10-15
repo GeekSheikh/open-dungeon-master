@@ -269,7 +269,7 @@ export function handleAddCompanion(
   if (existing.length >= cap) {
     const label = kind === "guest" ? "guest ally" : "companion";
     return {
-      error: `The party already has ${existing.length} ${label}${existing.length === 1 ? "" : "s"} (limit ${cap}): ${existing.map((sheet) => sheet.name).join(", ")}. One is dismissed before another joins: ask the players which.`,
+      error: `The party already has ${existing.length} ${label}${existing.length === 1 ? "" : "s"} (limit ${cap}): ${existing.map((sheet) => sheet.name).join(", ")}. One is dismissed before another joins. Ask the players which.`,
       retry: true,
     };
   }

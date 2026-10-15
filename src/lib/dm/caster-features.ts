@@ -51,10 +51,10 @@ export function sculptedIds(
 // Whether this casting may be overchanneled, or why not.
 export function overchannelProblem(caster: CharacterSheet, facts: SpellFacts | null, dealsDamage: boolean): ToolError | null {
   if (!holds(caster, "overchannel")) {
-    return { error: `${caster.name} does not have Overchannel (School of Evocation, 14th level). Ask the player whether to cast the spell without it.`, retry: true };
+    return { error: `${caster.name} does not have Overchannel (School of Evocation, 14th level). Ask the player whether to cast it without Overchannel.`, retry: true };
   }
   if (!facts || facts.level < 1 || facts.level > 5) {
-    return { error: "Overchannel works on a wizard spell of 1st through 5th level. Ask the player whether to cast the spell without it.", retry: true };
+    return { error: "Overchannel works on a wizard spell of 1st through 5th level. Ask the player whether to cast it without Overchannel.", retry: true };
   }
   if (facts.classes?.length && !facts.classes.some((entry) => entry.toLowerCase() === "wizard")) {
     return { error: `Overchannel works on a wizard spell, and ${facts.name} is not one. Ask the player whether to cast it without Overchannel.`, retry: true };

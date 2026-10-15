@@ -182,7 +182,7 @@ export function spendQuickenedSpell(
 ): { patch: FullPatchSheetInput; result: Record<string, unknown> } | ToolError {
   const known = chosenOptions(sheet.features, "metamagic").some((name) => name.trim().toLowerCase() === "quickened spell");
   if (!known) {
-    return { error: `${sheet.name} has not learned the Quickened Spell Metamagic option. Ask the player whether to cast the spell without it. Nothing was spent.`, retry: true };
+    return { error: `${sheet.name} has not learned the Quickened Spell Metamagic option. Ask the player whether to cast it without Quickened Spell. Nothing was spent.`, retry: true };
   }
   const encounter = getActiveEncounter(campaign.id);
   const inFight = encounter !== null && (encounter.kind ?? "fight") === "fight";
@@ -192,7 +192,7 @@ export function spendQuickenedSpell(
   if (!budget || !encounter) {
     return inFight
       ? { error: `Quickened Spell is used as ${sheet.name} casts on their own turn, and it is not their turn. What they declared waits for their turn. Nothing was spent.`, refused: "rules" }
-      : { error: `Quickened Spell changes a casting time inside a fight's turn; out of a fight the spell is simply cast: ask the player whether to cast it without Quickened Spell. Nothing was spent.`, retry: true };
+      : { error: `Quickened Spell changes a casting time inside a fight's turn; out of a fight the spell is simply cast. Ask the player whether to cast it without Quickened Spell. Nothing was spent.`, retry: true };
   }
   if (budget.oncePerTurn.includes(QUICKENED)) {
     return { error: `${sheet.name} has already quickened a spell this turn that has not been cast yet. Nothing more was spent.`, retry: true };
@@ -202,7 +202,7 @@ export function spendQuickenedSpell(
   }
   const left = state.max - state.used;
   if (left < 2) {
-    return { error: `Quickened Spell costs 2 sorcery points and ${sheet.name} has ${left}. Ask the player whether to cast the spell without it. Nothing was spent.`, retry: true };
+    return { error: `Quickened Spell costs 2 sorcery points and ${sheet.name} has ${left}. Ask the player whether to cast it without Quickened Spell. Nothing was spent.`, retry: true };
   }
   storeBudget(encounter, { ...budget, oncePerTurn: [...budget.oncePerTurn, QUICKENED] });
   return {

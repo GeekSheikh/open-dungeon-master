@@ -266,7 +266,7 @@ function hordeBreakerProblem(input: {
     return { error: "Horde Breaker's extra attack follows a weapon attack on another creature this turn; attack that creature first.", retry: true };
   }
   if (input.besideEarlierTarget && !earlier.some((id) => input.besideEarlierTarget?.(id))) {
-    return { error: "Horde Breaker's extra attack must target a creature within 5 feet of the creature attacked first (the player picks one there, unless they named it).", retry: true };
+    return { error: "Horde Breaker's extra attack must target a creature within 5 feet of the creature attacked first. Ask the player which, unless they named one.", retry: true };
   }
   return null;
 }

@@ -579,7 +579,7 @@ export function computeUseResource(
       const name = (form?.name ?? "").trim();
       if (!name) {
         return {
-          error: `${def.displayName} needs the beast being assumed: pass form (e.g. 'wolf', 'brown bear'), and ask the player which unless they named one.`,
+          error: `${def.displayName} needs the beast being assumed: pass form (e.g. 'wolf', 'brown bear'). Ask the player which, unless they named one.`,
           retry: true,
         };
       }

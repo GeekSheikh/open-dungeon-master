@@ -193,7 +193,7 @@ export function handleCastBuff(
   const polymorphForm = condition === "polymorphed" ? findBeastForm(args.variant ?? "") : null;
   if (condition === "polymorphed" && !polymorphForm) {
     return {
-      error: `${resolvedMech.name} needs a beast form the table knows: pass variant (e.g. 'giant ape', 'brown bear', 'tyrannosaurus rex'), and ask the player which unless they named one.`,
+      error: `${resolvedMech.name} needs a beast form the table knows: pass variant (e.g. 'giant ape', 'brown bear', 'tyrannosaurus rex'). Ask the player which, unless they named one.`,
       retry: true,
     };
   }
@@ -236,7 +236,7 @@ export function handleCastBuff(
   const most = buff.target === "self" ? 1 : (shares ?? (buff.target === "ally" ? 1 : 6));
   if (targetSheets.length > most) {
     return {
-      error: `${resolvedMech.name} from a level ${plannedSlot ?? resolvedMech.spellLevel} slot affects at most ${most} creature${most === 1 ? "" : "s"}; ${targetSheets.length} were named. Name ${most} or fewer, or cast it from a higher slot: ask the player which. Nothing was spent.`,
+      error: `${resolvedMech.name} from a level ${plannedSlot ?? resolvedMech.spellLevel} slot affects at most ${most} creature${most === 1 ? "" : "s"}; ${targetSheets.length} were named. Name ${most} or fewer, or cast it from a higher slot. Ask the player which. Nothing was spent.`,
       retry: true,
     };
   }

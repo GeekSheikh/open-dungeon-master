@@ -128,9 +128,9 @@ export function itemUseProblem(name: string): ToolError | null {
 // An item a character does not carry. A name the table's rules know (isTableGearName)
 // is the game saying no; a name nobody knows is the call's to fix, from what
 // they do carry.
-export function notCarried(who: string, carried: string[], name: string, known: boolean, purpose = ""): ToolError {
+export function notCarried(who: string, carried: string[], name: string, known: boolean): ToolError {
   return known
-    ? { error: `${who} does not carry "${name}"${purpose}.`, refused: "rules" }
+    ? { error: `${who} does not carry "${name}".`, refused: "rules" }
     : {
         error: `${who} carries nothing called "${name}", and no item by that name is known. ${
           carried.length ? `They carry: ${carried.join(", ")}.` : "They carry nothing."

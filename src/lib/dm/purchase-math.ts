@@ -54,7 +54,7 @@ export function computePurchase(
   }
   const removal = removeItemMath(sheet.equipment, args.item, args.qty);
   if (!removal) {
-    return notCarried(sheet.name, sheet.equipment.map((item) => item.name), args.item, isTableGearName(sheet.campaignId, args.item), " to sell");
+    return notCarried(sheet.name, sheet.equipment.map((item) => item.name), args.item, isTableGearName(sheet.campaignId, args.item));
   }
   // A sale pays for what changes hands, so more than is held is no sale.
   if (removal.removed < args.qty) {

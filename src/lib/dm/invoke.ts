@@ -41,9 +41,10 @@ export type Adjudication = { name: string; args: Record<string, unknown> };
 
 export type InvokeOutcome =
   | { ok: true; result: Record<string, unknown>; turnId: string }
-  // The kind rides along for the server's own readers; the console and the
-  // agents get the sentence alone (the dm/invoke route, odm_dm_invoke). A
-  // handler that threw has none.
+  // A handler's refusal keeps its kind for the server's own readers; the
+  // console and the agents get the sentence alone (the dm/invoke route,
+  // odm_dm_invoke). The console's own checks and a handler that threw have
+  // none.
   | { ok: false; error: string; retry?: true; refused?: "rules" | "limit" };
 
 // Arguments a form produces are not quite arguments a tool call produces.
@@ -235,18 +236,18 @@ export async function invokeEngine(
 ): Promise<InvokeOutcome> {
   const entry = adjudication(call.name);
   if (!entry) {
-    return { ok: false, error: `Unknown action "${call.name}".`, retry: true };
+    return { ok: false, error: `Unknown action "${call.name}".` };
   }
   const args = normalizeArgs(entry, call.args ?? {});
   const complaint = checkArgs(entry, args);
   if (complaint) {
-    return { ok: false, error: complaint, retry: true };
+    return { ok: false, error: complaint };
   }
 
   const turn =
     actor.kind === "ai" ? getDmTurn(actor.turnId) : humanTurnFor(campaign.id);
   if (!turn) {
-    return { ok: false, error: "That DM turn no longer exists.", retry: true };
+    return { ok: false, error: "That DM turn no longer exists." };
   }
 
   // The rails on the model, for the model only.
@@ -398,7 +399,7 @@ export async function invokeEngineById(
 ): Promise<InvokeOutcome> {
   const campaign = getCampaignById(campaignId);
   if (!campaign) {
-    return { ok: false, error: "Campaign not found.", retry: true };
+    return { ok: false, error: "Campaign not found." };
   }
   return invokeEngine(campaign, actor, call);
 }

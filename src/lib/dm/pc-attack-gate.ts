@@ -84,7 +84,7 @@ export function gatePcAttack(input: {
     return { refused: { error: "Unknown targetEnemyId; use one from GAME STATE.", retry: true } };
   }
   if (enemy.status !== "alive") {
-    return { refused: { error: `${enemy.displayName} is already ${enemy.status}. Ask the player which living enemy in GAME STATE to target instead, unless they named one.`, retry: true } };
+    return { refused: { error: `${enemy.displayName} is already ${enemy.status}. Ask the player which living enemy in GAME STATE to target instead.`, retry: true } };
   }
   // Resilient Sphere: nothing reaches in (condition-effects untargetable).
   const sealed = conditionUntargetable(enemy.conditions);

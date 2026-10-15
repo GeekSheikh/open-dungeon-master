@@ -277,18 +277,18 @@ export function slotPlan(
   }
   const level = Math.floor(named && named > 0 ? named : (facts ? pactLevelFor(sheet, facts, names) : 0));
   if (level < 1 || level > 9) {
-    const free = freeSlotLevels(casting, 1, true).map((entry) => entry.level).join(", ") || "none";
     return {
-      error: spell
-        ? `${spell} is not a spell the server knows, so the slot level it is cast from must be named (1 to 9): ask the player which, unless they named one. Free slot levels: ${free}.`
-        : `A spell slot has a level from 1 to 9; name the level to spend (ask the player which, unless they named one). Free slot levels: ${free}.`,
+      error: `${
+        spell
+          ? `${spell} is not a spell the server knows, so the slot level it is cast from must be named (1 to 9).`
+          : "A spell slot has a level from 1 to 9; name the level to spend."
+      } ${freeSlotsLine(casting, 1, true)} Ask the player which, unless they named one.`,
       retry: true,
     };
   }
   if (facts && level < facts.level) {
-    const free = freeSlotLevels(casting, facts.level, true).map((entry) => entry.level).join(", ") || "none";
     return {
-      error: `${facts.name} is a level ${facts.level} spell; it cannot be cast from a level ${level} slot. Use a slot of level ${facts.level} or higher (free: ${free}): ask the player which, unless they named one.`,
+      error: `${facts.name} is a level ${facts.level} spell; it cannot be cast from a level ${level} slot. Use a slot of level ${facts.level} or higher. ${freeSlotsLine(casting, facts.level, true)} Ask the player which, unless they named one.`,
       retry: true,
     };
   }
@@ -325,7 +325,7 @@ export function slotPlan(
 // The slot levels still free at `lowest` or above, lowest first: the shared
 // slots and, where the spend takes one, a Pact Magic slot, with how many of
 // each are left.
-export function freeSlotLevels(casting: CharacterSheet["spellcasting"], lowest: number, withPact: boolean): Array<{ level: number; left: number }> {
+function freeSlotLevels(casting: CharacterSheet["spellcasting"], lowest: number, withPact: boolean): Array<{ level: number; left: number }> {
   const free = new Map<number, number>();
   for (const [key, slot] of Object.entries(casting?.slots ?? {})) {
     const level = Number(key);
@@ -340,6 +340,14 @@ export function freeSlotLevels(casting: CharacterSheet["spellcasting"], lowest: 
   return [...free].sort(([a], [b]) => a - b).map(([level, left]) => ({ level, left }));
 }
 
+// The free slot levels as every slot refusal names them.
+export function freeSlotsLine(casting: CharacterSheet["spellcasting"], lowest: number, withPact: boolean): string {
+  const free = freeSlotLevels(casting, lowest, withPact);
+  return free.length
+    ? `Free slots, lowest first: ${free.map((entry) => `level ${entry.level} (${entry.left} left)`).join(", ")}.`
+    : "No slot is free.";
+}
+
 // A slot level that is spent (the one named, or the spell's own). The caster
 // chooses the slot, "of that spell's level or higher": with a usable level
 // still free, the levels are named for the player to pick, lowest first; with
@@ -349,11 +357,9 @@ export function spentSlotRefusal(
   casting: CharacterSheet["spellcasting"],
   input: { level: number; lowest: number; what: string; withPact: boolean; none?: ToolError },
 ): ToolError {
-  const free = freeSlotLevels(casting, input.lowest, input.withPact);
-  if (free.length) {
-    const levels = free.map((entry) => `level ${entry.level} (${entry.left} left)`).join(", ");
+  if (freeSlotLevels(casting, input.lowest, input.withPact).length) {
     return {
-      error: `${who} has no free level ${input.level} spell slot for ${input.what}. Free, lowest first: ${levels}. The player picks the level, unless they named one.`,
+      error: `${who} has no free level ${input.level} spell slot for ${input.what}. ${freeSlotsLine(casting, input.lowest, input.withPact)} Ask the player which, unless they named one.`,
       retry: true,
     };
   }

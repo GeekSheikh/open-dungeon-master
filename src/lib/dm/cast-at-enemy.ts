@@ -115,7 +115,7 @@ export function handleCastAtEnemy(
     return { error: "Unknown targetEnemyId; use one from GAME STATE.", retry: true };
   }
   if (enemy.status !== "alive") {
-    return { error: `${enemy.displayName} is already ${enemy.status}. Ask the player which living enemy in GAME STATE to target instead, unless they named one.`, retry: true };
+    return { error: `${enemy.displayName} is already ${enemy.status}. Ask the player which living enemy in GAME STATE to target instead.`, retry: true };
   }
   // SRD 5.1, Charmed: no harmful magic at the charmer (monsters workstream).
   if (charmedBy(sheet.conditions, sheet.conditionMeta, enemy.id)) {

@@ -221,7 +221,7 @@ export function handleDispelMagic(
     ...(held.length
       ? {}
       : {
-          note: `${holder.name} holds no spell the server tracks${input.endSpell ? ` named ${input.endSpell}` : ""}: ${input.spell} is cast and nothing ended. Narrate exactly this.`,
+          note: `${input.spell} is cast on ${holder.name}, and no spell${input.endSpell ? ` named ${input.endSpell}` : ""} is on them: nothing the server tracks ended. Narrate exactly this.`,
         }),
   };
 }

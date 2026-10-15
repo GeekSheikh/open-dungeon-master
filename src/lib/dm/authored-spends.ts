@@ -119,7 +119,7 @@ function pickVariant(does: SpendDoes, variant: string | undefined, spend: Author
   const wanted = lower(variant);
   const key = Object.keys(does.options).find((option) => wanted.includes(option));
   if (!key) {
-    return { error: `${spend.name} needs a variant: ${Object.keys(does.options).join(" or ")}; ask the player which unless they named one. Nothing was spent.`, retry: true };
+    return { error: `${spend.name} needs a variant: ${Object.keys(does.options).join(" or ")}. Ask the player which, unless they named one. Nothing was spent.`, retry: true };
   }
   return does.options[key];
 }

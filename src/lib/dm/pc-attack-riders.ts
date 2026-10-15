@@ -45,7 +45,7 @@ export function pickManeuver(
     return { maneuver: null };
   }
   if (!weaponAttack) {
-    return { refused: { error: "Maneuvers ride weapon attacks, not spells. Ask the player whether to cast the spell without the maneuver.", retry: true } };
+    return { refused: { error: "Maneuvers ride weapon attacks, not spells. Ask the player whether to cast it without the maneuver.", retry: true } };
   }
   const term = asked.trim().toLowerCase();
   const picks = sheet.features

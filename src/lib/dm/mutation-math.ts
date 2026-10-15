@@ -219,7 +219,7 @@ export function grantProblem(
   name: string,
 ): ToolError | null {
   if (after.length > before.length && after.length > EQUIPMENT_ROWS_MAX) {
-    return { error: `${owner}'s pack already holds ${EQUIPMENT_ROWS_MAX} different items, the most a sheet keeps. Something goes first (ask the player what), then grant ${name}.`, retry: true };
+    return { error: `${owner}'s pack already holds ${EQUIPMENT_ROWS_MAX} different items, the most a sheet keeps; something goes first, then grant ${name}. Ask the player what.`, retry: true };
   }
   const over = after.find((item) => item.qty > ITEM_ROW_MAX);
   if (over) {
