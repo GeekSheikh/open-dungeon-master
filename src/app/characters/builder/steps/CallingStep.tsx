@@ -112,15 +112,16 @@ export function CallingStep({
             art: classArt(option.id, gender),
             // The book leads where the group heading does not say it
             // (issue #116: a Marshal looked like a Core Rules class).
-            // "Plays like Fighter + Cleric" leads: it says what the class is
-            // in words a new player and a veteran new to the setting both read.
+            // "Like Fighter + Cleric" leads: it says what the class is in words
+            // a new player and a veteran new to the setting both read, short
+            // enough to fit the narrow class card's two tagline lines.
             tagline: [
               canonical,
-              // One of the core four says so rather than "Wizard: plays like Wizard".
+              // One of the core four says so rather than "Wizard: like Wizard".
               reading
                 ? reading.playsLike.toLowerCase() === option.id.toLowerCase()
-                  ? "One of the core four"
-                  : `Plays like ${reading.playsLike}${reading.suggested ? " (suggested)" : ""}`
+                  ? "Core class"
+                  : `Like ${reading.playsLike}${reading.suggested ? " (suggested)" : ""}`
                 : "",
               option.source,
               entry?.spellAbility ? `${entry.spellAbility.toUpperCase()} caster` : "",
