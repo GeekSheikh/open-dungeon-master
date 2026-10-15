@@ -7,7 +7,7 @@
 // import it directly. Data derived from the SRD 5.1, (c) Wizards of the
 // Coast LLC, CC-BY-4.0. See docs/LICENSES.md.
 
-import { compareNames } from "@/lib/language/text-logic";
+import { compareNames, findNamed } from "@/lib/language/text-logic";
 
 export type BeastAttack = {
   name: string;
@@ -160,27 +160,6 @@ export const BEAST_FORMS: BeastForm[] = [
     traits: "The bite grapples a Medium-or-smaller target (escape DC 17); Multiattack cannot aim both at the same target.",
   },
 ];
-
-function normalize(term: string) {
-  return term.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-}
-
-// A block by the name a caller gives: the name itself ("a wolf", "brown
-// bear form" too), or a part of one name only ("rex"). Anything else is no
-// block, never the one whose name sits inside it: a giant elk is no Elk,
-// a werewolf no Wolf, and the caller's refusal lists the names there are.
-export function findNamed<T>(list: T[], term: string, nameOf: (entry: T) => string): T | null {
-  const wanted = normalize(term).replace(/^(an?|the) /, "").replace(/ (form|shape)$/, "");
-  if (!wanted) {
-    return null;
-  }
-  const exact = list.find((entry) => normalize(nameOf(entry)) === wanted);
-  if (exact) {
-    return exact;
-  }
-  const parts = list.filter((entry) => ` ${normalize(nameOf(entry))} `.includes(` ${wanted} `));
-  return parts.length === 1 ? parts[0] : null;
-}
 
 export function findBeastForm(term: string): BeastForm | null {
   return findNamed(BEAST_FORMS, term, (form) => form.name);

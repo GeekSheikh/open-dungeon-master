@@ -12,7 +12,8 @@
 // Data derived from the SRD 5.1, (c) Wizards of the Coast LLC, CC-BY-4.0.
 // See docs/LICENSES.md.
 
-import { BEAST_FORMS, findNamed, type BeastForm } from "@/lib/srd/beast-forms";
+import { BEAST_FORMS, type BeastForm } from "@/lib/srd/beast-forms";
+import { findNamed } from "@/lib/language/text-logic";
 
 export type SummonFormAttack = {
   name: string;
@@ -426,7 +427,7 @@ const ALL: SummonForm[] = [
 ];
 
 // The stat block a caller names, matched as a beast form is
-// (beast-forms.ts findNamed): "spider" is the Giant Spider, a giant elk no
+// (src/lib/language/text-logic.ts findNamed): "spider" is the Giant Spider, a giant elk no
 // Elk. Null when the table does not know it.
 export function findSummonForm(term: string): SummonForm | null {
   return findNamed(ALL, term, (form) => form.name);

@@ -1,5 +1,5 @@
 import { readiedHeld } from "@/lib/dm/readied-kinds";
-import { findNamed } from "@/lib/srd/beast-forms";
+import { findNamed } from "@/lib/language/text-logic";
 import { carriedLight, lightPlacement } from "@/lib/dm/light-timers";
 import { getClock } from "@/lib/db/clock";
 import type { Campaign } from "@/lib/db/campaigns";
@@ -241,7 +241,7 @@ function resolveAnyToken(
     return getTokenByRef(map.id, byId.id);
   }
   // An enemy or one of the DM's own pieces by its name, or by a part of one
-  // name only (beast-forms.ts findNamed): "goblin" with Goblin 1 and Goblin 2
+  // name only (src/lib/language/text-logic.ts findNamed): "goblin" with Goblin 1 and Goblin 2
   // on the board is neither, and is asked again (unknownCombatant).
   const named = [
     ...enemies.map((enemy) => ({ name: enemy.displayName, token: () => getTokenByRef(map.id, enemy.id) })),

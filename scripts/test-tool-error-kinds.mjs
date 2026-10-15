@@ -91,7 +91,7 @@ await test("a spell the server does not know, with no level named, asks for the 
   world.close();
 });
 
-// ---- spell names: rule D ----
+// ---- spell names ----
 
 await test("a spell name resolves; a misspelling or another language is fixed from the caster's list; a spell the rules know that they lack is refused", async () => {
   const world = await openWorld();
@@ -288,7 +288,7 @@ await test("Dispel Magic on a creature with no spell on it is cast: the slot is 
   world.close();
 });
 
-// ---- one site of each case type more (desired outcomes, by group) ----
+// ---- one refusal of each kind more ----
 
 const fighter = (overrides = {}) => ({
   name: "Kara",
@@ -305,25 +305,25 @@ await test("out of a fight: a missing ritual name and a missing form are asked f
   const mage = world.addHero(wizard(5));
   const druid = world.addHero({ name: "Fern", class: "druid", level: 2, abilities: { wis: 16 }, proficiencies: TRAINED });
   const kara = world.addHero(fighter({ abilities: { str: 8 } }));
-  // Q5: a ritual needs its spell named.
+  // A ritual needs its spell named.
   expect(await ai(world, "use_spell_slot", { characterId: mage.id, ritual: true }), "retry", /name the spell being cast/);
-  // Q3: Wild Shape needs the beast.
+  // Wild Shape needs the beast.
   const asked = await ai(world, "use_resource", { characterId: druid.id, resource: "Wild Shape" });
   expect(asked, "retry", /needs the beast being assumed in form; at druid level 2 Fern can take: .*Wolf \(CR 1\/4\)/);
   assert.doesNotMatch(asked.error, /Brown Bear|Giant Eagle/, "a form above the druid's caps was offered");
   expect(await ai(world, "use_resource", { characterId: druid.id, resource: "Wild Shape", form: "brown bear" }), "retry", /CR 1\/4 or lower: .*Wolf \(CR 1\/4\).*Offer a form within the limit/);
   // A beast of its own the table lacks asks for its stat block; it never becomes the Elk inside its name.
   expect(await ai(world, "use_resource", { characterId: druid.id, resource: "Wild Shape", form: "giant elk" }), "retry", /"giant elk" is not in the beast-form table/);
-  // F1: a fight-only tool with no fight.
+  // A fight-only tool with no fight.
   expect(await ai(world, "aoe_damage", { saveAbility: "dex", dc: 12, damage: "2d6", characterIds: [kara.id] }), "retry", /No active encounter/);
-  // S3: the DM's own bookkeeping with nothing to act on.
+  // The DM's own bookkeeping with nothing to act on.
   expect(await ai(world, "complete_beat", { beat: 1 }), "retry", /no story arc/);
-  // RN12: a lift the character attempts and cannot make.
+  // A lift the character attempts and cannot make.
   expect(await ai(world, "lift", { characterId: kara.id, weightLb: 2000 }), "rules", /does not mo/);
-  // RN7: Ready is for a fight.
+  // Ready is for a fight.
   expect(await ai(world, "take_action", { characterId: kara.id, action: "ready", trigger: "when the door opens" }), "rules", /no active fight/);
   await fightDummies(world, 1, { heroFaces: { [kara.id]: 20 } });
-  // N2: downtime in a fight.
+  // Downtime in a fight.
   expect(await ai(world, "downtime", { days: 1, characterId: kara.id, activity: "research", topic: "the old keep" }), "rules", /end the fight first/);
   world.close();
 });
@@ -335,38 +335,38 @@ await test("in a fight: options riding an attack the character lacks or cannot u
   const mage = world.addHero(wizard(5));
   const [first, second] = await fightDummies(world, 2, { heroFaces: { [kara.id]: 20, [brute.id]: 19, [mage.id]: 18 } });
   await turnTo(world, kara.id);
-  // P3: an option the character does not have, on a legal attack.
+  // An option the character does not have, on a legal attack.
   expect(await aiEncounter(world, "pc_attack", { characterId: kara.id, targetEnemyId: first.id, weapon: "Longsword", hurlThroughHell: true }, kara), "retry", /attack without hurlThroughHell/);
   // P3 too: a maneuver the rules know that they never picked; a name nobody knows is fixed from their picks.
   expect(await aiEncounter(world, "pc_attack", { characterId: kara.id, targetEnemyId: first.id, weapon: "Longsword", maneuver: "Precision Attack" }, kara), "retry", /knows no maneuver "Precision Attack"\. They have no maneuver picks\. They can make the attack without it\./);
   expect(await aiEncounter(world, "pc_attack", { characterId: kara.id, targetEnemyId: first.id, weapon: "Longsword", maneuver: "Precisoin Atack" }, kara), "retry", /No maneuver called "Precisoin Atack" is known/);
-  // P4: an option this attack does not meet.
+  // An option this attack does not meet.
   expect(await aiEncounter(world, "pc_attack", { characterId: kara.id, targetEnemyId: first.id, weapon: "Light Crossbow", nonlethal: true }, kara), "retry", /this one is ranged/);
-  // P5: a multi-target feature with one target it cannot take.
+  // A multi-target feature with one target it cannot take.
   world.patch(kara.id, { features: [...world.sheet(kara.id).features, { name: "Multiattack: Whirlwind Attack", source: "class" }] });
   expect(await aiEncounter(world, "pc_attack", { characterId: kara.id, targetEnemyId: first.id, weapon: "Light Crossbow", whirlwind: true }, kara), "retry", /without this creature/);
-  // RN16: the sheet lacks what the attack needs.
+  // The sheet lacks what the attack needs.
   world.patch(kara.id, { conditions: ["flame blade"] });
   expect(await aiEncounter(world, "pc_attack", { characterId: kara.id, targetEnemyId: first.id, weapon: "Flame Blade" }, kara), "rules", /no spell attack bonus/);
   world.patch(kara.id, { conditions: [] });
-  // N1: an extra attack that is the feature itself, not theirs.
+  // An extra attack that is the feature itself, not theirs.
   expect(await aiEncounter(world, "pc_attack", { characterId: kara.id, targetEnemyId: first.id, weapon: "Unarmed strike", bonusAttack: "martial arts" }, kara), "rules", /has no Martial Arts/);
-  // RN5: a target nothing reaches.
+  // A target nothing reaches.
   const encounters = await import("../src/lib/db/encounters.ts");
   encounters.patchEnemyConditions(second.id, ["banished"], {});
   expect(await aiEncounter(world, "pc_attack", { characterId: kara.id, targetEnemyId: second.id, weapon: "Longsword" }, kara), "rules", /banished/);
-  // Q10: a target already down.
+  // A target already down.
   encounters.patchEnemyHp(first.id, 0, "dead");
   expect(await aiEncounter(world, "pc_attack", { characterId: kara.id, targetEnemyId: first.id, weapon: "Longsword" }, kara), "retry", /is already dead/);
-  // RN8: a two-handed weapon with a shield on.
+  // A two-handed weapon with a shield on.
   await turnTo(world, brute.id);
   encounters.patchEnemyConditions(second.id, [], {});
   expect(await aiEncounter(world, "pc_attack", { characterId: brute.id, targetEnemyId: second.id, weapon: "Greatsword" }, brute), "rules", /needs both hands/);
-  // RN3: a second action in the turn.
+  // A second action in the turn.
   await turnTo(world, mage.id);
   assert.equal(kindOf(await ai(world, "use_spell_slot", { characterId: mage.id, spell: "Magic Missile" }, mage)), "ok");
   expect(await ai(world, "use_spell_slot", { characterId: mage.id, spell: "Burning Hands" }, mage), "rules", /already used their action/);
-  // RN4: a caster at 0 HP.
+  // A caster at 0 HP.
   world.patch(mage.id, { currentHp: 0 });
   expect(await ai(world, "cast_buff", { characterId: mage.id, spell: "Mage Armor", targetCharacterIds: [mage.id] }, mage), "rules", /at 0 HP/);
   world.close();
@@ -376,11 +376,11 @@ await test("the DM's own bookkeeping: malformed arguments, a numbers-less area, 
   const world = await openWorld();
   const kara = world.addHero(fighter());
   await fightDummies(world, 1, { heroFaces: { [kara.id]: 20 } });
-  // F4: malformed arguments.
+  // Malformed arguments.
   expect(await ai(world, "take_action", { characterId: kara.id }, kara), "retry", /Invalid arguments/);
-  // F3: numbers the DM supplies.
+  // Numbers the DM supplies.
   expect(await ai(world, "aoe_damage", { characterIds: [kara.id], damage: "2d6" }), "retry", /for an effect that names no spell/);
-  // F8: an edit beyond the engine's limits.
+  // An edit beyond the engine's limits.
   expect(await ai(world, "dismiss_companion", { characterId: kara.id }), "retry", /player's character/);
   world.close();
 });
@@ -391,13 +391,13 @@ await test("a party member who is dead cannot be healed, a purse too thin to pay
   const kara = world.addHero(fighter({ gold: 1 }));
   const mage = world.addHero(wizard(5));
   world.patch(kara.id, { currentHp: 0, deathSaves: { successes: 0, failures: 3, stable: false, dead: true } });
-  // RN13: the dead.
+  // The dead.
   expect(await ai(world, "heal", { casterId: cleric.id, characterId: kara.id, spell: "Cure Wounds", level: 1 }), "rules", /DEAD/);
-  // Q4: how much is the player's to say.
+  // How much is the player's to say.
   expect(await ai(world, "party_stash", { do: "deposit", characterId: kara.id }), "retry", /Say how much/);
-  // RN9: money.
+  // Money.
   expect(await ai(world, "party_stash", { do: "deposit", characterId: kara.id, coins: "50 gp" }), "rules", /only has/);
-  // RN10: learning the rules bar.
+  // Learning the rules bar.
   expect(await ai(world, "learn_spell", { characterId: mage.id, spell: "Cure Wounds", action: "add" }), "rules", /not on the wizard spell list/);
   world.close();
 });
@@ -409,20 +409,20 @@ await test("choices only the player makes are asked for: a Channel Divinity opti
   const kara = world.addHero(fighter());
   const mira = world.addHero(fighter({ name: "Mira" }));
   const dax = world.addHero(fighter({ name: "Dax" }));
-  // Q6: more than they can carry.
+  // More than they can carry.
   expect(await ai(world, "grant_item", { characterId: weak.id, name: "Plate Armor", qty: 3, reason: "the test asks" }), "retry", /Ask the player which/);
-  // Q8: stabilize with a kit they do not have.
+  // Stabilize with a kit they do not have.
   world.patch(kara.id, { currentHp: 0, deathSaves: { successes: 0, failures: 0, stable: false, dead: false } });
   expect(await ai(world, "stabilize", { healerId: mira.id, characterId: kara.id, method: "kit" }), "retry", /Ask the player whether to try it/);
-  // Q9: the companion limit.
+  // The companion limit.
   const companion = { class: "rogue", gender: "Unknown", personality: "wry", kind: "party" };
   assert.equal(kindOf(await ai(world, "add_companion", { ...companion, name: "Pip" })), "ok");
   expect(await ai(world, "add_companion", { ...companion, name: "Tam" }), "retry", /Ask the players which/);
   await fightDummies(world, 1, { heroFaces: { [cleric.id]: 20 } });
   await turnTo(world, cleric.id);
-  // Q7: more targets than the spell takes.
+  // More targets than the spell takes.
   expect(await ai(world, "cast_buff", { characterId: cleric.id, spell: "Bless", targetCharacterIds: [kara.id, mira.id, dax.id, weak.id], level: 1 }, cleric), "retry", /affects at most 3/);
-  // Q2: an option the player picks.
+  // An option the player picks.
   expect(await ai(world, "use_resource", { characterId: cleric.id, resource: "Channel Divinity" }, cleric), "retry", /Ask the player which, unless they named one/);
   world.close();
 });
@@ -438,23 +438,23 @@ await test("in a fight on a map: a square off the board and a target out of reac
   kit.place(mage.id, 1, 3);
   kit.place(goblin.id, 8, 8);
   await turnTo(world, kara.id);
-  // F10: out of melee reach, the character can move to it.
+  // Out of melee reach, the character can move to it.
   expect(await aiEncounter(world, "pc_attack", { characterId: kara.id, targetEnemyId: goblin.id, weapon: "Longsword" }, kara), "retry", /out of melee reach/);
-  // F5: a square off the board.
+  // A square off the board.
   expect(await aiEncounter(world, "move_token", { tokenName: goblin.displayName, x: 999, y: 999, forced: true }), "retry", /outside the/);
-  // E2: an enemy acting before its turn.
+  // An enemy acting before its turn.
   expect(await aiEncounter(world, "enemy_attack", { enemyId: goblin.id, targetCharacterId: kara.id }), "retry", /turn has not come yet/);
-  // RN1: a character without the feature.
+  // A character without the feature.
   expect(await ai(world, "cast_at_enemy", { characterId: kara.id, targetEnemyId: goblin.id, spell: "Fire Bolt" }, kara), "rules", /cannot cast spells/);
-  // RN14: nothing to act on in what a player declared.
+  // Nothing to act on in what a player declared.
   expect(await ai(world, "take_action", { characterId: kara.id, action: "escape" }, kara), "rules", /not grappled/);
-  // RN2: out of uses.
+  // Out of uses.
   const resources = world.sheet(kara.id).resources;
   const wind = Object.keys(resources).find((key) => /second.?wind/i.test(key));
   assert.ok(wind, `the fighter has Second Wind: ${JSON.stringify(resources)}`);
   world.patch(kara.id, { resources: { ...resources, [wind]: { ...resources[wind], used: resources[wind].max } } });
   expect(await ai(world, "use_resource", { characterId: kara.id, resource: "Second Wind" }, kara), "rules", /left/);
-  // E3: Legendary Resistance with no failed save to answer.
+  // Legendary Resistance with no failed save to answer.
   const encounters = await import("../src/lib/db/encounters.ts");
   const live = world.encounter();
   encounters.saveEncounter({ ...live, legendary: { ...live.legendary, pools: { ...live.legendary.pools, [goblin.id]: { actions: 0, resistances: 3 } } } });
@@ -465,9 +465,9 @@ await test("in a fight on a map: a square off the board and a target out of reac
 await test("bookkeeping with nothing to work on: no board for a teleport is skipped, a full quest log is fixed", async () => {
   const world = await openWorld();
   const kara = world.addHero(fighter());
-  // S4: no board.
+  // No board.
   expect(await ai(world, "teleport_token", { tokenName: kara.name, x: 1, y: 1, cause: "hazard" }), "retry", /no board/);
-  // F9: a cap the DM manages.
+  // A cap the DM manages.
   for (let index = 0; index < 40; index += 1) {
     assert.equal(kindOf(await ai(world, "set_quest", { title: `Quest ${index}` })), "ok");
   }
@@ -478,11 +478,11 @@ await test("bookkeeping with nothing to work on: no board for a teleport is skip
 await test("the same offer twice is dropped while the first waits; a romance step the story has not earned is the rules", async () => {
   const world = await openWorld({ gameSettings: { inventoryApprovals: true, romance: true } });
   const kara = world.addHero(fighter());
-  // S2: pacing, the DM's own offer already waiting.
+  // Pacing, the DM's own offer already waiting.
   const offer = { characterId: kara.id, name: "Coin purse", qty: 1, reason: "the test asks" };
   assert.equal(kindOf(await ai(world, "grant_item", offer)), "ok");
   expect(await ai(world, "grant_item", offer), "retry", /still waiting/);
-  // RN11: a relationship the story has not earned.
+  // A relationship the story has not earned.
   const npc = await ai(world, "set_npc", { name: "Lisa", role: "innkeeper", disposition: "friendly" });
   assert.equal(kindOf(npc), "ok", JSON.stringify(npc));
   world.say("player", "Kara asks Lisa to marry her.", kara);
