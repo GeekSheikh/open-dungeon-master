@@ -58,16 +58,22 @@ export function enemyShapeProblem(
   if (enemy.currentHp <= 0) {
     return { error: `${rule.spell} has no effect on a creature at 0 hit points, and ${name} is at 0. Ask the player for another target. Nothing was spent.`, retry: true };
   }
-  // Immutable Form (the golems): no spell alters its form.
-  if (immutableForm(enemy.stats)) {
-    return { error: `${name} has Immutable Form: it is immune to any spell or effect that would alter its form, and ${rule.spell} is one. Nothing was spent; pick another target or another spell.`, refused: "rules" };
-  }
-  if (rule.sparesShapechangers && isShapechanger(enemy.stats)) {
-    return { error: `${rule.spell} has no effect on a shapechanger, and ${name} is one. Nothing was spent; pick another target or another spell.`, refused: "rules" };
-  }
   const cap = enemyCr(enemy);
   if (form.cr > cap) {
     return { error: `${form.name} is CR ${formatCr(form.cr)}, above the CR ${formatCr(cap)} ${rule.spell} allows for ${name}: the beast's challenge rating may be no higher than the creature's own. Nothing was spent; offer a lesser form.`, retry: true };
+  }
+  return null;
+}
+
+// Why the spell, cast at this creature, has no effect on it, or null: it is
+// cast, and spent, all the same (SRD 5.1).
+export function enemyShapeNoEffect(rule: EnemyShapeSpell, enemy: { displayName: string; stats: EnemyStats }): string | null {
+  // Immutable Form (the golems): no spell alters its form.
+  if (immutableForm(enemy.stats)) {
+    return `${enemy.displayName} has Immutable Form, immune to any spell that would alter its form: ${rule.spell} has no effect on it.`;
+  }
+  if (rule.sparesShapechangers && isShapechanger(enemy.stats)) {
+    return `${enemy.displayName} is a shapechanger: ${rule.spell} has no effect on it.`;
   }
   return null;
 }

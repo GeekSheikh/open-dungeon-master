@@ -81,9 +81,15 @@ await test("a spell cannot be cast at an enemy that is dead, gone or not there",
   assert.equal(live.ok, true, live.error);
 });
 
-await test("an enemy immune to the condition is no target, and the slot is kept", async () => {
+await test("an enemy immune to the condition is cast at to no effect: the slot is spent, the enemy unchanged", async () => {
   const { world, sheets: [mage], enemies: [golem] } = await table([wizard(5)], 1, { stats: { conditionImmune: "charmed, paralyzed, poisoned" } });
-  await refused(world, mage, "cast_at_enemy", hold(mage, golem), "Hold Person on a creature immune to paralysis");
+  const before = castingState(world.sheet(mage.id));
+  const enemies = enemyState(world);
+  const out = await world.invoke("cast_at_enemy", hold(mage, golem));
+  assert.equal(out.ok, true, out.error);
+  assert.match(String(out.result.noEffect), /immune to paralyzed/);
+  assert.notEqual(castingState(world.sheet(mage.id)), before, "the cast spent nothing");
+  assert.equal(enemyState(world), enemies, "the immune enemy changed");
 });
 
 await test("with no fight on there is nobody to cast at", async () => {

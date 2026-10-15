@@ -234,12 +234,10 @@ export function handleCastAtEnemy(
   const immuneTo = [main, mech?.immuneIfImmuneTo].find(
     (name): name is string => Boolean(name && enemy.stats.conditionImmune.toLowerCase().includes(name)),
   );
-  if (immuneTo && !pool) {
-    return {
-      error: `${enemy.displayName} is immune to ${immuneTo} (immunities: ${enemy.stats.conditionImmune}); the spell cannot take hold. Nothing was spent; pick another target or another spell.`,
-      refused: "rules",
-    };
-  }
+  // A spell that only lays the condition is cast, and spent, and does
+  // nothing; one that also deals damage deals it, the condition dropped
+  // where it is laid (src/lib/dm/spell-riders.ts layOnEnemy).
+  const immune = immuneTo && !pool && !guessed ? `${enemy.displayName} is immune to ${immuneTo}: ${spellName} has no effect on it.` : null;
   // Hold Person holds a humanoid and nothing else; Command does nothing to
   // the undead.
   const creatureType = (enemy.stats.type ?? "").toLowerCase();
@@ -323,10 +321,10 @@ export function handleCastAtEnemy(
     ...(cast.shares ? { shares: cast.shares } : {}),
     ...(cast.continuing ? { continuing: cast.continuing } : {}),
   };
-  // A ward around the target, or Limited Magic Immunity (the rakshasa,
-  // src/lib/dm/monster-traits.ts): the spell is cast, and spent, and does
-  // nothing to it (SRD 5.1).
-  const noEffect = ward ?? magicImmunityNote(enemy, spellName, slotLevel ?? facts?.level ?? 0);
+  // A ward around the target, an immunity to the spell's condition, or
+  // Limited Magic Immunity (the rakshasa, src/lib/dm/monster-traits.ts): the
+  // spell is cast, and spent, and does nothing to it (SRD 5.1).
+  const noEffect = ward ?? immune ?? magicImmunityNote(enemy, spellName, slotLevel ?? facts?.level ?? 0);
   if (noEffect) {
     return { ok: true, ...base, noEffect, note: `${noEffect} Narrate exactly this.` };
   }

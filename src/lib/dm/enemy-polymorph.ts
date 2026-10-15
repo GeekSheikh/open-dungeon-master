@@ -32,7 +32,7 @@ import { spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
 import { layOnEnemy } from "@/lib/dm/spell-riders";
 import { spellConditionMeta } from "@/lib/dm/spell-effects";
 import { publishEncounter } from "@/lib/dm/enemy-damage";
-import { beastEnemyStats, enemyShapeProblem, enemyShapeSpellFor } from "@/lib/dm/enemy-polymorph-logic";
+import { beastEnemyStats, enemyShapeNoEffect, enemyShapeProblem, enemyShapeSpellFor } from "@/lib/dm/enemy-polymorph-logic";
 import type { ToolResult } from "@/lib/dm/tool-errors";
 
 export { enemyShapeSpellFor };
@@ -81,7 +81,9 @@ export function castShapeAtEnemy(
       retry: true,
     };
   }
-  const problem = enemyShapeProblem(rule, form, enemy);
+  const immune = enemyShapeNoEffect(rule, enemy);
+  // A form the spell cannot give matters only to a creature it can change.
+  const problem = immune ? null : enemyShapeProblem(rule, form, enemy);
   if (problem) {
     return problem;
   }
@@ -127,10 +129,11 @@ export function castShapeAtEnemy(
     ...(cast.slot ? { slot: cast.slot } : {}),
     ...(cast.droppedConcentration ? { droppedConcentration: cast.droppedConcentration } : {}),
   };
-  // A ward around the target: the spell is cast, and spent, and changes
-  // nothing.
-  if (ward) {
-    return { ok: true, ...base, noEffect: ward, note: `${ward} Narrate exactly this.` };
+  // A ward around the target, or a creature the spell cannot change: the
+  // spell is cast, and spent, and changes nothing.
+  const noEffect = ward ?? immune;
+  if (noEffect) {
+    return { ok: true, ...base, noEffect, note: `${noEffect} Narrate exactly this.` };
   }
 
   // An unwilling creature makes a WIS save; every enemy is unwilling.
