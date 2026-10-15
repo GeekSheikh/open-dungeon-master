@@ -198,6 +198,8 @@ await test("Protection with no ally named asks for the ally; Shield with no hit 
   await fightDummies(world, 1, { heroFaces: { [guard.id]: 20, [mage.id]: 19 } });
   expect(await aiEncounter(world, "use_reaction", { characterId: guard.id, feature: "Protection" }), "retry", /pass the ally's targetCharacterId/);
   expect(await aiEncounter(world, "use_reaction", { characterId: mage.id, feature: "Shield" }), "rules", /no hit on them this turn/);
+  // Sent to cast_buff, a reaction spell is pointed to use_reaction, which checks its trigger.
+  expect(await ai(world, "cast_buff", { characterId: mage.id, spell: "Shield" }, mage), "retry", /Shield is cast as a reaction: use_reaction with feature "Shield"/);
   world.close();
 });
 

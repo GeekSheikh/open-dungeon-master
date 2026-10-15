@@ -268,6 +268,15 @@ export function castSpell(
   if (summoning) {
     return summoning;
   }
+  // A reaction spell answers its trigger through use_reaction, which checks
+  // the trigger and applies the spell (src/lib/dm/reaction-spells.ts): cast
+  // by any other tool it would spend its slot on nothing.
+  // A spell they cannot cast is told so here, as use_reaction would (a cast
+  // an item pays for aside), not sent there to hear it.
+  if (facts?.castingTime === "reaction" && via !== "reaction") {
+    const unheld = takeItemCast(sheet.id, name, { dryRun: true }) ? null : spellHeldProblem(sheet, spell, facts, { extras: subclassExtrasForTable(campaign.id, sheet.userId) });
+    return unheld ?? { error: `${name} is cast as a reaction: use_reaction with feature "${name}" when its trigger happens; the server checks the trigger and applies it. Nothing was spent.`, retry: true };
+  }
 
   // A slot level named is a real one. Level 0 is how some callers name a
   // cantrip, and passes for one.
@@ -317,7 +326,7 @@ export function castSpell(
   // A reaction spell is asked through the one reaction gate, with the
   // spell's own timing (src/lib/dm/reaction-kinds.ts, issue 233): Shield cast
   // as the hit that dropped the caster lands is judged as they stood before
-  // it, whichever tool casts it; Hellish Rebuke is not.
+  // it; Hellish Rebuke is not.
   if (reactionTime) {
     const refused = reactionRefusal(campaign.id, sheet, encounter, name, reactionTimingOf(engine));
     if (refused) {

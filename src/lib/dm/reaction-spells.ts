@@ -36,7 +36,8 @@ import { spellHeldProblem } from "@/lib/dm/cast-rules";
 
 // Shield is cast as the hit lands: the cast guard asks the reaction gate with
 // the spell's timing (src/lib/dm/reaction-kinds.ts), which judges a caster
-// that hit dropped as they stood before it, whatever tool casts the spell.
+// that hit dropped as they stood before it. Every reaction spell is cast
+// here (the cast guard refuses one any other tool sends).
 function castReactionSpell(ctx: Ctx, spell: string): Record<string, unknown> | ToolError {
   return applyDmMutation(
     ctx.campaign,
@@ -75,8 +76,8 @@ export function reactionSpell(ctx: Ctx, spellName: string): ToolResult {
   }
 
   // Hellish Rebuke answers the creature that damaged the caster with a DEX
-  // save and fire, resolved as cast_at_enemy resolves it (the cast guard
-  // charges the reaction).
+  // save and fire, resolved as cast_at_enemy resolves it; the reaction is
+  // spent here, as for every reaction spell.
   if (name === "hellish rebuke") {
     const record = freshLastHit(campaign.id, sheet.id);
     const attackerId =
@@ -90,7 +91,7 @@ export function reactionSpell(ctx: Ctx, spellName: string): ToolResult {
         refused: "rules",
       };
     }
-    return handleCastAtEnemy(
+    const rebuke = handleCastAtEnemy(
       campaign,
       ctx.turn,
       JSON.stringify({
@@ -104,7 +105,12 @@ export function reactionSpell(ctx: Ctx, spellName: string): ToolResult {
       }),
       ctx.sheets,
       ctx.sheetsById,
+      { asReaction: true },
     );
+    if (typeof rebuke.error !== "string") {
+      spendReaction(ctx);
+    }
+    return rebuke;
   }
 
   // Feather Fall saves a creature from a fall that has just landed.

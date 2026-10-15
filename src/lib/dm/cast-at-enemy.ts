@@ -80,7 +80,11 @@ export function handleCastAtEnemy(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
+  // Hellish Rebuke resolved by use_reaction once its trigger is checked
+  // (src/lib/dm/reaction-spells.ts), which spends the reaction itself.
+  options: { asReaction?: boolean } = {},
 ): ToolResult {
+  const via = options.asReaction ? "reaction" : "enemy";
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
     return { error: "No active encounter: cast_at_enemy aims at an enemy in a fight. Call start_encounter first.", retry: true };
@@ -114,7 +118,7 @@ export function handleCastAtEnemy(
   if (!enemy) {
     return { error: "Unknown targetEnemyId; use one from GAME STATE.", retry: true };
   }
-  const barred = castBarred(campaign, turn.id, { characterId: sheet.id, spell: args.spell, ...(args.level ? { level: args.level } : {}), via: "enemy", units: hitDiceOf(enemy) }, sheets, sheetsById);
+  const barred = castBarred(campaign, turn.id, { characterId: sheet.id, spell: args.spell, ...(args.level ? { level: args.level } : {}), via, units: hitDiceOf(enemy) }, sheets, sheetsById);
   if (barred) {
     return barred;
   }
@@ -288,7 +292,7 @@ export function handleCastAtEnemy(
       ...(mech?.darts ? { uses: args.darts ?? 20 } : {}),
       // A material priced per Hit Die of the target (Imprisonment).
       units: hitDiceOf(enemy),
-      via: "enemy",
+      via,
       reason: (args.reason ?? "").slice(0, 200),
     }),
     sheets,
