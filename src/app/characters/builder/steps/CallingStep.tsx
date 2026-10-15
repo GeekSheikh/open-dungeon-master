@@ -200,7 +200,22 @@ export function CallingStep({
             open={Boolean(details)}
             onOpenChange={(open) => (open ? undefined : setDetailsFor(null))}
             title={details?.name ?? ""}
-            meta={details?.meta}
+            // The card's role and "plays like", said again where the class
+            // is read about at length.
+            meta={(() => {
+              const reading = details ? readings.get(details.id) : undefined;
+              return [
+                details?.meta,
+                reading ? `Role: ${reading.roles.join(" / ")}` : "",
+                reading
+                  ? reading.playsLike.toLowerCase() === details?.id.toLowerCase()
+                    ? "One of the core four"
+                    : `Plays like ${reading.playsLike}${reading.suggested ? " (suggested)" : ""}`
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" · ");
+            })()}
             text={details?.infoText}
             reference={details?.reference}
           />
