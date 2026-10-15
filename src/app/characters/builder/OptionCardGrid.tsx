@@ -141,14 +141,17 @@ export function OptionCardGrid({
         // decides which it offers.
         <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label={`Filter ${noun === "class" ? "classes" : `${noun}s`}`}>
           {facets.map((facet) => (
+            // Two to a line on a phone, side by side on a wider screen: the
+            // select fills whatever box holds it.
+            <div key={facet.key} className="w-[calc(50%-0.25rem)] min-w-0 sm:w-44">
             <Select
-              key={facet.key}
               size="sm"
               label={facet.label}
               value={picks[facet.key] ?? ANY}
               onChange={(next) => setPicks((current) => ({ ...current, [facet.key]: next }))}
               options={[{ value: ANY, label: `${facet.label}: any` }, ...facet.options.map((option) => ({ value: option.value, label: `${facet.label}: ${option.label}` }))]}
             />
+            </div>
           ))}
           {filtering ? (
             <>

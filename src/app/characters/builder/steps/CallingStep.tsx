@@ -120,7 +120,9 @@ export function CallingStep({
                 : "",
               option.source,
               entry?.spellAbility ? `${entry.spellAbility.toUpperCase()} caster` : "",
-              entry ? `Saves ${entry.saves.map((save) => save.toUpperCase()).join(" ")}` : "",
+              // Saves are left to the chosen-class line and the "?" box: the
+              // least of what a player chooses a class by, and the card's
+              // two lines are better spent on what it plays like.
             ]
               .filter(Boolean)
               .join(" · "),
@@ -222,8 +224,10 @@ export function CallingStep({
             // is read about at length.
             meta={(() => {
               const reading = details ? readings.get(details.id) : undefined;
+              const saves = details ? classes.find((candidate) => candidate.id === details.id)?.saves : undefined;
               return [
                 details?.meta,
+                saves?.length ? `Saves ${saves.map((save) => save.toUpperCase()).join(" ")}` : "",
                 reading ? `Role: ${reading.roles.join(" / ")}` : "",
                 reading
                   ? reading.playsLike.toLowerCase() === details?.id.toLowerCase()
