@@ -2,10 +2,11 @@
 
 import { ContentScopeProvider } from "@/lib/content-scope";
 import { Loader2 } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { AvatarCropDialog } from "@/app/settings/AvatarCropDialog";
 import { Wizard, type WizardNotice, type WizardStep } from "@/components/ui/Wizard";
 import { cn } from "@/lib/cn";
+import { ui } from "@/lib/ui";
 import { useEffectsRoot } from "@/lib/effects-mode";
 import type { Genre } from "@/lib/schemas/game-settings";
 import type { Ability, CreateSheetInput } from "@/lib/schemas/sheet";
@@ -34,6 +35,7 @@ import {
   type BuilderResult,
   type StepBlock,
 } from "./submit";
+import { clearBuilderDraft, readBuilderDraft, writeBuilderDraft, type BuilderDraft } from "./builderDraft";
 import { builderActions, useBuilderDerived } from "./useBuilderDerived";
 import { useArchetypes, useBuilderOptions, useWorldPack } from "./useBuilderOptions";
 import { listWords, unofferedPicks } from "./unoffered";
@@ -139,6 +141,7 @@ function CharacterBuilderForm({
   busy,
   error,
   role,
+  draftKey,
   onCancel,
   className,
 }: {
@@ -168,6 +171,10 @@ function CharacterBuilderForm({
   // Player character or DM-played ally; only the library page asks, since a
   // campaign already knows which door the character comes through.
   role?: { value: BuilderRole; onChange: (role: BuilderRole) => void };
+  // Where a new character's progress is kept on this device
+  // (builderDraftKey); the caller clears it once the save succeeds. Ignored
+  // for an edit.
+  draftKey?: string;
   // Where the first step's back arrow leads (the page or dialog it opened
   // from), as every other wizard's does; later steps step back as before.
   onCancel?: () => void;
@@ -240,6 +247,49 @@ function CharacterBuilderForm({
   // This builder's own root, so the footer's "Show me" looks inside it and
   // not in another builder on the page.
   const rootId = useId();
+
+  // An unfinished new character is kept on this device as it is built
+  // (builderDraft.ts), and offered back the next time this door opens. The
+  // step is the builder's so a resumed draft can land where it was left.
+  const draftAt = !initial && draftKey ? draftKey : null;
+  const [step, setStep] = useState(0);
+  const [draftOffer, setDraftOffer] = useState<BuilderDraft | null>(null);
+  const [draftChecked, setDraftChecked] = useState(false);
+  useEffect(() => {
+    if (!draftAt) {
+      return;
+    }
+    // Read after mount: the server render has no storage to read.
+    void Promise.resolve().then(() => {
+      setDraftOffer(readBuilderDraft(draftAt));
+      setDraftChecked(true);
+    });
+  }, [draftAt]);
+  const draftJson = draftAt ? JSON.stringify(state.draftFields) : "";
+  const begun = Boolean(state.name.trim() || state.raceId || state.classId);
+  useEffect(() => {
+    // Nothing is written over a draft still on offer, or for a builder
+    // opened and left untouched.
+    if (!draftAt || !draftChecked || draftOffer || !begun) {
+      return;
+    }
+    const id = window.setTimeout(() => writeBuilderDraft(draftAt, step, JSON.parse(draftJson)), 400);
+    return () => window.clearTimeout(id);
+  }, [draftAt, draftChecked, draftOffer, begun, draftJson, step]);
+  function resumeDraft() {
+    if (!draftOffer) {
+      return;
+    }
+    state.restoreDraft(draftOffer.fields);
+    setStep(draftOffer.step);
+    setDraftOffer(null);
+  }
+  function discardDraft() {
+    if (draftAt) {
+      clearBuilderDraft(draftAt);
+    }
+    setDraftOffer(null);
+  }
 
   // Takes the player to the block that holds the missing pick: scrolls the
   // active step to it, lights it for a moment and puts focus on its first
@@ -468,7 +518,24 @@ function CharacterBuilderForm({
           {unofferedText}
         </p>
       ) : null}
+      {draftOffer ? (
+        <div role="status" className="reveal mb-3 flex shrink-0 flex-wrap items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">
+          <span className="min-w-0 flex-1">
+            You have an unfinished character here
+            {draftOffer.fields.name.trim() ? <>: <span className="font-medium">{draftOffer.fields.name.trim()}</span></> : null}
+            , left on step {Math.min(draftOffer.step, steps.length - 1) + 1} of {steps.length}.
+          </span>
+          <button type="button" onClick={resumeDraft} className={ui.btnSmall}>
+            Resume
+          </button>
+          <button type="button" onClick={discardDraft} className={cn(ui.btnSmall, "text-stone-400")}>
+            Start fresh
+          </button>
+        </div>
+      ) : null}
       <Wizard
+        step={step}
+        onStepChange={setStep}
         title={state.name.trim() || "New character"}
         variant="diamonds"
         // The wipe paces a first build; an edit of a stored character moves

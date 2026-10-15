@@ -15,6 +15,7 @@ import type { Genre } from "@/lib/schemas/game-settings";
 import type { CreateSheetInput } from "@/lib/schemas/sheet";
 import { navigateTo } from "@/lib/navigation";
 import { refusalText } from "@/app/characters/builder/refusal";
+import { builderDraftKey, clearBuilderDraft } from "@/app/characters/builder/builderDraft";
 
 type LibraryCharacter = {
   id: string;
@@ -118,6 +119,8 @@ function CampaignCharacterPageInner({ campaignId }: { campaignId: string }) {
         setError(refusalText(data, "Could not save the character."));
         return;
       }
+      // Seated: an unfinished character kept for this table is done with.
+      clearBuilderDraft(builderDraftKey("table", campaignId));
       navigateTo(`/campaigns/${campaignId}`);
     } catch {
       setError("Could not reach the server.");
@@ -264,6 +267,7 @@ function CampaignCharacterPageInner({ campaignId }: { campaignId: string }) {
             onSubmit={submitNew}
             busy={busy}
             error={error}
+            draftKey={flow === "edit" ? undefined : builderDraftKey("table", campaignId)}
             onCancel={() => navigateTo(`/campaigns/${campaignId}`)}
           />
         </>
