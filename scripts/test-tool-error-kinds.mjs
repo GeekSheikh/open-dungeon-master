@@ -330,6 +330,9 @@ await test("in a fight: options riding an attack the character lacks or cannot u
   await turnTo(world, kara.id);
   // P3: an option the character does not have, on a legal attack.
   expect(await aiEncounter(world, "pc_attack", { characterId: kara.id, targetEnemyId: first.id, weapon: "Longsword", hurlThroughHell: true }, kara), "retry", /attack without hurlThroughHell/);
+  // P3 too: a maneuver the rules know that they never picked; a name nobody knows is fixed from their picks.
+  expect(await aiEncounter(world, "pc_attack", { characterId: kara.id, targetEnemyId: first.id, weapon: "Longsword", maneuver: "Precision Attack" }, kara), "retry", /knows no maneuver "Precision Attack"\. They have no maneuver picks\. They can make the attack without it\./);
+  expect(await aiEncounter(world, "pc_attack", { characterId: kara.id, targetEnemyId: first.id, weapon: "Longsword", maneuver: "Precisoin Atack" }, kara), "retry", /No maneuver called "Precisoin Atack" is known/);
   // P4: an option this attack does not meet.
   expect(await aiEncounter(world, "pc_attack", { characterId: kara.id, targetEnemyId: first.id, weapon: "Light Crossbow", nonlethal: true }, kara), "retry", /this one is ranged/);
   // P5: a multi-target feature with one target it cannot take.

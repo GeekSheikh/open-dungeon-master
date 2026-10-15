@@ -57,11 +57,12 @@ export function pickManeuver(
   });
   if (!known) {
     const theirs = picks.length ? ` Their maneuvers: ${picks.join(", ")}.` : " They have no maneuver picks.";
-    // A maneuver the rules know that they did not pick is the game saying
-    // no; a name nobody knows is the call's to fix, from their picks.
+    // A maneuver the rules know that they did not pick rides an attack they
+    // can still make; a name nobody knows is the call's to fix, from their
+    // picks.
     return {
       refused: optionsOfKind("maneuver").some((option) => option.n.toLowerCase() === term.replace(/^maneuver:\s*/, ""))
-        ? { error: `${sheet.name} knows no maneuver "${asked}".${theirs}`, refused: "rules" }
+        ? { error: `${sheet.name} knows no maneuver "${asked}".${theirs} They can make the attack without it.`, retry: true }
         : { error: `No maneuver called "${asked}" is known.${theirs} Send the one meant, by the name on the sheet.`, retry: true },
     };
   }
