@@ -703,7 +703,14 @@ html[data-theme="light"] .roll-tier-5 { color: #6d28d9; text-shadow: none; }
 .step-button:not(:disabled):active { transform: scale(0.9); }
 .slot-button:hover,
 .step-button:not(:disabled):hover { color: var(--color-amber-200); border-color: color-mix(in srgb, var(--color-amber-500) 50%, transparent); }
-.slot-button[data-taken] { border-color: color-mix(in srgb, var(--color-stone-700) 40%, transparent); color: var(--color-stone-600); opacity: 0.6; }
+/* A value another ability holds: struck through and still readable, rather
+   than faded to a shade a low-vision reader cannot make out. */
+.slot-button[data-taken] {
+  border-color: color-mix(in srgb, var(--color-stone-700) 40%, transparent);
+  color: var(--color-stone-400);
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
 .slot-button[aria-pressed="true"] {
   border-color: color-mix(in srgb, var(--color-amber-500) 70%, transparent);
   background: color-mix(in srgb, var(--color-amber-500) 16%, transparent);
@@ -823,6 +830,23 @@ html[data-theme="light"] .roll-tier-5 { color: #6d28d9; text-shadow: none; }
   color: var(--color-stone-500);
 }
 .pool-token .dice-total { font-size: 25px; }
+/* The tier in words under the total, in the total's colour. */
+.pool-tier {
+  margin-top: -3px;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-shadow: none;
+}
+/* A remarkable pool's line in the note: held gold, no motion needed. */
+.pool-highlight {
+  margin-bottom: 2px;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 14px;
+  color: var(--color-amber-200);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--color-amber-400) 55%, transparent);
+}
 .pool-tag {
   font-family: var(--font-geist-mono), monospace;
   font-size: 9px;
