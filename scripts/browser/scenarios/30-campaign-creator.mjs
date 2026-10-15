@@ -60,12 +60,20 @@ export default {
     await t.tap(next);
     await eventually(async () => /Narration and character voices/.test(await textOf(dialog.locator("section[data-active]"))), { label: "the experience step" });
     const experience = dialog.locator("section[data-active]");
-    const narrator = experience.getByRole("button", { name: /The narrator reads them/ });
-    const eachVoice = experience.getByRole("button", { name: /Each speaker gets a voice/ });
-    check((await narrator.getAttribute("aria-pressed")) === "true", "the narrator reads the characters unless asked otherwise");
-    await t.tap(eachVoice);
-    await eventually(async () => (await eachVoice.getAttribute("aria-pressed")) === "true", { label: "each speaker gets a voice" });
-    check(/Character voices/.test(await textOf(experience)), "the casting choice names where voices are changed later");
+    // A server with a speech service offers the casting choice; one without
+    // (CI) keeps narration off and says why, with the choices kept aside.
+    const caps = await (await api.get(`${base}/api/capabilities`)).json().catch(() => null);
+    const speech = caps?.tts?.configured !== false;
+    if (speech) {
+      const narrator = experience.getByRole("button", { name: /The narrator reads them/ });
+      const eachVoice = experience.getByRole("button", { name: /Each speaker gets a voice/ });
+      check((await narrator.getAttribute("aria-pressed")) === "true", "the narrator reads the characters unless asked otherwise");
+      await t.tap(eachVoice);
+      await eventually(async () => (await eachVoice.getAttribute("aria-pressed")) === "true", { label: "each speaker gets a voice" });
+      check(/Character voices/.test(await textOf(experience)), "the casting choice names where voices are changed later");
+    } else {
+      check(/no speech service/.test(await textOf(experience)), "a server with no speech says why nothing is read aloud");
+    }
     // The step's entrance has finished before the picture.
     await sleep(900);
     await t.shot("experience");
@@ -81,7 +89,10 @@ export default {
     const review = dialog.locator("section[data-active]");
     await eventually(async () => /Here is what you made/.test(await textOf(review)), { label: "the review" });
     await eventually(async () => /1 line/.test(await textOf(review.locator(".cc-readback"))), { label: "the review counts the line just typed" });
-    check(/each speaker gets a voice/.test(await textOf(review.locator(".cc-readback"))), "the review reads back the casting choice");
+    check(
+      /each speaker gets a voice|no speech service/.test(await textOf(review.locator(".cc-readback"))),
+      "the review reads back the casting choice, or why there is none",
+    );
     // The step's entrance has finished before the picture.
     await sleep(900);
     await t.shot("review");
@@ -111,7 +122,9 @@ export default {
     }, { timeoutMs: 30_000, label: "the campaign created" });
     const campaign = (await (await api.get(`${base}/api/campaigns/${made.id}`)).json()).campaign;
     check(campaign?.gameSettings?.safety?.lines?.[0] === "spiders", "the campaign's safety lines");
-    check(campaign?.gameSettings?.ttsAutoCast === true, "the campaign casts each speaker");
+    if (speech) {
+      check(campaign?.gameSettings?.ttsAutoCast === true, "the campaign casts each speaker");
+    }
     await eventually(async () => {
       const posted = await (await api.get(`${base}/api/campaigns/${made.id}/rules`)).json();
       return /bonus action/.test(posted.text ?? "");
