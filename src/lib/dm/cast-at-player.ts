@@ -181,7 +181,7 @@ export function handleCastAtPlayer(
     return { error: "Unknown characterId; use one from GAME STATE.", retry: true };
   }
   if (sheet.deathSaves?.dead) {
-    return { error: `${sheet.name} is DEAD; nothing can affect them.`, retry: true };
+    return { error: `${sheet.name} is DEAD; nothing can affect them. The enemy may target someone else or take another action.`, retry: true };
   }
   // Blink, Etherealness, Maze took them off the Material Plane (spell-planes.ts).
   const away = args.casterEnemyId ? outOfReach(sheet) : null;

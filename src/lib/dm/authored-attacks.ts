@@ -58,10 +58,10 @@ export function rapidStrike(input: {
     return { refused: { error: `${sheet.name} does not have Rapid Strike (a Samurai's 15th level feature); attack without rapidStrike.`, retry: true } };
   }
   if (!budget || !input.weaponAttack || input.bonus) {
-    return { refused: { error: "Rapid Strike trades the advantage of one weapon attack of the Attack action, on the fighter's own turn.", retry: true } };
+    return { refused: { error: "Rapid Strike trades the advantage of one weapon attack of the Attack action, on the fighter's own turn. Attack without rapidStrike.", retry: true } };
   }
   if (budget.oncePerTurn.includes(RAPID_STRIKE)) {
-    return { refused: { error: `${sheet.name} has used Rapid Strike this turn; it comes once a turn.`, retry: true } };
+    return { refused: { error: `${sheet.name} has used Rapid Strike this turn; it comes once a turn. Attack without rapidStrike.`, retry: true } };
   }
   if (input.advantage !== "advantage") {
     return { refused: { error: "Rapid Strike forgoes advantage on the attack, and this attack has none to forgo; attack without rapidStrike.", retry: true } };
@@ -82,7 +82,7 @@ export function secondWeaponProblem(sheet: CharacterSheet, weapon: string | unde
     return undefined;
   }
   if (!budget) {
-    return { error: `The second ${natural.weapon.name.toLowerCase()} is a bonus action on ${sheet.name}'s own turn; it is not their turn.`, refused: "rules" };
+    return { error: `The second ${natural.weapon.name.toLowerCase()} is a bonus action on ${sheet.name}'s own turn; it is not their turn. What they declared waits for their turn.`, refused: "rules" };
   }
   if (budget.attacksMade < 1 || !budget.lightMeleeAttack) {
     return { error: `The second ${natural.weapon.name.toLowerCase()} follows an attack with the first on the same turn; ${sheet.name} attacks with it first.`, retry: true };

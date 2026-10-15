@@ -59,7 +59,7 @@ export function capacityProblem(
   if (!then.overCapacity || then.carriedLb <= now.carriedLb) {
     return null;
   }
-  return { error: `${sheet.name} can carry ${then.capacityLb} lb (Strength x 15) and would be carrying ${then.carriedLb} lb with ${what}. They cannot carry it: give it to someone else, leave something behind, or drag it (the lift tool) at 5 feet.`, retry: true };
+  return { error: `${sheet.name} can carry ${then.capacityLb} lb (Strength x 15) and would be carrying ${then.carriedLb} lb with ${what}. They cannot carry it: give it to someone else, leave something behind, or drag it (the lift tool) at 5 feet: ask the player which.`, retry: true };
 }
 
 // A character's carrying capacity and push, drag or lift limit, in pounds.

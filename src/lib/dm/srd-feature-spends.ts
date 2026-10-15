@@ -38,6 +38,7 @@ import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { rollCard, sheetAttacker } from "@/lib/dm/roll-card";
 import { rollAgainst } from "@/lib/roll-labels";
 import { toolError, type ToolResult } from "@/lib/dm/tool-errors";
+import { spentSlotRefusal } from "@/lib/dm/cast-rules";
 
 const lower = (value: string | undefined | null) => (value ?? "").trim().toLowerCase();
 
@@ -240,7 +241,9 @@ function primevalAwareness(campaign: Campaign, sheet: CharacterSheet, amount: nu
   const level = wanted ?? Object.keys(slots).map(Number).sort((a, b) => a - b).find((entry) => slots[String(entry)].used < slots[String(entry)].max);
   const slot = level ? slots[String(level)] : undefined;
   if (!level || !slot || slot.used >= slot.max || !sheet.spellcasting) {
-    return { error: `${sheet.name} has no free spell slot${wanted ? ` of level ${wanted}` : ""} to spend on Primeval Awareness. Nothing was spent.`, retry: true };
+    return wanted
+      ? spentSlotRefusal(sheet.name, sheet.spellcasting, { level: wanted, lowest: 1, what: "Primeval Awareness", withPact: false })
+      : { error: `${sheet.name} has no free spell slot to spend on Primeval Awareness. Nothing was spent.`, refused: "rules" };
   }
   const updated = patchSheet(sheet.id, {
     spellcasting: { ...sheet.spellcasting, slots: { ...slots, [String(level)]: { max: slot.max, used: slot.used + 1 } } },

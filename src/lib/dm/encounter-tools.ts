@@ -870,7 +870,7 @@ function handleEndEncounter(
         note: `The server already ended this fight (${ended.outcome}). Narrate how it ended.`,
       };
     }
-    return { error: "No active encounter.", retry: true };
+    return { error: "No active encounter: there is no fight to end.", retry: true };
   }
   let args: z.infer<typeof endArgsSchema>;
   try {

@@ -161,7 +161,7 @@ export function resolveSpendEffect(ctx: SpendContext, does: SpendDoes): Resoluti
       const wanted = lower(ctx.args.variant);
       const option = does.options.find((entry) => wanted && (lower(entry) === wanted || wanted.includes(lower(entry))));
       if (!option) {
-        return { error: `${ctx.spend.name} takes one option as the variant: ${does.options.join(", ")}. Nothing was changed.`, retry: true };
+        return { error: `${ctx.spend.name} takes one option as the variant: ${does.options.join(", ")}; ask the player which unless they named one. Nothing was changed.`, retry: true };
       }
       const features = sheet.features.map((feature) =>
         feature.name === ctx.held.name ? { ...feature, name: `${ctx.held.feature} (${option})` } : feature,
@@ -363,7 +363,7 @@ export function resolveSpendEffect(ctx: SpendContext, does: SpendDoes): Resoluti
         return { result: { healed: `${ally.name} regains ${currentHp - ally.currentHp} hit points (${rolled} rolled).` } };
       }
       if (!/burn|harm|damage/.test(wanted)) {
-        return { error: `${ctx.spend.name} takes variant "heal" or "burn". Nothing was spent.`, retry: true };
+        return { error: `${ctx.spend.name} takes variant "heal" or "burn"; ask the player which unless they named one. Nothing was spent.`, retry: true };
       }
       const enemy = targetEnemy(ctx);
       if ("error" in enemy) {
@@ -390,7 +390,7 @@ export function resolveSpendEffect(ctx: SpendContext, does: SpendDoes): Resoluti
       return { result: { insight: insight.total, deception, read: `${sheet.name} reads ${enemy.displayName}: ${does.condition} for a minute.` } };
     }
     case "variants":
-      return { error: `${ctx.spend.name} needs a variant. Nothing was spent.`, retry: true };
+      return { error: `${ctx.spend.name} needs a variant: ${Object.keys(does.options).join(" or ")}; ask the player which unless they named one. Nothing was spent.`, retry: true };
     // Gathered Swarm's push (src/lib/dm/authored-spend-more.ts).
     case "swarm_push":
       return swarmPush(ctx, does);
@@ -452,7 +452,7 @@ function hasBoard(encounter: Encounter): boolean {
 function stormAura(ctx: SpendContext): Resolution {
   const kind = (["desert", "sea", "tundra"] as const).find((entry) => lower(ctx.args.variant).includes(entry));
   if (!kind) {
-    return { error: "Storm Aura takes the environment as the variant: desert, sea or tundra. Nothing was spent.", retry: true };
+    return { error: "Storm Aura takes the environment as the variant: desert, sea or tundra, the one chosen when the barbarian took Storm Aura (on their sheet). Nothing was spent.", retry: true };
   }
   const encounter = getActiveEncounter(ctx.campaign.id);
   const amount = formula(ctx, STORM_AURA[kind]);

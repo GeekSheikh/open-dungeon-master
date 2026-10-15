@@ -90,7 +90,7 @@ export function commandersStrikeCharge(campaign: Campaign, sheet: CharacterSheet
   }
   const budget = budgetFor(encounter, sheet.id, attacksAllowedFor(sheet), conditionExtraActions(sheet.conditions));
   if (!budget) {
-    return { error: `Commander's Strike is taken on ${sheet.name}'s own turn, as part of the Attack action. Nothing was spent.`, refused: "rules" };
+    return { error: `Commander's Strike is taken on ${sheet.name}'s own turn, as part of the Attack action. What they declared waits for their turn. Nothing was spent.`, refused: "rules" };
   }
   const forgone = spendAttack(budget, sheet.name);
   if (!forgone.ok) {

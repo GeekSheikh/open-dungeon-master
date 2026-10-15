@@ -55,7 +55,7 @@ export function handleDeclareIntent(
 ): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter.", retry: true };
+    return { error: "No active encounter: declare_intent works only in a fight.", retry: true };
   }
   let args: z.infer<typeof declareIntentArgsSchema>;
   try {

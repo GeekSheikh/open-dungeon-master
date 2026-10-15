@@ -109,7 +109,7 @@ export function chooseFiendishResilience(
   }
   const type = (variant ?? "").trim().toLowerCase();
   if (!DAMAGE_TYPES_CHOOSABLE.includes(type)) {
-    return { error: `Fiendish Resilience takes one damage type as the variant: ${DAMAGE_TYPES_CHOOSABLE.join(", ")}.`, retry: true };
+    return { error: `Fiendish Resilience takes one damage type as the variant: ${DAMAGE_TYPES_CHOOSABLE.join(", ")}; ask the player which unless they named one.`, retry: true };
   }
   const encounter = getActiveEncounter(campaign.id);
   if (encounter && (encounter.kind ?? "fight") === "fight") {

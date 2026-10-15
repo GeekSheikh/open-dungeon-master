@@ -8,7 +8,7 @@ import { sheetSpellAuthors } from "@/lib/dm/spell-authors";
 import { brawlerUnarmed } from "@/lib/srd/feat-combat";
 import { getMounts } from "@/lib/db/mounts";
 import { isValidExpression } from "@/lib/dice";
-import { acBreakdownFor, computeSheetDerived, spellAttackFor, type SheetDerived } from "@/lib/srd";
+import { acBreakdownFor, computeSheetDerived, spellAttackFor, type SheetDerived, castsSpells } from "@/lib/srd";
 import { spellDamageFor, spellEngineName, spellFactsFor, spellMechanicsFor, spellSchoolFor } from "@/lib/content";
 import { spellDamageRiders } from "@/lib/srd/spell-damage-riders";
 import { isMeleeSpellAttack } from "@/lib/dm/spell-attack-riders";
@@ -85,7 +85,7 @@ export function buildAttackProfile(
   const racial = !granted && !natural && !args.spell?.trim() && !sheet.wildShape ? racialNaturalWeapon(sheet.features, args.weapon) : null;
   if (granted) {
     if (derived.spellAttack === null) {
-      return { error: `${sheet.name} has no spell attack bonus for ${granted.attack.name}.`, refused: "rules" };
+      return { error: `${sheet.name}'s sheet has no spell attack bonus (no spellcasting ability), so ${granted.attack.name} cannot be rolled.`, refused: "rules" };
     }
     // Cast from a higher slot, a scaling attack (Spiritual Weapon) rolls the
     // slot's dice: the level the condition carries, else the caster's last
@@ -130,7 +130,7 @@ export function buildAttackProfile(
     kind = "granted";
   } else if (args.spell?.trim()) {
     const spellName = args.spell.trim();
-    if (!sheet.spellcasting) {
+    if (!castsSpells(sheet)) {
       return { error: `${sheet.name} cannot cast spells.`, refused: "rules" };
     }
     // The content pack knows how a known spell resolves; a save or buff
@@ -177,16 +177,13 @@ export function buildAttackProfile(
     }
     // Multiclass: the to-hit follows the class whose list carries the spell.
     const spellProfile = spellAttackProfile(
-      { spellAttack: spellAttackFor(sheet, spellName) ?? derived.spellAttack },
+      { spellAttack: spellAttackFor(sheet, spellName) },
       spellName,
       damageArg,
       // A known spell deals its own damage type; the caller's word counts
       // only for a spell the content does not know (SRD 5.1).
       (mechDamageType || args.damageType || "").trim().toLowerCase(),
     );
-    if (!spellProfile) {
-      return { error: `${sheet.name} has no spell attack bonus.`, refused: "rules" };
-    }
     // A melee spell attack (a touch) is a melee attack: it reaches only the
     // creature beside the caster, and the rules for ranged attacks do not
     // apply to it.
@@ -219,7 +216,7 @@ export function buildAttackProfile(
     // A creature a spell made fights with its stat block (summon-rules.ts).
     const summoned = summonAttackProfile(sheet, args.weapon);
     if (!summoned || "error" in summoned) {
-      return summoned ?? { error: `${sheet.name} has no attack.`, refused: "rules" };
+      return summoned ?? { error: `${sheet.name}'s stat block has no attack.`, refused: "rules" };
     }
     profile = summoned;
     kind = "natural";

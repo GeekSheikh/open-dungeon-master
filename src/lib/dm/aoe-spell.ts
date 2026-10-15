@@ -147,7 +147,7 @@ export function planAoeSpell(
     });
     if (caught > most) {
       return {
-        error: `${name} from a level ${input.level ?? spellLevel} slot affects at most ${most} creatures; ${caught} were named. Name ${most} or fewer. Nothing was spent.`,
+        error: `${name} from a level ${input.level ?? spellLevel} slot affects at most ${most} creatures; ${caught} were named. Name ${most} or fewer: ask the player which, unless they named them. Nothing was spent.`,
         retry: true,
       };
     }
@@ -160,7 +160,7 @@ export function planAoeSpell(
     const apart = tilesBetween(input.encounterId, ids[0], ids[1]);
     if (apart !== null && apart > Math.floor(cluster / FEET_PER_TILE)) {
       return {
-        error: `${name}'s two targets must stand within ${cluster} feet of each other; these are ${apart * FEET_PER_TILE} feet apart. Name one of them. Nothing was spent.`,
+        error: `${name}'s two targets must stand within ${cluster} feet of each other; these are ${apart * FEET_PER_TILE} feet apart. Name one of them: ask the player which, unless they said. Nothing was spent.`,
         retry: true,
       };
     }

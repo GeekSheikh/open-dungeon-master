@@ -99,7 +99,7 @@ export function handleEnemyAttack(
 ): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter.", retry: true };
+    return { error: "No active encounter: enemy_attack works only in a fight. Call start_encounter first.", retry: true };
   }
   let args: z.infer<typeof attackArgsSchema>;
   try {

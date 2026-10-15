@@ -53,7 +53,7 @@ export function gatePcAttack(input: {
     if (args.offHand) {
       return {
         refused: {
-          error: `The off-hand attack is a bonus action on ${sheet.name}'s own turn; it is not their turn.`,
+          error: `The off-hand attack is a bonus action on ${sheet.name}'s own turn; it is not their turn. What they declared waits for their turn.`,
           refused: "rules",
         },
       };
@@ -73,7 +73,7 @@ export function gatePcAttack(input: {
         refused: {
           error: held
             ? `It is not ${sheet.name}'s turn, and what they readied is ${READIED_WORDS[held.holds]} (${held.trigger}), not an attack: a readied action is released only as the action that was readied (SRD 5.1, Ready). Nothing was spent. ${RELEASE_TOOLS[held.holds]} releases it.`
-            : `It is not ${sheet.name}'s turn. Off their own turn a character attacks only with an opportunity attack, which the server rolls itself when an enemy leaves their reach, or with an attack they readied on their turn (take_action ready); ${sheet.name} has neither waiting.`,
+            : `It is not ${sheet.name}'s turn. Off their own turn a character attacks only with an opportunity attack, which the server rolls itself when an enemy leaves their reach, or with an attack they readied on their turn (take_action ready); ${sheet.name} has neither waiting. What they declared waits for their turn.`,
           refused: "rules",
         },
       };
@@ -84,18 +84,18 @@ export function gatePcAttack(input: {
     return { refused: { error: "Unknown targetEnemyId; use one from GAME STATE.", retry: true } };
   }
   if (enemy.status !== "alive") {
-    return { refused: { error: `${enemy.displayName} is already ${enemy.status}.`, retry: true } };
+    return { refused: { error: `${enemy.displayName} is already ${enemy.status}. Ask the player which living enemy in GAME STATE to target instead, unless they named one.`, retry: true } };
   }
   // Resilient Sphere: nothing reaches in (condition-effects untargetable).
   const sealed = conditionUntargetable(enemy.conditions);
   if (sealed) {
-    return { refused: { error: `${enemy.displayName} is ${sealed}: sealed in force, it cannot be attacked from outside until the spell ends. Nothing was spent.`, refused: "rules" } };
+    return { refused: { error: `${enemy.displayName} is ${sealed}: sealed in force, it cannot be attacked from outside until the spell ends. Nothing was spent; pick another target.`, refused: "rules" } };
   }
   if (enemy.conditions.includes("banished")) {
-    return { refused: { error: `${enemy.displayName} is banished to another plane and cannot be attacked until the spell ends.`, refused: "rules" } };
+    return { refused: { error: `${enemy.displayName} is banished to another plane and cannot be attacked until the spell ends. Pick another target.`, refused: "rules" } };
   }
   if (enemy.conditions.includes(HURLED)) {
-    return { refused: { error: `${enemy.displayName} is being hurled through the lower planes and cannot be attacked until it returns at the end of the warlock's next turn.`, refused: "rules" } };
+    return { refused: { error: `${enemy.displayName} is being hurled through the lower planes and cannot be attacked until it returns at the end of the warlock's next turn. Pick another target.`, refused: "rules" } };
   }
   // The spends a declared option needs, asked before anything is spent.
   const optionProblem: ToolError | null =

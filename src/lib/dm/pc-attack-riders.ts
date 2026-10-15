@@ -45,7 +45,7 @@ export function pickManeuver(
     return { maneuver: null };
   }
   if (!weaponAttack) {
-    return { refused: { error: "Maneuvers ride weapon attacks, not spells.", retry: true } };
+    return { refused: { error: "Maneuvers ride weapon attacks, not spells. Ask the player whether to cast the spell without the maneuver.", retry: true } };
   }
   const term = asked.trim().toLowerCase();
   const picks = sheet.features
@@ -75,7 +75,7 @@ export function pickManeuver(
     return {
       refused:
         { error: pool === null
-          ? `${sheet.name} has no Superiority Dice.`
+          ? `${sheet.name} has no Superiority Dice. They can make the attack without the maneuver.`
           : `${sheet.name} has 0/${pool.max} Superiority Dice left; ${asked.trim()} is not available until they rest. They can make the attack without it.`, retry: true },
     };
   }
@@ -281,7 +281,7 @@ export function stunningStrikeSave(
   }
   const barred = riderBarred(fresh, "stunned", null);
   if (barred) {
-    return `Stunning Strike: ${barred.error} The ki is spent.`;
+    return `Stunning Strike: ${barred} The ki is spent.`;
   }
   // A stun is what a legendary creature keeps its resistances for.
   const save = rollEnemySave(campaign.id, fresh, "con", dc, { resist: true });
@@ -321,12 +321,12 @@ export function riderBarred(
   enemy: EncounterEnemy,
   condition: string,
   maxSize: string | null,
-): ToolError | null {
+): string | null {
   if (enemy.stats.conditionImmune.toLowerCase().includes(condition)) {
-    return { error: `${enemy.displayName} is immune to being ${condition}.`, retry: true };
+    return `${enemy.displayName} is immune to being ${condition}.`;
   }
   if (maxSize && sizeRank(enemy.stats.size) > sizeRank(maxSize)) {
-    return { error: `${enemy.displayName} is ${enemy.stats.size}, too large to be knocked ${condition} this way (${maxSize} or smaller).`, retry: true };
+    return `${enemy.displayName} is ${enemy.stats.size}, too large to be knocked ${condition} this way (${maxSize} or smaller).`;
   }
   return null;
 }
@@ -340,7 +340,7 @@ export function applyRiderCondition(
 ): { applied: true } | { applied: false; reason: string } {
   const barred = riderBarred(enemy, condition, options.maxSize ?? null);
   if (barred) {
-    return { applied: false, reason: barred.error };
+    return { applied: false, reason: barred };
   }
   if (!enemy.conditions.includes(condition)) {
     patchEnemyConditions(enemy.id, [...enemy.conditions, condition], {

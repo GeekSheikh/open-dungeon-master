@@ -50,6 +50,7 @@ import { conditionsSpentAgainst } from "@/lib/srd/condition-effect-queries";
 import type { ConditionRollRiders } from "@/lib/srd/condition-effects";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { toolError, type ToolError } from "@/lib/dm/tool-errors";
+import { spentSlotRefusal } from "@/lib/dm/cast-rules";
 
 // A Battle Master maneuver riding the swing.
 export type ManeuverPick = {
@@ -256,13 +257,13 @@ export function planPcAttack(input: {
   const maneuver = picked.maneuver;
   // What the maneuver asks of the swing beyond its die (maneuver-rules.ts).
   if (maneuver?.use === "feint" && !geometry.withinFiveFeet) {
-    return { refused: { error: `Feinting Attack feints at a creature within 5 feet of ${sheet.name}, and ${enemy.displayName} is not. Nothing was spent.`, retry: true } };
+    return { refused: { error: `Feinting Attack feints at a creature within 5 feet of ${sheet.name}, and ${enemy.displayName} is not. They can make the attack without it. Nothing was spent.`, retry: true } };
   }
   if (maneuver?.use === "grapple" && (atRange || !weaponAttack)) {
-    return { refused: { error: "Grappling Strike follows a hit with a melee attack. Nothing was spent.", retry: true } };
+    return { refused: { error: "Grappling Strike follows a hit with a melee attack. They can make the attack without it. Nothing was spent.", retry: true } };
   }
   if (maneuver?.use === "bonus_swing" && (!atRange || !(profile.properties ?? []).includes("thrown"))) {
-    return { refused: { error: `Quick Toss is a ranged attack with a weapon that has the thrown property, and ${profile.weapon} thrown at range is not. Nothing was spent.`, retry: true } };
+    return { refused: { error: `Quick Toss is a ranged attack with a weapon that has the thrown property, and ${profile.weapon} thrown at range is not. They can make the attack without it. Nothing was spent.`, retry: true } };
   }
 
   // Divine Smite: checked here, paid for on the hit. 2d8 at 1st level, 1d8
@@ -270,17 +271,25 @@ export function planPcAttack(input: {
   let smite: OnHitSpends["smite"];
   if (args.smite) {
     if (!riders.canSmite) {
-      return { refused: { error: `${sheet.name} has no Divine Smite.`, retry: true } };
+      return { refused: { error: `${sheet.name} has no Divine Smite. They can make the attack without it.`, retry: true } };
     }
     if (atRange || !weaponAttack) {
-      return { refused: { error: "Divine Smite rides on a melee weapon attack, not a ranged one or a spell.", retry: true } };
+      return { refused: { error: "Divine Smite rides on a melee weapon attack, not a ranged one or a spell. They can make the attack without it.", retry: true } };
     }
     if (!slotFree(sheet, args.smite)) {
+      // The smite's slot is taken before the roll, so the question comes
+      // before the attack; with no slot left the attack goes without it.
       return {
-        refused: {
-          error: `${sheet.name} has no free level ${args.smite} spell slot to smite with. They can make the attack without Divine Smite, or name a slot level they still have.`,
-          retry: true,
-        },
+        refused: spentSlotRefusal(sheet.name, sheet.spellcasting, {
+          level: args.smite,
+          lowest: 1,
+          what: "Divine Smite",
+          withPact: true,
+          none: {
+            error: `${sheet.name} has no spell slot left to smite with. They can make the attack without Divine Smite.`,
+            retry: true,
+          },
+        }),
       };
     }
     const undeadOrFiend = isUndeadOrFiend(enemy);

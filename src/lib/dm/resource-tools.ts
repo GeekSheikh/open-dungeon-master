@@ -25,6 +25,7 @@ import type { CharacterSheet, FullPatchSheetInput } from "@/lib/schemas/sheet";
 import { holdsMote } from "@/lib/srd/authored-effects-more";
 import type { ToolError, ToolResult } from "@/lib/dm/tool-errors";
 import { isTableGearName } from "@/lib/db/homebrew";
+import { spentSlotRefusal } from "@/lib/dm/cast-rules";
 
 export { computePurchase } from "@/lib/dm/purchase-math";
 
@@ -200,10 +201,7 @@ function computeFontOfMagic(
   // recover_points: break an unspent slot of this level into points.
   const slot = slots[key];
   if (!slot || slot.used >= slot.max) {
-    return {
-      error: `${sheet.name} has no unspent level-${level} slot to convert into ${displayName}.`,
-      retry: true,
-    };
+    return spentSlotRefusal(sheet.name, sheet.spellcasting, { level, lowest: 1, what: `converting into ${displayName}`, withPact: false });
   }
   const refund = Math.min(level, state.used);
   if (refund <= 0) {
@@ -581,7 +579,7 @@ export function computeUseResource(
       const name = (form?.name ?? "").trim();
       if (!name) {
         return {
-          error: `${def.displayName} needs the beast being assumed: pass form (e.g. 'wolf', 'brown bear').`,
+          error: `${def.displayName} needs the beast being assumed: pass form (e.g. 'wolf', 'brown bear'), and ask the player which unless they named one.`,
           retry: true,
         };
       }

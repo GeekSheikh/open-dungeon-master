@@ -465,7 +465,7 @@ export function handleMoveToken(
 ): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter.", retry: true };
+    return { error: "No active encounter: there is no board to move tokens on. Call start_encounter first, or move the party with move_party.", retry: true };
   }
   const map = getBattleMapForEncounter(encounter.id);
   if (!map) {

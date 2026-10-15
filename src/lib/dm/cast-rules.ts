@@ -277,16 +277,18 @@ export function slotPlan(
   }
   const level = Math.floor(named && named > 0 ? named : (facts ? pactLevelFor(sheet, facts, names) : 0));
   if (level < 1 || level > 9) {
+    const free = freeSlotLevels(casting, 1, true).map((entry) => entry.level).join(", ") || "none";
     return {
       error: spell
-        ? `${spell} is not a spell the server knows, so the slot level it is cast from must be named (1 to 9).`
-        : "A spell slot has a level from 1 to 9; name the level to spend.",
+        ? `${spell} is not a spell the server knows, so the slot level it is cast from must be named (1 to 9): ask the player which, unless they named one. Free slot levels: ${free}.`
+        : `A spell slot has a level from 1 to 9; name the level to spend (ask the player which, unless they named one). Free slot levels: ${free}.`,
       retry: true,
     };
   }
   if (facts && level < facts.level) {
+    const free = freeSlotLevels(casting, facts.level, true).map((entry) => entry.level).join(", ") || "none";
     return {
-      error: `${facts.name} is a level ${facts.level} spell; it cannot be cast from a level ${level} slot. Use a slot of level ${facts.level} or higher.`,
+      error: `${facts.name} is a level ${facts.level} spell; it cannot be cast from a level ${level} slot. Use a slot of level ${facts.level} or higher (free: ${free}): ask the player which, unless they named one.`,
       retry: true,
     };
   }
@@ -310,12 +312,57 @@ export function slotPlan(
   if (pact && pactFree) {
     return { kind: "pact", level, state: { max: pact.max, used: pact.used + 1 } };
   }
-  return {
-    error: `${sheet.name} has no free level ${level} spell slot.${
-      facts && facts.level <= level ? ` ${facts.name} needs a slot of level ${facts.level} or higher that is not yet spent.` : ""
-    }`,
-    retry: true,
-  };
+  return spentSlotRefusal(sheet.name, casting, {
+    level,
+    lowest: facts && facts.level <= level ? facts.level : level,
+    what: facts?.name ?? (spell || "the spell"),
+    withPact: true,
+  });
+}
+
+// ---- a slot level that is spent ----
+
+// The slot levels still free at `lowest` or above, lowest first: the shared
+// slots and, where the spend takes one, a Pact Magic slot, with how many of
+// each are left.
+export function freeSlotLevels(casting: CharacterSheet["spellcasting"], lowest: number, withPact: boolean): Array<{ level: number; left: number }> {
+  const free = new Map<number, number>();
+  for (const [key, slot] of Object.entries(casting?.slots ?? {})) {
+    const level = Number(key);
+    if (level >= lowest && slot.used < slot.max) {
+      free.set(level, slot.max - slot.used);
+    }
+  }
+  const pact = casting?.pact;
+  if (withPact && pact && pact.level >= lowest && pact.used < pact.max) {
+    free.set(pact.level, (free.get(pact.level) ?? 0) + pact.max - pact.used);
+  }
+  return [...free].sort(([a], [b]) => a - b).map(([level, left]) => ({ level, left }));
+}
+
+// A slot level that is spent (the one named, or the spell's own). The caster
+// chooses the slot, "of that spell's level or higher": with a usable level
+// still free, the levels are named for the player to pick, lowest first; with
+// none, the game says no (`none` overrides that refusal).
+export function spentSlotRefusal(
+  who: string,
+  casting: CharacterSheet["spellcasting"],
+  input: { level: number; lowest: number; what: string; withPact: boolean; none?: ToolError },
+): ToolError {
+  const free = freeSlotLevels(casting, input.lowest, input.withPact);
+  if (free.length) {
+    const levels = free.map((entry) => `level ${entry.level} (${entry.left} left)`).join(", ");
+    return {
+      error: `${who} has no free level ${input.level} spell slot for ${input.what}. Free, lowest first: ${levels}. The player picks the level, unless they named one.`,
+      retry: true,
+    };
+  }
+  return (
+    input.none ?? {
+      error: `${who} has no spell slot of level ${input.lowest} or higher left for ${input.what}; spent slots come back on a long rest (a Pact Magic slot on a short one).`,
+      refused: "rules",
+    }
+  );
 }
 
 // ---- rituals and long castings ----

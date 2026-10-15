@@ -823,7 +823,7 @@ await test("the free cast spends its counter instead of a slot, is refused once 
   // The use spent and no slot to fall back on: the second cast is refused.
   const again = await world.invoke("cast_at_enemy", { characterId: hero.id, targetEnemyId: goblin.id, spell: "Charm Person", saveAbility: "wis" });
   assert.equal(again.ok, false, `a second Charm Person with the free cast spent and no slots was allowed: ${JSON.stringify(again.result ?? {}).slice(0, 200)}`);
-  assert.match(String(again.error ?? again.result?.error ?? ""), /no free level 1 spell slot/);
+  assert.match(String(again.error ?? again.result?.error ?? ""), /no spell slot of level 1 or higher left/);
   const ended = await world.invoke("end_encounter", { outcome: "victory", summary: "the goblin flees" });
   assert.equal(ended.ok, true, JSON.stringify(ended).slice(0, 200));
   const rested = await world.invoke("take_rest", { kind: "long" });

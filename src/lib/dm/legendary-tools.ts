@@ -172,7 +172,7 @@ const actionSchema = z.object({ enemyId: z.string().min(1), action: z.string().t
 export function handleLegendaryAction(campaign: Campaign, rawArguments: string): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter.", retry: true };
+    return { error: "No active encounter: legendary actions are taken only in a fight.", retry: true };
   }
   let args: z.infer<typeof actionSchema>;
   try {
@@ -189,7 +189,7 @@ export function handleLegendaryAction(campaign: Campaign, rawArguments: string):
   }
   const profile = legendaryProfile(enemy.stats);
   if (!profile || !profile.actions.length) {
-    return { error: `${enemy.displayName} has no legendary actions.`, retry: true };
+    return { error: `${enemy.displayName} has no legendary actions. It acts on its own turn.`, retry: true };
   }
   // A legendary action is still an action of the creature's: not while it
   // is incapacitated, and not while it is surprised.
@@ -270,7 +270,7 @@ const resistSchema = z.object({ enemyId: z.string().min(1) });
 export function handleLegendaryResist(campaign: Campaign, rawArguments: string): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter.", retry: true };
+    return { error: "No active encounter: Legendary Resistance is spent only in a fight.", retry: true };
   }
   let args: z.infer<typeof resistSchema>;
   try {
@@ -284,7 +284,7 @@ export function handleLegendaryResist(campaign: Campaign, rawArguments: string):
   }
   const pool = encounter.legendary.pools[enemy.id];
   if (!pool) {
-    return { error: `${enemy.displayName} has no Legendary Resistance.`, retry: true };
+    return { error: `${enemy.displayName} has no Legendary Resistance: the save stands as rolled.`, retry: true };
   }
   // Legendary Resistance answers a save the creature has just failed: the
   // server keeps the last one (src/lib/dm/forced-save.ts) and turns exactly
@@ -346,7 +346,7 @@ const lairSchema = z.object({ action: z.string().trim().min(1).max(300) });
 export function handleLairAction(campaign: Campaign, turn: DmTurn | null, rawArguments: string): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter.", retry: true };
+    return { error: "No active encounter: lair actions are taken only in a fight.", retry: true };
   }
   let args: z.infer<typeof lairSchema>;
   try {
@@ -355,7 +355,7 @@ export function handleLairAction(campaign: Campaign, turn: DmTurn | null, rawArg
     return { error: "Invalid arguments: lair_action needs an action.", retry: true };
   }
   if (!encounter.legendary.lair) {
-    return { error: "This fight is not in a lair.", retry: true };
+    return { error: "This fight is not in a lair: there are no lair actions, and the enemies act on their own turns.", retry: true };
   }
   // Initiative count 20, losing ties: the move that passed it opened the
   // lair's moment, and the next move closes it (encounter-tools.ts).

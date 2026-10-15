@@ -21,7 +21,7 @@ export function payToStand(campaignId: string, sheet: CharacterSheet): ToolError
   }
   const current = encounter.order[encounter.turnIndex];
   if (current.kind !== "pc" || current.characterId !== sheet.id) {
-    return { error: `${sheet.name} stands up on their own turn only; it is ${current.name}'s turn.`, refused: "rules" };
+    return { error: `${sheet.name} stands up on their own turn only; it is ${current.name}'s turn. What they declared waits for their turn.`, refused: "rules" };
   }
   const { speed, fullTiles } = pcMoveBudget(campaignId, encounter, map, sheet, token);
   if (speed <= 0) {

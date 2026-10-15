@@ -115,7 +115,7 @@ export function handleFactionNote(campaign: Campaign, rawArguments: string): Too
   }
   const faction = resolveFaction(campaign.id, args.faction);
   if (!faction) {
-    return { error: `No faction called "${args.faction}".`, retry: true };
+    return { error: `No faction called "${args.faction}". Known: ${listFactions(campaign.id).map((entry) => entry.name).join(", ") || "none"}.`, retry: true };
   }
   insertFact({
     campaignId: campaign.id,

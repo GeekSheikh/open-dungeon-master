@@ -93,6 +93,7 @@ import { waypointProperty } from "@/lib/dm/waypoint-logic";
 import { toolError, type ToolError, type ToolResult } from "@/lib/dm/tool-errors";
 import { notCarried } from "@/lib/dm/item-logic";
 import { isTableGearName } from "@/lib/db/homebrew";
+import { freeSlotLevels, spentSlotRefusal } from "@/lib/dm/cast-rules";
 
 // DM stat authority: the model changes sheets ONLY through these tools.
 // Every mutation is server-clamped, audit-logged, and published live.
@@ -1201,7 +1202,7 @@ export function applyDmMutation(
         const held = channelOptionsHeld(sheet);
         return {
           result: {
-            error: `Channel Divinity in a fight is one of its options, each with its own cost: name it in variant${held.length ? ` (${sheet.name} has ${held.join(", ")})` : ""}. Nothing was spent.`,
+            error: `Channel Divinity in a fight is one of its options, each with its own cost: name it in variant${held.length ? ` (${sheet.name} has ${held.join(", ")})` : ""}, and ask the player which unless they named one. Nothing was spent.`,
             retry: true,
           },
         };
@@ -1397,12 +1398,15 @@ export function applyDmMutation(
           };
         }
         if (level < 1) {
-          return { result: { error: "Combat Wild Shape healing needs the slot level to burn.", retry: true } };
+          const free = freeSlotLevels(sheet.spellcasting, 1, false).map((entry) => entry.level).join(", ") || "none";
+          return {
+            result: { error: `Combat Wild Shape healing needs the slot level to burn (free: ${free}): ask the player which, unless they named one.`, retry: true },
+          };
         }
         const slot = sheet.spellcasting?.slots[String(level)];
         const math = slot ? spendSlotMath(slot) : null;
         if (!math) {
-          return { result: { error: `${sheet.name} has no free level ${level} spell slot.`, retry: true } };
+          return { result: spentSlotRefusal(sheet.name, sheet.spellcasting, { level, lowest: 1, what: "Combat Wild Shape", withPact: false }) };
         }
         const healed = rollHealing(campaign, sheet, "Combat Wild Shape", `${level}d8`);
         const beastHp = Math.min(
@@ -1497,7 +1501,7 @@ export function applyDmMutation(
         // whole list in `prepared` (known stays empty by convention).
         const intoKnown = known.length > 0;
         if ((intoKnown ? known.length >= 80 : prepared.length >= 60)) {
-          return { result: { error: `${sheet.name}'s spell list is full.`, retry: true } };
+          return { result: { error: `${sheet.name}'s spell list is full. They must give one up first: ask the player which, then call learn_spell with action=remove for it.`, retry: true } };
         }
         // The class's real 5e ceiling. Cantrips do not count against it, and
         // an unknown class (custom catalog) has no table to enforce.
@@ -1512,7 +1516,7 @@ export function applyDmMutation(
         // Cantrips have their own list and never touch the spell allowance.
         if (spellLevel === 0 || (spellLevel === undefined && isCantripName(spell))) {
           if (cantrips.length >= 40) {
-            return { result: { error: `${sheet.name}'s cantrip list is full.`, retry: true } };
+            return { result: { error: `${sheet.name}'s cantrip list is full. They must give one up first: ask the player which, then call learn_spell with action=remove for it.`, retry: true } };
           }
           const nextSpellcasting = {
             ...sheet.spellcasting,
@@ -1634,7 +1638,7 @@ export function applyDmMutation(
           if (!targetCaster) {
             return {
               result: {
-                error: `${sheet.name}'s caster classes are all at their spells-held ceiling. They must give one up first: call learn_spell with action=remove for the spell they drop.`,
+                error: `${sheet.name}'s caster classes are all at their spells-held ceiling. They must give one up first: ask the player which, then call learn_spell with action=remove for the spell they drop.`,
                 retry: true,
               },
             };
@@ -1652,7 +1656,7 @@ export function applyDmMutation(
           if (ceiling && current >= ceiling.count) {
             return {
               result: {
-                error: `${sheet.name} already has ${current} ${ceiling.label}, the most a level ${sheet.level} ${sheet.class} may hold. They must give one up first: call learn_spell with action=remove for the spell they drop.`,
+                error: `${sheet.name} already has ${current} ${ceiling.label}, the most a level ${sheet.level} ${sheet.class} may hold. They must give one up first: ask the player which, then call learn_spell with action=remove for the spell they drop.`,
                 retry: true,
               },
             };

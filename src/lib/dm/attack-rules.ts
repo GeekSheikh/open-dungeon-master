@@ -134,7 +134,7 @@ export function offHandProblem(input: {
     return null;
   }
   if (!input.budget) {
-    return { error: `The off-hand attack is a bonus action on ${input.who}'s own turn; it is not their turn.`, refused: "rules" };
+    return { error: `The off-hand attack is a bonus action on ${input.who}'s own turn; it is not their turn. What they declared waits for their turn.`, refused: "rules" };
   }
   if (input.budget.attacksMade < 1 || input.budget.castThisAction) {
     return { error: `The off-hand attack follows the Attack action: ${input.who} attacks with the weapon in their main hand first, then makes the off-hand attack as a bonus action.`, retry: true };

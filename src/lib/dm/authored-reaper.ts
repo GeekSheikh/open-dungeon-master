@@ -65,18 +65,18 @@ export function handleReaperCast(
   const facts = spellFactsFor(spell, authors);
   const twin = authoredTwinSpell(sheet, { school: spellSchoolFor(spell, authors), level: facts?.level ?? 0 });
   if (!twin) {
-    return { error: `${sheet.name} cannot strike a second creature with ${spell}: that takes Improved Reaper (a Death cleric's 17th level feature) and a 1st to 5th level necromancy spell. Nothing was spent.`, retry: true };
+    return { error: `${sheet.name} cannot strike a second creature with ${spell}: that takes Improved Reaper (a Death cleric's 17th level feature) and a 1st to 5th level necromancy spell. Ask the player whether to cast it at one creature. Nothing was spent.`, retry: true };
   }
   const mech = spellMechanicsFor({ spell, userIds: authors })?.mech;
   if ((mech?.targets?.count ?? 1) > 1 || mech?.area) {
-    return { error: `${spell} already reaches more than one creature; Improved Reaper doubles a spell that targets only one. Nothing was spent.`, retry: true };
+    return { error: `${spell} already reaches more than one creature; Improved Reaper doubles a spell that targets only one. Ask the player whether to cast it as it is. Nothing was spent.`, retry: true };
   }
   if (!withinFeet(encounter.id, first.id, second.id, 5)) {
-    return { error: `${second.displayName} is not within 5 feet of ${first.displayName}; Improved Reaper's second target must be. Nothing was spent.`, retry: true };
+    return { error: `${second.displayName} is not within 5 feet of ${first.displayName}; Improved Reaper's second target must be: ask the player for another, or whether to cast it at one creature. Nothing was spent.`, retry: true };
   }
   const budget = budgetFor(encounter, sheet.id, attacksAllowedFor(sheet), conditionExtraActions(sheet.conditions));
   if (!budget) {
-    return { error: `Improved Reaper doubles a spell ${sheet.name} casts on their own turn. Nothing was spent.`, retry: true };
+    return { error: `Improved Reaper doubles a spell ${sheet.name} casts on their own turn. Ask the player whether to cast it at one creature. Nothing was spent.`, retry: true };
   }
   const cast = handleCastAtEnemy(campaign, turn, JSON.stringify(rest), sheets, sheetsById);
   if (typeof cast.error === "string") {

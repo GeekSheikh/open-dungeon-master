@@ -20,7 +20,7 @@ import type { DmTurn } from "@/lib/db/dm-turns";
 import { getActiveEncounter, getEnemy, type EncounterEnemy } from "@/lib/db/encounters";
 import { restoreOwnForm, writeEnemyForm } from "@/lib/db/enemy-form";
 import { spellFactsFor } from "@/lib/content";
-import { spellSaveDcFor } from "@/lib/srd";
+import { spellSaveDcFor, type CastingSheet } from "@/lib/srd";
 import { findBeastForm, formatCr } from "@/lib/srd/beast-forms";
 import { conditionUntargetable } from "@/lib/srd/condition-effect-queries";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
@@ -38,7 +38,7 @@ import type { ToolResult } from "@/lib/dm/tool-errors";
 export { enemyShapeSpellFor };
 
 export type EnemyShapeCast = {
-  caster: CharacterSheet;
+  caster: CastingSheet<CharacterSheet>;
   enemy: EncounterEnemy;
   spell: string;
   // The published spell a table's workshop copy runs as (its rule); the
@@ -72,12 +72,12 @@ export function castShapeAtEnemy(
     return { error: "Unknown targetEnemyId; use one from GAME STATE. Nothing was spent.", retry: true };
   }
   if (enemy.status !== "alive") {
-    return { error: `${enemy.displayName} is already ${enemy.status}. Nothing was spent.`, retry: true };
+    return { error: `${enemy.displayName} is already ${enemy.status}. Ask the player which living enemy in GAME STATE to target instead, unless they named one. Nothing was spent.`, retry: true };
   }
   const form = findBeastForm(input.variant ?? "");
   if (!form) {
     return {
-      error: `${rule.spell} needs the beast in variant, one the table knows (e.g. 'wolf', 'brown bear', 'giant spider'). Nothing was spent.`,
+      error: `${rule.spell} needs the beast in variant, one the table knows (e.g. 'wolf', 'brown bear', 'giant spider'): ask the caster's player which unless they named one. Nothing was spent.`,
       retry: true,
     };
   }
@@ -96,7 +96,7 @@ export function castShapeAtEnemy(
   }
   const sealed = conditionUntargetable(enemy.conditions) ?? (enemy.conditions.includes("banished") ? "banished" : null);
   if (sealed) {
-    return { error: `${enemy.displayName} is ${sealed} and nothing from outside reaches it until that ends. Nothing was spent.`, refused: "rules" };
+    return { error: `${enemy.displayName} is ${sealed} and nothing from outside reaches it until that ends. Nothing was spent; pick another target.`, refused: "rules" };
   }
   const reach = spellReachProblem({
     encounterId: encounter.id,
@@ -110,9 +110,6 @@ export function castShapeAtEnemy(
     return reach;
   }
   const dc = spellSaveDcFor(caster, named);
-  if (dc === null) {
-    return { error: `${caster.name} has no spell save DC. Nothing was spent.`, refused: "rules" };
-  }
 
   // The cast, through the one guard: slot, turn, components, concentration.
   const cast = spend({

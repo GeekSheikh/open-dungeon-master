@@ -164,7 +164,7 @@ export function enemyEscape(
 ): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter.", retry: true };
+    return { error: "No active encounter: an enemy escapes a grapple only in a fight.", retry: true };
   }
   const enemy = resolveEnemyRef(encounter.id, enemyRef);
   if (!enemy) {

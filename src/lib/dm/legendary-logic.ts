@@ -216,7 +216,7 @@ export function spendLegendaryAction(
     return { ok: false, error: `No legendary action called "${actionName}". It has: ${profile.actions.map((entry) => entry.name).join(", ")}.`, retry: true };
   }
   if (pool.actions < action.cost) {
-    return { ok: false, error: `${action.name} costs ${action.cost}; only ${pool.actions} legendary action${pool.actions === 1 ? "" : "s"} left this round.`, retry: true };
+    return { ok: false, error: `${action.name} costs ${action.cost}; only ${pool.actions} legendary action${pool.actions === 1 ? "" : "s"} left this round. Pick a cheaper one, or wait for the next round.`, retry: true };
   }
   return { ok: true, pool: { ...pool, actions: pool.actions - action.cost }, action };
 }

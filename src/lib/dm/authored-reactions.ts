@@ -39,6 +39,7 @@ import { resolveMoreReaction } from "@/lib/dm/authored-reactions-more";
 import { projectWard } from "@/lib/dm/arcane-ward";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { toolError, type ToolError, type ToolResult } from "@/lib/dm/tool-errors";
+import { spentSlotRefusal } from "@/lib/dm/cast-rules";
 
 const lower = (value: string | undefined | null) => (value ?? "").trim().toLowerCase();
 
@@ -156,7 +157,7 @@ export function authoredReaction(ctx: Ctx): ToolResult | null {
     const level = ctx.args.level ?? 1;
     const slot = ctx.sheet.spellcasting?.slots?.[String(level)];
     if (!slot || slot.used >= slot.max) {
-      return { error: `${ctx.sheet.name} has no unspent level-${level} spell slot for ${reaction.name}. Nothing was spent.`, retry: true };
+      return spentSlotRefusal(ctx.sheet.name, ctx.sheet.spellcasting, { level, lowest: 1, what: reaction.name, withPact: false });
     }
     paid = () => {
       const now = getSheetById(ctx.sheet.id) ?? ctx.sheet;

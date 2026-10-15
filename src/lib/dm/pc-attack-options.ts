@@ -113,17 +113,17 @@ export function checkAttackOptions(input: {
 
   if (args.bonusAttack) {
     if (!budget) {
-      return { refused: { error: `A bonus-action attack is made on ${sheet.name}'s own turn; it is not their turn.`, refused: "rules" } };
+      return { refused: { error: `A bonus-action attack is made on ${sheet.name}'s own turn; it is not their turn. What they declared waits for their turn.`, refused: "rules" } };
     }
     if (args.offHand) {
       return { refused: { error: "An attack is either the off-hand swing of two-weapon fighting or a feature's bonus attack, not both.", retry: true } };
     }
     if (args.bonusAttack === "martial arts") {
       if (!hasFeature(sheet, "martial arts")) {
-        return { refused: { error: `${sheet.name} has no Martial Arts; the bonus-action unarmed strike is a monk's.`, refused: "rules" } };
+        return { refused: { error: `${sheet.name} has no Martial Arts; the bonus-action unarmed strike is a monk's. Their attacks come from the Attack action.`, refused: "rules" } };
       }
       if (!martialArtsApplies(sheet)) {
-        return { refused: { error: `Martial Arts works only with no armor and no shield, and ${sheet.name} wears one.`, refused: "rules" } };
+        return { refused: { error: `Martial Arts works only with no armor and no shield, and ${sheet.name} wears one. Their attacks come from the Attack action.`, refused: "rules" } };
       }
       if (!profile.unarmed) {
         return { refused: { error: "Martial Arts' bonus-action attack is an unarmed strike; send weapon \"unarmed strike\".", retry: true } };
@@ -168,13 +168,13 @@ export function checkAttackOptions(input: {
       }
     } else {
       if (!hasFeature(sheet, "frenzy")) {
-        return { refused: { error: `${sheet.name} has no Frenzy; the bonus-action attack of a frenzy is a Berserker's.`, refused: "rules" } };
+        return { refused: { error: `${sheet.name} has no Frenzy; the bonus-action attack of a frenzy is a Berserker's. Their attacks come from the Attack action.`, refused: "rules" } };
       }
       if (!hasCondition(sheet, RAGING)) {
         return { refused: { error: `${sheet.name} is not raging; a frenzy lasts only as long as a rage. They rage first (use_resource Rage).`, refused: "rules" } };
       }
       if (!meleeWeapon) {
-        return { refused: { error: "A frenzy's bonus-action attack is a melee weapon attack.", refused: "rules" } };
+        return { refused: { error: "A frenzy's bonus-action attack is a melee weapon attack: they make it with a melee weapon, or not at all.", refused: "rules" } };
       }
     }
     options.bonusAttack = args.bonusAttack;
@@ -182,10 +182,10 @@ export function checkAttackOptions(input: {
 
   if (args.stunningStrike) {
     if (!hasFeature(sheet, "stunning strike")) {
-      return { refused: { error: `${sheet.name} has no Stunning Strike (a monk's feature from 5th level).`, retry: true } };
+      return { refused: { error: `${sheet.name} has no Stunning Strike (a monk's feature from 5th level). They can make the attack without it.`, retry: true } };
     }
     if (!meleeWeapon) {
-      return { refused: { error: "Stunning Strike rides a melee weapon attack (an unarmed strike counts), not a ranged one or a spell.", retry: true } };
+      return { refused: { error: "Stunning Strike rides a melee weapon attack (an unarmed strike counts), not a ranged one or a spell. They can make the attack without it.", retry: true } };
     }
     const ki = resourceLeft(sheet, "Ki");
     if (!ki || ki.left < 1) {
@@ -200,13 +200,13 @@ export function checkAttackOptions(input: {
   const alreadyReckless = hasCondition(sheet, RECKLESS);
   if (args.reckless) {
     if (!hasFeature(sheet, "reckless attack")) {
-      return { refused: { error: `${sheet.name} has no Reckless Attack (a barbarian's feature from 2nd level).`, retry: true } };
+      return { refused: { error: `${sheet.name} has no Reckless Attack (a barbarian's feature from 2nd level). They can make the attack without it.`, retry: true } };
     }
     if (!budget) {
-      return { refused: { error: "Reckless Attack is declared on the barbarian's own turn.", retry: true } };
+      return { refused: { error: "Reckless Attack is declared on the barbarian's own turn. They can make the attack without it.", retry: true } };
     }
     if (!strengthMelee) {
-      return { refused: { error: "Reckless Attack covers melee weapon attacks made with Strength; this one is not.", retry: true } };
+      return { refused: { error: "Reckless Attack covers melee weapon attacks made with Strength; this one is not. They can make the attack without it.", retry: true } };
     }
     if (!alreadyReckless && budget.attacksMade > 0) {
       return {
@@ -227,7 +227,7 @@ export function checkAttackOptions(input: {
 
   if (args.nonlethal) {
     if (atRange) {
-      return { refused: { error: "Only a melee attack can knock a creature out instead of killing it; this one is ranged.", retry: true } };
+      return { refused: { error: "Only a melee attack can knock a creature out instead of killing it; this one is ranged. They can make the attack without it.", retry: true } };
     }
     options.nonlethal = true;
   }
@@ -247,16 +247,16 @@ function hordeBreakerProblem(input: {
 }): ToolError | null {
   const { sheet, budget } = input;
   if (!hasHordeBreaker(sheet)) {
-    return { error: `${sheet.name} has no Horde Breaker (a Hunter ranger's Hunter's Prey pick).`, refused: "rules" };
+    return { error: `${sheet.name} has no Horde Breaker (a Hunter ranger's Hunter's Prey pick). Their attacks come from the Attack action.`, refused: "rules" };
   }
   if (!budget) {
-    return { error: "Horde Breaker's attack is made on the ranger's own turn.", retry: true };
+    return { error: "Horde Breaker's attack is made on the ranger's own turn. They can make the attack without it.", retry: true };
   }
   if (!input.weaponAttack || input.args.bonusAttack || input.args.offHand) {
     return { error: "Horde Breaker's extra attack is a weapon attack of its own, not an off-hand or bonus-action swing.", refused: "rules" };
   }
   if (budget.oncePerTurn.includes(HORDE_BREAKER)) {
-    return { error: `${sheet.name} has already made their Horde Breaker attack this turn; it comes once a turn.`, retry: true };
+    return { error: `${sheet.name} has already made their Horde Breaker attack this turn; it comes once a turn. They can make the attack without it.`, retry: true };
   }
   const earlier = budget.oncePerTurn
     .filter((key) => key.startsWith(ATTACKED))
@@ -266,7 +266,7 @@ function hordeBreakerProblem(input: {
     return { error: "Horde Breaker's extra attack follows a weapon attack on another creature this turn; attack that creature first.", retry: true };
   }
   if (input.besideEarlierTarget && !earlier.some((id) => input.besideEarlierTarget?.(id))) {
-    return { error: "Horde Breaker's extra attack must target a creature within 5 feet of the creature attacked first.", retry: true };
+    return { error: "Horde Breaker's extra attack must target a creature within 5 feet of the creature attacked first (the player picks one there, unless they named it).", retry: true };
   }
   return null;
 }

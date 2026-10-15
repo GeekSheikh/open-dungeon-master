@@ -79,7 +79,7 @@ export function handleAoeDamage(
 ): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter.", retry: true };
+    return { error: "No active encounter: aoe_damage hits creatures in a fight. Call start_encounter first.", retry: true };
   }
   let args: z.infer<typeof aoeArgsSchema>;
   try {
@@ -143,7 +143,7 @@ export function handleAoeDamage(
     pcTargets.splice(0, pcTargets.length, ...pcTargets.filter((sheet) => !sheet.deathSaves?.dead));
     // A spell that lays its area (a Web over the fallen) is still cast.
     if (!enemyTargets.length && !pcTargets.length && !(args.spell && zoneRowFor(engineSpell))) {
-      return { error: `${skippedDead.join(", ")} ${skippedDead.length === 1 ? "is" : "are"} dead; the area catches nobody it can harm. Nothing was spent.`, retry: true };
+      return { error: `${skippedDead.join(", ")} ${skippedDead.length === 1 ? "is" : "are"} dead; the area catches nobody it can harm. Ask the player where to aim it instead. Nothing was spent.`, retry: true };
     }
   }
   // A creature Blink, Etherealness, Maze or a Resilient Sphere took away is
@@ -162,7 +162,7 @@ export function handleAoeDamage(
     enemyTargets.splice(0, enemyTargets.length, ...enemyTargets.filter((enemy) => !beyondReach.includes(enemy.displayName)));
     pcTargets.splice(0, pcTargets.length, ...pcTargets.filter((sheet) => !beyondReach.includes(sheet.name)));
     if (!enemyTargets.length && !pcTargets.length) {
-      return { error: `${beyondReach.join(", ")} ${beyondReach.length === 1 ? "is" : "are"} out of reach of the Material Plane; the area catches nobody. Nothing was spent.`, refused: "rules" };
+      return { error: `${beyondReach.join(", ")} ${beyondReach.length === 1 ? "is" : "are"} out of reach of the Material Plane; the area catches nobody. Nothing was spent; aim it elsewhere.`, refused: "rules" };
     }
   }
   // A Globe of Invulnerability shields the creatures inside it from a spell

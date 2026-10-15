@@ -251,7 +251,7 @@ export function buildPet(
     }
     if (form.chainOnly && !hasPactOfTheChain(sheet)) {
       return {
-        error: `A ${form.form} familiar needs Pact of the Chain; ${sheet.name} can take an ordinary form instead.`,
+        error: `A ${form.form} familiar needs Pact of the Chain; ${sheet.name} can take an ordinary form instead (${FAMILIAR_FORMS.filter((entry) => !entry.chainOnly).map((entry) => entry.form.toLowerCase()).join(", ")}): ask the player which.`,
         retry: true,
       };
     }
@@ -352,7 +352,7 @@ export function handleSummonPet(
     return { error: "Unknown characterId; use one from GAME STATE.", retry: true };
   }
   if (sheet.pets.length >= 3) {
-    return { error: `${sheet.name} already has ${sheet.pets.length} bound creatures; dismiss one first.`, retry: true };
+    return { error: `${sheet.name} already has ${sheet.pets.length} bound creatures (${sheet.pets.map((pet) => pet.name).join(", ")}); one is dismissed first: ask the player which.`, retry: true };
   }
   // One creature per source: a second familiar replaces the first (5e: the
   // ritual re-shapes the same spirit), companions and drakes are unique.

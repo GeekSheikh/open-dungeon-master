@@ -184,7 +184,7 @@ function spendMountingMovement(
   }
   const current = encounter.order[encounter.turnIndex];
   if (turn?.actor !== "human_dm" && (current?.kind !== "pc" || current.characterId !== sheet.id)) {
-    return { error: `${sheet.name} mounts or dismounts during their own move only; it is ${current?.name ?? "another combatant"}'s turn.`, refused: "rules" };
+    return { error: `${sheet.name} mounts or dismounts during their own move only; it is ${current?.name ?? "another combatant"}'s turn. What they declared waits for their turn.`, refused: "rules" };
   }
   const half = Math.floor(speedToTiles(sheet.speed) / 2);
   const mounted = getMounts(campaign.id)[sheet.id];

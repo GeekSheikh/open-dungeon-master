@@ -184,7 +184,7 @@ export function canAct(input: {
     if (!current || entryRef(current) !== sheet.id) {
       return refuse(
         "not_your_turn",
-        { error: `It is ${current?.name ?? "someone else"}'s turn, not ${sheet.name}'s. Off their own turn a character can only use their reaction.`, refused: "rules" },
+        { error: `It is ${current?.name ?? "someone else"}'s turn, not ${sheet.name}'s. Off their own turn a character can only use their reaction. What they declared waits for their turn.`, refused: "rules" },
       );
     }
   }

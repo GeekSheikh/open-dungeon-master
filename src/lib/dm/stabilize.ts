@@ -155,7 +155,7 @@ export function handleStabilize(
     const kit = findCarriedItem(healer.equipment, "healer's kit");
     if (!kit || (kit.charges ?? HEALERS_KIT_USES) <= 0) {
       return {
-        error: `${healer.name} carries no healer's kit with a use left. Without one, stabilizing takes a DC ${STABILIZE_DC} Wisdom (Medicine) check: call stabilize again without a method.`,
+        error: `${healer.name} carries no healer's kit with a use left. Without one, stabilizing takes a DC ${STABILIZE_DC} Wisdom (Medicine) check: ask the player whether to try it, and if so call stabilize again without a method.`,
         retry: true,
       };
     }
@@ -170,7 +170,7 @@ export function handleStabilize(
       : false;
     if (!knows) {
       return {
-        error: `${healer.name} does not know Spare the Dying. Without it, stabilizing takes a DC ${STABILIZE_DC} Wisdom (Medicine) check: call stabilize again without a method.`,
+        error: `${healer.name} does not know Spare the Dying. Without it, stabilizing takes a DC ${STABILIZE_DC} Wisdom (Medicine) check: ask the player whether to try it, and if so call stabilize again without a method.`,
         retry: true,
       };
     }

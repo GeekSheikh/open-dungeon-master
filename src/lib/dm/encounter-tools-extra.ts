@@ -169,7 +169,7 @@ function handleEnemyFlees(
 ): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter.", retry: true };
+    return { error: "No active encounter: enemy_flees works only in a fight.", retry: true };
   }
   let args: z.infer<typeof enemyRefArgsSchema>;
   try {
@@ -214,7 +214,7 @@ function handleEnemyCondition(
 ): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter.", retry: true };
+    return { error: "No active encounter: an enemy's condition is set only in a fight.", retry: true };
   }
   let args: z.infer<typeof enemyRefArgsSchema>;
   try {
@@ -334,8 +334,8 @@ function handleEnemyCondition(
       const speed = enemySpeedTiles(enemy) * 5;
       return {
         error: speed
-          ? `${enemy.displayName} has too little movement left this turn to stand: it costs half its speed (${Math.floor(speed / 10) * 5} ft).`
-          : `${enemy.displayName} cannot stand up at speed 0.`,
+          ? `${enemy.displayName} has too little movement left this turn to stand: it costs half its speed (${Math.floor(speed / 10) * 5} ft). It stays prone and takes its turn from there.`
+          : `${enemy.displayName} cannot stand up at speed 0. It stays prone and takes its turn from there.`,
         retry: true,
       };
     }

@@ -117,7 +117,7 @@ export function payForTeleport(
       (enemy.stats.spells ?? []).some((name) => name.toLowerCase() === key) ||
       abilityNames(enemy.stats).some((name) => name.toLowerCase() === key) ||
       (enemy.stats.traits ?? []).some((line) => line.toLowerCase().startsWith(key));
-    return listed ? null : { error: `${enemy.displayName} has no ${spell} on its stat block, so it cannot teleport.`, retry: true };
+    return listed ? null : { error: `${enemy.displayName} has no ${spell} on its stat block, so it cannot teleport. It may move with move_token or take another action.`, retry: true };
   }
   return { error: `${spell} needs its caster: casterId for a character, casterEnemyId for an enemy.`, retry: true };
 }

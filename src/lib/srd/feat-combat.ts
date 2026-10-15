@@ -45,10 +45,10 @@ export function powerAttackFeat(
   const powerful = holdsFeat(sheet, "Powerful Attacker");
   const deadeye = holdsFeat(sheet, "Deadeye");
   if (!gwm && !sharp && !powerful && !deadeye) {
-    return { refused: { error: "the accuracy-for-damage trade belongs to Great Weapon Master or Powerful Attacker (a heavy melee weapon) and Sharpshooter or Deadeye (a ranged weapon), and this character has none of them.", retry: true } };
+    return { refused: { error: "the accuracy-for-damage trade belongs to Great Weapon Master or Powerful Attacker (a heavy melee weapon) and Sharpshooter or Deadeye (a ranged weapon), and this character has none of them. They can make the attack without the trade.", retry: true } };
   }
   if (!attack.weaponAttack) {
-    return { refused: { error: "the accuracy-for-damage trade is for weapon attacks; a spell attack cannot take it.", retry: true } };
+    return { refused: { error: "the accuracy-for-damage trade is for weapon attacks; a spell attack cannot take it. Ask the player whether to cast the spell without it.", retry: true } };
   }
   if (attack.ranged) {
     if (sharp) {
@@ -56,18 +56,18 @@ export function powerAttackFeat(
     }
     if (deadeye) {
       if (!attack.proficient) {
-        return { refused: { error: "Deadeye's trade needs a ranged weapon the character is proficient with.", retry: true } };
+        return { refused: { error: "Deadeye's trade needs a ranged weapon the character is proficient with. They can make the attack without the trade.", retry: true } };
       }
       const bonus = attack.proficiencyBonus ?? 2;
       return { feat: "Deadeye", toHit: -bonus, disadvantage: false, damage: 2 * bonus, note: `Deadeye: the proficiency bonus (+${bonus}) comes off the roll, twice it (+${2 * bonus}) goes on the damage` };
     }
-    return { refused: { error: "Great Weapon Master's and Powerful Attacker's trades are for melee attacks with a heavy weapon; a ranged attack needs Sharpshooter or Deadeye.", retry: true } };
+    return { refused: { error: "Great Weapon Master's and Powerful Attacker's trades are for melee attacks with a heavy weapon; a ranged attack needs Sharpshooter or Deadeye. They can make the attack without the trade.", retry: true } };
   }
   if (!gwm && !powerful) {
-    return { refused: { error: "Sharpshooter's and Deadeye's trades are for ranged weapon attacks; a melee attack needs Great Weapon Master or Powerful Attacker.", retry: true } };
+    return { refused: { error: "Sharpshooter's and Deadeye's trades are for ranged weapon attacks; a melee attack needs Great Weapon Master or Powerful Attacker. They can make the attack without the trade.", retry: true } };
   }
   if (!attack.heavy || !attack.proficient) {
-    return { refused: { error: `${gwm ? "Great Weapon Master" : "Powerful Attacker"}'s trade needs a heavy melee weapon the character is proficient with.`, retry: true } };
+    return { refused: { error: `${gwm ? "Great Weapon Master" : "Powerful Attacker"}'s trade needs a heavy melee weapon the character is proficient with. They can make the attack without the trade.`, retry: true } };
   }
   return gwm
     ? { feat: "Great Weapon Master", toHit: POWER_ATTACK_TO_HIT, disadvantage: false, damage: POWER_ATTACK_DAMAGE, note: "Great Weapon Master: -5 to hit, +10 damage" }

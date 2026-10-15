@@ -28,7 +28,7 @@ export function castFindFamiliar(
   const form = (input.variant ?? "").trim();
   const built = buildPet(caster, { kind: "familiar", form });
   if ("error" in built) {
-    return { error: form ? `${built.error} Nothing was spent.` : `Find Familiar needs the familiar's form in variant (owl, cat, raven, bat, rat, spider, weasel, hawk, frog, snake...). Nothing was spent.`, retry: true };
+    return { error: form ? `${built.error} Nothing was spent.` : `Find Familiar needs the familiar's form in variant (owl, cat, raven, bat, rat, spider, weasel, hawk, frog, snake...): ask the player which unless they named one. Nothing was spent.`, retry: true };
   }
   const spent = cast({ characterId: caster.id, spell: castAs, ...(input.level ? { level: input.level } : {}), via: "buff", reason: (input.reason ?? "").slice(0, 200) });
   if ("error" in spent) {

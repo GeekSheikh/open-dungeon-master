@@ -56,7 +56,7 @@ export function enemyShapeProblem(
     return { error: `${name} is already a ${enemy.stats.polymorphedFrom.form} under ${enemy.stats.polymorphedFrom.spell}; it takes no second form until that one ends. Nothing was spent.`, refused: "rules" };
   }
   if (enemy.currentHp <= 0) {
-    return { error: `${rule.spell} has no effect on a creature at 0 hit points, and ${name} is at 0. Nothing was spent; pick another target.`, retry: true };
+    return { error: `${rule.spell} has no effect on a creature at 0 hit points, and ${name} is at 0. Nothing was spent; ask the player for another target.`, retry: true };
   }
   // Immutable Form (the golems): no spell alters its form.
   if (immutableForm(enemy.stats)) {

@@ -36,6 +36,7 @@ import { castSummon } from "@/lib/dm/summon-cast";
 import { castFindFamiliar, isFindFamiliar } from "@/lib/dm/familiar-cast";
 import { castShapeAtEnemy, enemyShapeSpellFor } from "@/lib/dm/enemy-polymorph";
 import type { ToolResult } from "@/lib/dm/tool-errors";
+import { castsSpells } from "@/lib/srd";
 
 // Temporary hit points a chosen variant grants on top of its condition.
 const VARIANT_TEMP_HP: Record<string, string> = {
@@ -85,7 +86,7 @@ export function handleCastBuff(
   if (sheet.currentHp <= 0 && spellFactsFor(args.spell, spellAuthorsFor(campaign))?.castingTime !== "reaction") {
     return { error: `${sheet.name} is at 0 HP and cannot cast.`, refused: "rules" };
   }
-  if (!sheet.spellcasting) {
+  if (!castsSpells(sheet)) {
     return { error: `${sheet.name} cannot cast spells.`, refused: "rules" };
   }
   const authors = spellAuthorsFor(campaign);
@@ -192,7 +193,7 @@ export function handleCastBuff(
   const polymorphForm = condition === "polymorphed" ? findBeastForm(args.variant ?? "") : null;
   if (condition === "polymorphed" && !polymorphForm) {
     return {
-      error: `${resolvedMech.name} needs a beast form the table knows: pass variant (e.g. 'giant ape', 'brown bear', 'tyrannosaurus rex').`,
+      error: `${resolvedMech.name} needs a beast form the table knows: pass variant (e.g. 'giant ape', 'brown bear', 'tyrannosaurus rex'), and ask the player which unless they named one.`,
       retry: true,
     };
   }
@@ -235,7 +236,7 @@ export function handleCastBuff(
   const most = buff.target === "self" ? 1 : (shares ?? (buff.target === "ally" ? 1 : 6));
   if (targetSheets.length > most) {
     return {
-      error: `${resolvedMech.name} from a level ${plannedSlot ?? resolvedMech.spellLevel} slot affects at most ${most} creature${most === 1 ? "" : "s"}; ${targetSheets.length} were named. Name ${most} or fewer, or cast it from a higher slot. Nothing was spent.`,
+      error: `${resolvedMech.name} from a level ${plannedSlot ?? resolvedMech.spellLevel} slot affects at most ${most} creature${most === 1 ? "" : "s"}; ${targetSheets.length} were named. Name ${most} or fewer, or cast it from a higher slot: ask the player which. Nothing was spent.`,
       retry: true,
     };
   }

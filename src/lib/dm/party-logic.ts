@@ -137,7 +137,7 @@ export function addPartyItem(
   );
   if (index < 0) {
     if (inventory.length >= MAX_PARTY_ITEMS) {
-      return { error: `The pack holds ${MAX_PARTY_ITEMS} kinds of thing; hand something out first.`, retry: true };
+      return { error: `The pack holds ${MAX_PARTY_ITEMS} kinds of thing; something is handed out first (ask the party what).`, retry: true };
     }
     return {
       inventory: [
