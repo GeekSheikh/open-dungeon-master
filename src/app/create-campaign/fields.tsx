@@ -42,6 +42,7 @@ export function ToggleCard({
       type="button"
       disabled={disabled}
       onClick={onClick}
+      aria-pressed={active}
       className={cn(toggleClass(active), disabled && "cursor-not-allowed opacity-50", className)}
     >
       <span className="block font-medium">{label}</span>

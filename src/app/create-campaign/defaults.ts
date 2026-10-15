@@ -105,7 +105,9 @@ export function applyDefaults(
     next[key] = clone(value);
   }
   if (settings.voice) {
-    next.voiceChat = clone(settings.voice);
+    // Transcription is switched on in the lobby, where the table is told it
+    // is on; a saved setup never turns it on behind anyone's back.
+    next.voiceChat = { ...clone(settings.voice), transcribe: draft.voiceChat.transcribe };
   }
   // The warning about AI story setup and an imported Storyboard is asked
   // again whenever the setting it was answered for changes.

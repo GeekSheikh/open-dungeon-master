@@ -138,6 +138,12 @@ await test("an untouched theme follows the saved genre; a chosen world pack keep
   assert.match(applied.kept.join(" "), /The Saltmarch keeps its own setting/);
 });
 
+await test("saved defaults never switch on transcription", () => {
+  const voice = { ...DEFAULT_DRAFT.voiceChat, transcribe: true };
+  const { draft } = applyDefaults(structuredClone(DEFAULT_DRAFT), { voice }, null);
+  assert.equal(draft.voiceChat.transcribe, false);
+});
+
 await test("the Storyboard warning is asked again when defaults change AI story setup", () => {
   const draft = { ...structuredClone(DEFAULT_DRAFT), aiStorySetup: false, storySetupKept: true };
   assert.equal(applyDefaults(draft, { aiStorySetup: true }, null).draft.storySetupKept, false);

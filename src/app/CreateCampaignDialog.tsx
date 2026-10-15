@@ -96,7 +96,7 @@ export function CreateCampaignDialog({
   const [managing, setManaging] = useState(false);
   const shell = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
-  const pendingFocus = useRef<GroupId | null>(null);
+  const pendingFocus = useRef<GroupId | "top" | null>(null);
 
   const patch = (changes: Partial<CampaignDraft>) => {
     edited.current = true;
@@ -290,18 +290,23 @@ export function CreateCampaignDialog({
     if (target.group) {
       groups.setOpen(target.group, true);
     }
-    pendingFocus.current = target.group ?? null;
+    pendingFocus.current = target.group ?? "top";
     setFromReview(true);
     setStep(STEP_KEYS.indexOf(target.step));
   };
   // Once the step is on screen, its group is brought to the top of the pane
-  // and its heading takes focus (after the wizard's own focus on the title).
+  // and its heading takes focus (after the wizard's own focus on the title);
+  // a row with no group of its own starts the step from the top.
   useEffect(() => {
     const id = pendingFocus.current;
     if (!id) {
       return;
     }
     pendingFocus.current = null;
+    if (id === "top") {
+      shell.current?.querySelector<HTMLElement>("section[data-active]")?.scrollTo({ top: 0 });
+      return;
+    }
     const group = shell.current?.querySelector<HTMLElement>(`section[data-active] [data-group="${id}"]`);
     const pane = group?.closest<HTMLElement>("section[data-active]");
     if (group && pane) {
