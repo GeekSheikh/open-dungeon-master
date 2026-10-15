@@ -154,10 +154,12 @@ function Row({
   return (
     <div className="cc-readback-row" data-wrap={wrap || undefined} style={{ "--cc-delay": `${index * 70}ms` } as CSSProperties}>
       <dt>{label}</dt>
-      <dd data-ink={gold ? "gold" : undefined}>{children}</dd>
-      <button type="button" className="cc-readback-edit" onClick={onEdit} aria-label={`Edit ${label.toLowerCase()}`}>
-        Edit
-      </button>
+      <dd data-ink={gold ? "gold" : undefined}>
+        <span className="cc-readback-value">{children}</span>
+        <button type="button" className="cc-readback-edit" onClick={onEdit} aria-label={`Edit ${label.toLowerCase()}`}>
+          Edit
+        </button>
+      </dd>
     </div>
   );
 }

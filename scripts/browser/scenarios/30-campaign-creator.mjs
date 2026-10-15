@@ -32,7 +32,9 @@ export default {
 
     // Continue is held until the campaign has a name, and says so.
     const next = dialog.locator("button.wizard-continue");
-    await t.tap(next);
+    // Held with aria-disabled so the press still lands and says why; the
+    // driver will not press a held button on its own.
+    await next.click({ force: true });
     await eventually(async () => /Name the campaign first/.test(await textOf(dialog)), { label: "the held Continue's reason" });
     const name = dialog.locator('input[maxlength="80"]');
     await eventually(() => name.evaluate((el) => el === document.activeElement), { label: "focus back on the title" });
@@ -52,12 +54,16 @@ export default {
     check((await rules.inputValue()).includes("bonus action"), "house rules survive closing their group");
     check(/house rules written/.test(await textOf(dialog.locator('[data-group="prep"] .cc-group-summary'))), "the closed group says house rules are written");
 
-    // The experience: narration and character voices together, and this
-    // server's missing speech said plainly.
+    // The experience: narration and who voices the characters, side by side.
     await t.tap(next);
     await eventually(async () => /Narration and character voices/.test(await textOf(dialog.locator("section[data-active]"))), { label: "the experience step" });
     const experience = dialog.locator("section[data-active]");
-    check(/no speech service/.test(await textOf(experience)), "a server with no speech says why nothing is read aloud");
+    const narrator = experience.getByRole("button", { name: /The narrator reads them/ });
+    const eachVoice = experience.getByRole("button", { name: /Each speaker gets a voice/ });
+    check((await narrator.getAttribute("aria-pressed")) === "true", "the narrator reads the characters unless asked otherwise");
+    await t.tap(eachVoice);
+    await eventually(async () => (await eachVoice.getAttribute("aria-pressed")) === "true", { label: "each speaker gets a voice" });
+    check(/Character voices/.test(await textOf(experience)), "the casting choice names where voices are changed later");
     await t.shot("experience");
 
     // A line typed and left at once (the diamond to the review) is kept.
@@ -71,6 +77,7 @@ export default {
     const review = dialog.locator("section[data-active]");
     await eventually(async () => /Here is what you made/.test(await textOf(review)), { label: "the review" });
     await eventually(async () => /1 line/.test(await textOf(review.locator(".cc-readback"))), { label: "the review counts the line just typed" });
+    check(/each speaker gets a voice/.test(await textOf(review.locator(".cc-readback"))), "the review reads back the casting choice");
     await t.shot("review");
 
     // Edit from the review, and straight back.
@@ -98,6 +105,7 @@ export default {
     }, { timeoutMs: 30_000, label: "the campaign created" });
     const campaign = (await (await api.get(`${base}/api/campaigns/${made.id}`)).json()).campaign;
     check(campaign?.gameSettings?.safety?.lines?.[0] === "spiders", "the campaign's safety lines");
+    check(campaign?.gameSettings?.ttsAutoCast === true, "the campaign casts each speaker");
     await eventually(async () => {
       const posted = await (await api.get(`${base}/api/campaigns/${made.id}/rules`)).json();
       return /bonus action/.test(posted.text ?? "");

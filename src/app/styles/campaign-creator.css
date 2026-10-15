@@ -725,12 +725,20 @@
   .cc-link:hover { color: var(--color-amber-200); text-decoration: underline; }
   .cc-link:focus-visible { outline: 2px solid color-mix(in srgb, var(--color-amber-400) 50%, transparent); outline-offset: 2px; border-radius: 4px; }
 
-  /* The review's Edit, at the end of each row. */
-  .cc-readback-row[data-wrap] dd { white-space: normal; }
+  /* The review's Edit, at the end of each value. */
+  .cc-readback-row dd:has(.cc-readback-edit) {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+  .cc-readback-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .cc-readback-row[data-wrap] dd,
+  .cc-readback-row[data-wrap] .cc-readback-value { white-space: normal; }
   .cc-readback-edit {
     flex: none;
-    align-self: center;
-    margin-left: -4px;
+    margin-right: -4px;
     padding: 2px 4px;
     font-family: var(--font-mono), monospace;
     font-size: 10px;
