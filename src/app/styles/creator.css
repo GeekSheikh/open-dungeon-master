@@ -515,13 +515,27 @@ html[data-theme="light"] .step-wipe-ring {
     border-color var(--dur-quick) var(--ease-snap),
     background-color var(--dur-quick) var(--ease-snap);
 }
-.creator-trait:not(:disabled) { cursor: pointer; }
+/* A trait with text to show has a toggle that holds its name only; its body
+   is a region below it, so a screen reader hears "Darkvision, collapsed" and
+   not a paragraph read as one button's name. A trait with nothing more to say
+   is a plain row, not a disabled button a keyboard would skip. */
+.creator-trait-toggle {
+  display: flex;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 9px;
+}
+.creator-trait-toggle:focus-visible { outline: 2px solid var(--color-amber-400); outline-offset: -2px; }
 /* Hover only where a pointer can hover: on touch it would stick after a tap. */
 @media (hover: hover) {
-  .creator-trait:not(:disabled):hover { transform: translateX(3px); background: color-mix(in srgb, var(--color-amber-950) 26%, transparent); }
+  .creator-trait:has(> .creator-trait-toggle:hover) { transform: translateX(3px); background: color-mix(in srgb, var(--color-amber-950) 26%, transparent); }
 }
-.creator-trait:not(:disabled):active { transform: scale(0.99); }
-.creator-trait[aria-expanded="true"] {
+.creator-trait:has(> .creator-trait-toggle:active) { transform: scale(0.99); }
+.creator-trait[data-open] {
   border-color: color-mix(in srgb, var(--color-amber-500) 50%, transparent);
   background: color-mix(in srgb, var(--color-amber-950) 30%, transparent);
 }
@@ -531,7 +545,7 @@ html[data-theme="light"] .step-wipe-ring {
   animation: creator-row-open var(--dur-move) var(--ease-snap) both;
 }
 .creator-chevron { transition: rotate var(--dur-move) var(--ease-spring); }
-.creator-trait[aria-expanded="true"] .creator-chevron { rotate: 180deg; }
+.creator-trait-toggle[aria-expanded="true"] .creator-chevron { rotate: 180deg; }
 
 /* ---- the dice grid ---- */
 .dice-row {
