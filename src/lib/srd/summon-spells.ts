@@ -3,6 +3,7 @@
 // is spent, and spawns what it answers.
 
 import { findSummonForm, summonFormsOf, type SummonForm } from "@/lib/srd/summon-forms";
+import { formList } from "@/lib/srd/beast-forms";
 import type { ToolError } from "@/lib/dm/tool-errors";
 
 const HOUR = 600;
@@ -200,7 +201,7 @@ function callable(spell: SummonSpell, slotLevel: number): string {
     return spell.forms.join(", ");
   }
   const ceiling = crCeiling(spell, slotLevel);
-  return summonFormsOf(spell.types ?? [], ceiling ?? Infinity).map((form) => `${form.name} (CR ${crLabel(form.cr)})`).join(", ");
+  return formList(summonFormsOf(spell.types ?? [], ceiling ?? Infinity));
 }
 
 // What one casting of `spell` from `slotLevel` makes of the form the caller

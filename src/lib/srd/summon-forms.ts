@@ -429,13 +429,13 @@ const ALL: SummonForm[] = [
 // (beast-forms.ts findNamed): "spider" is the Giant Spider, a giant elk no
 // Elk. Null when the table does not know it.
 export function findSummonForm(term: string): SummonForm | null {
-  return findNamed(ALL, term);
+  return findNamed(ALL, term, (form) => form.name);
 }
 
 // The creatures of these kinds the table holds at a challenge rating or
-// lower, the lowest first: what a summoning spell can be asked for.
+// lower: what a summoning spell can be asked for.
 export function summonFormsOf(types: string[], maxCr: number): SummonForm[] {
-  return ALL.filter((form) => types.includes(form.type) && form.cr <= maxCr).sort((a, b) => a.cr - b.cr || a.name.localeCompare(b.name));
+  return ALL.filter((form) => types.includes(form.type) && form.cr <= maxCr);
 }
 
 export function summonFormNames(): string[] {

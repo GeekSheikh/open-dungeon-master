@@ -95,8 +95,10 @@ export function checkAttackOptions(input: {
   // Null off the character's own turn.
   budget: TurnBudget | null;
   // Whether a creature this character attacked this turn stands within 5
-  // feet of this target (Horde Breaker). Absent off the board.
+  // feet of this target (Horde Breaker), and the living creatures that
+  // stand within 5 feet of it. Absent off the board.
   besideEarlierTarget?: (earlierId: string) => boolean;
+  creaturesBeside?: (earlierId: string) => string[];
   targetId?: string;
 }): { refused: ToolError } | { options: AttackOptions } {
   const { sheet, args, profile, kind, atRange, derived, budget } = input;
@@ -243,6 +245,7 @@ function hordeBreakerProblem(input: {
   weaponAttack: boolean;
   args: { bonusAttack?: AnyBonusAttack; offHand?: boolean };
   besideEarlierTarget?: (earlierId: string) => boolean;
+  creaturesBeside?: (earlierId: string) => string[];
   targetId?: string;
 }): ToolError | null {
   const { sheet, budget } = input;
@@ -266,7 +269,13 @@ function hordeBreakerProblem(input: {
     return { error: "Horde Breaker's extra attack follows a weapon attack on another creature this turn; attack that creature first.", retry: true };
   }
   if (input.besideEarlierTarget && !earlier.some((id) => input.besideEarlierTarget?.(id))) {
-    return { error: "Horde Breaker's extra attack must target a creature within 5 feet of the creature attacked first. Ask the player which, unless they named one.", retry: true };
+    const beside = [...new Set(earlier.flatMap((id) => input.creaturesBeside?.(id) ?? []))];
+    return {
+      error: beside.length
+        ? `Horde Breaker's extra attack must target a creature within 5 feet of the creature attacked first: ${beside.join(", ")}. Ask the player which, unless they named one.`
+        : "Horde Breaker's extra attack must target a creature within 5 feet of the creature attacked first, and none stands there. They can make the attack without it.",
+      retry: true,
+    };
   }
   return null;
 }

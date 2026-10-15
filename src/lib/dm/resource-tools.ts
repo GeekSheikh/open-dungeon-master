@@ -9,9 +9,11 @@ import { computeSheetDerived } from "@/lib/srd";
 import {
   findBeastForm,
   formatCr,
+  formList,
   hitPointCeilingForCr,
   UNLISTED_FORM_MAX_AC,
   wildShapeCapsFor,
+  wildShapeForms,
   wildShapeHours,
 } from "@/lib/srd/beast-forms";
 import { isUnlimited, matchResource, RAGING, resourceLevel, type ResourceDef } from "@/lib/srd/class-resources";
@@ -597,37 +599,39 @@ export function computeUseResource(
     }
     case "wild_shape": {
       const name = (form?.name ?? "").trim();
-      if (!name) {
-        return {
-          error: `${def.displayName} needs the beast being assumed: pass form (e.g. 'wolf', 'brown bear'). Ask the player which, unless they named one.`,
-          retry: true,
-        };
-      }
-      // A known form loads its real stat block and is validated against the
-      // druid-level ceilings; Circle of the Moon raises the CR cap.
-      const known = findBeastForm(name);
       // Multiclass: the caps read the DRUID levels and the druid entry's
       // circle, not the character's summed level or primary subclass.
       const druidEntry = classListFor(sheet).find((entry) => entry.id.toLowerCase() === "druid");
       const druidLevel = classLevelFor(sheet, "druid") || sheet.level;
       const moonDruid = /moon/i.test(druidEntry?.subclass ?? sheet.subclass ?? "");
       const caps = wildShapeCapsFor(druidLevel, moonDruid);
+      // The forms they can take now, for every question and refusal below.
+      const offer = formList(wildShapeForms(caps));
+      if (!name) {
+        return {
+          error: `${def.displayName} needs the beast being assumed in form; at druid level ${druidLevel} ${sheet.name} can take: ${offer}. Ask the player which, unless they named one.`,
+          retry: true,
+        };
+      }
+      // A known form loads its real stat block and is validated against the
+      // druid-level ceilings; Circle of the Moon raises the CR cap.
+      const known = findBeastForm(name);
       if (known) {
         if (known.cr > caps.maxCr) {
           return {
-            error: `${known.name} is CR ${formatCr(known.cr)}; at level ${druidLevel}${moonDruid ? " (Circle of the Moon)" : ""} ${sheet.name} can Wild Shape into beasts of CR ${formatCr(caps.maxCr)} or lower. Offer a form within the limit.`,
+            error: `${known.name} is CR ${formatCr(known.cr)}; at level ${druidLevel}${moonDruid ? " (Circle of the Moon)" : ""} ${sheet.name} can Wild Shape into beasts of CR ${formatCr(caps.maxCr)} or lower: ${offer}. Offer a form within the limit.`,
             retry: true,
           };
         }
         if (known.fly && !caps.fly) {
           return {
-            error: `${known.name} has a flying speed; Wild Shape allows flying forms only from druid level 8. Offer a ground form instead.`,
+            error: `${known.name} has a flying speed; Wild Shape allows flying forms only from druid level 8. Offer a ground form instead: ${offer}.`,
             retry: true,
           };
         }
         if (known.swim && !caps.swim) {
           return {
-            error: `${known.name} has a swimming speed; Wild Shape allows swimming forms only from druid level 4. Offer a land form instead.`,
+            error: `${known.name} has a swimming speed; Wild Shape allows swimming forms only from druid level 4. Offer a land form instead: ${offer}.`,
             retry: true,
           };
         }
@@ -666,7 +670,7 @@ export function computeUseResource(
       const limits = `CR ${formatCr(caps.maxCr)} or lower${caps.fly ? "" : ", no flying forms"}${caps.swim ? "" : ", no swimming forms"}`;
       if (!form?.hp || !form?.ac || form.cr === undefined) {
         return {
-          error: `"${name}" is not in the beast-form table; pass formHp, formAc and formCr from its stat block (and formFlies or formSwims if it does). At druid level ${druidLevel} the form must be ${limits}.`,
+          error: `"${name}" is not in the beast-form table; pass formHp, formAc and formCr from its stat block (and formFlies or formSwims if it does). At druid level ${druidLevel} the form must be ${limits}; the table's forms within it: ${offer}.`,
           retry: true,
         };
       }

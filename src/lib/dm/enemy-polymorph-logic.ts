@@ -5,7 +5,7 @@
 // src/lib/db/enemy-form.ts.
 
 import { immutableForm } from "@/lib/dm/monster-traits";
-import { formatCr, type BeastForm } from "@/lib/srd/beast-forms";
+import { BEAST_FORMS, formatCr, formList, type BeastForm } from "@/lib/srd/beast-forms";
 import { xpForCr } from "@/lib/srd/encounter-math";
 import type { EnemyAttack, EnemySaveMods, EnemyStats, SaveAbility } from "@/lib/bestiary/statblock";
 import type { ToolError } from "@/lib/dm/tool-errors";
@@ -57,7 +57,7 @@ export function enemyShapeProblem(
   }
   const cap = enemyCr(enemy);
   if (form.cr > cap) {
-    return { error: `${form.name} is CR ${formatCr(form.cr)}, above the CR ${formatCr(cap)} ${rule.spell} allows for ${name}: the beast's challenge rating may be no higher than the creature's own. Nothing was spent; offer a lesser form.`, retry: true };
+    return { error: `${form.name} is CR ${formatCr(form.cr)}, above the CR ${formatCr(cap)} ${rule.spell} allows for ${name}: the beast's challenge rating may be no higher than the creature's own. Nothing was spent; offer a lesser form: ${formList(BEAST_FORMS.filter((entry) => entry.cr <= cap))}.`, retry: true };
   }
   return null;
 }

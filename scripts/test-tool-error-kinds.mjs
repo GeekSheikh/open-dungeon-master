@@ -306,7 +306,10 @@ await test("out of a fight: a missing ritual name and a missing form are asked f
   // Q5: a ritual needs its spell named.
   expect(await ai(world, "use_spell_slot", { characterId: mage.id, ritual: true }), "retry", /name the spell being cast/);
   // Q3: Wild Shape needs the beast.
-  expect(await ai(world, "use_resource", { characterId: druid.id, resource: "Wild Shape" }), "retry", /needs the beast being assumed/);
+  const asked = await ai(world, "use_resource", { characterId: druid.id, resource: "Wild Shape" });
+  expect(asked, "retry", /needs the beast being assumed in form; at druid level 2 Fern can take: .*Wolf \(CR 1\/4\)/);
+  assert.doesNotMatch(asked.error, /Brown Bear|Giant Eagle/, "a form above the druid's caps was offered");
+  expect(await ai(world, "use_resource", { characterId: druid.id, resource: "Wild Shape", form: "brown bear" }), "retry", /CR 1\/4 or lower: .*Wolf \(CR 1\/4\).*Offer a form within the limit/);
   // A beast of its own the table lacks asks for its stat block; it never becomes the Elk inside its name.
   expect(await ai(world, "use_resource", { characterId: druid.id, resource: "Wild Shape", form: "giant elk" }), "retry", /"giant elk" is not in the beast-form table/);
   // F1: a fight-only tool with no fight.

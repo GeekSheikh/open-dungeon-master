@@ -21,7 +21,7 @@ import { getActiveEncounter, getEnemy, type EncounterEnemy } from "@/lib/db/enco
 import { restoreOwnForm, writeEnemyForm } from "@/lib/db/enemy-form";
 import { spellFactsFor } from "@/lib/content";
 import { spellSaveDcFor, type CastingSheet } from "@/lib/srd";
-import { findBeastForm, formatCr } from "@/lib/srd/beast-forms";
+import { BEAST_FORMS, findBeastForm, formatCr, formList } from "@/lib/srd/beast-forms";
 import { conditionUntargetable } from "@/lib/srd/condition-effect-queries";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { rollEnemySave } from "@/lib/dm/forced-save";
@@ -32,7 +32,7 @@ import { castToNoEffect, spellReachProblem, spellWardOn } from "@/lib/dm/cast-re
 import { layOnEnemy } from "@/lib/dm/spell-riders";
 import { spellConditionMeta } from "@/lib/dm/spell-effects";
 import { publishEncounter } from "@/lib/dm/enemy-damage";
-import { beastEnemyStats, enemyShapeNoEffect, enemyShapeProblem, enemyShapeSpellFor } from "@/lib/dm/enemy-polymorph-logic";
+import { beastEnemyStats, enemyCr, enemyShapeNoEffect, enemyShapeProblem, enemyShapeSpellFor } from "@/lib/dm/enemy-polymorph-logic";
 import type { ToolResult } from "@/lib/dm/tool-errors";
 
 export { enemyShapeSpellFor };
@@ -76,8 +76,9 @@ export function castShapeAtEnemy(
   }
   const form = findBeastForm(input.variant ?? "");
   if (!form) {
+    const asked = input.variant?.trim() ? `The beast-form table holds no "${input.variant.trim()}"` : `${rule.spell} needs the beast in variant`;
     return {
-      error: `${rule.spell} needs the beast in variant, one the table knows (e.g. 'wolf', 'brown bear', 'giant spider'). Ask the caster's player which, unless they named one. Nothing was spent.`,
+      error: `${asked}; ${enemy.displayName} (CR ${formatCr(enemyCr(enemy))}) can become: ${formList(BEAST_FORMS.filter((entry) => entry.cr <= enemyCr(enemy)))}. Ask the caster's player which, unless they named one. Nothing was spent.`,
       retry: true,
     };
   }

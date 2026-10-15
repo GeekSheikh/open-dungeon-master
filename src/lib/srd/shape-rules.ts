@@ -12,7 +12,7 @@
 //
 // Pure: cast-buff.ts asks here before the slot is spent.
 
-import type { BeastForm } from "@/lib/srd/beast-forms";
+import { BEAST_FORMS, type BeastForm } from "@/lib/srd/beast-forms";
 import type { ToolError } from "@/lib/dm/tool-errors";
 
 export type ShapeRule = {
@@ -47,6 +47,11 @@ export function shapeProblem(rule: ShapeRule, form: BeastForm, target: { name: s
     return { error: `${form.name} is ${form.size}; ${rule.spell} allows a ${rule.maxSize} or smaller beast. Offer a smaller form.`, retry: true };
   }
   return null;
+}
+
+// The forms the spell may give this target.
+export function shapeForms(rule: ShapeRule, target: { name: string; level: number }, casterLevel: number): BeastForm[] {
+  return BEAST_FORMS.filter((form) => !shapeProblem(rule, form, target, casterLevel));
 }
 
 // The ability scores the form gives: the beast's, with the target's own

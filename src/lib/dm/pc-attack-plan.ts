@@ -241,9 +241,11 @@ export function planPcAttack(input: {
   );
   // An option that cannot ride this swing says the attack can go without
   // it; on a weapon swing the turn can no longer pay for, the turn's
-  // refusal is the true one (a spell's casting was asked above).
+  // refusal is the true one (a spell's casting was asked above). A swing
+  // that is not the Attack action's (a bonus, off-hand or Horde Breaker
+  // attack) is paid for its own way.
   const optionRefused = (refused: ToolError): { refused: ToolError } => {
-    if ("retry" in refused && budget && kind !== "spell" && !grantedBonusAction && !args.offHand && !args.bonusAttack) {
+    if ("retry" in refused && budget && kind !== "spell" && !grantedBonusAction && !args.offHand && !args.bonusAttack && !args.hordeBreaker) {
       const swing = spendAttack(budget, sheet.name, { unarmed: profile.weapon === "Unarmed strike" });
       if (!swing.ok) {
         return { refused: toolError(swing) };
@@ -361,6 +363,10 @@ export function planPcAttack(input: {
       const apart = tilesBetween(encounter.id, earlierId, enemy.id);
       return apart === null || apart <= 1;
     },
+    creaturesBeside: (earlierId) =>
+      listEnemies(encounter.id)
+        .filter((other) => other.status === "alive" && other.id !== earlierId && (tilesBetween(encounter.id, earlierId, other.id) ?? Infinity) <= 1)
+        .map((other) => other.displayName),
   });
   if ("refused" in checked) {
     return optionRefused(checked.refused);

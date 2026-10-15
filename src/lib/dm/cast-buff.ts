@@ -16,8 +16,8 @@ import { getSheetById, patchSheet } from "@/lib/db/sheets";
 import type { DmTurn } from "@/lib/db/dm-turns";
 import { publishPersisted } from "@/lib/events";
 import { findSpellByName, spellEngineName, spellFactsFor, spellMechanicsFor } from "@/lib/content";
-import { findBeastForm, formatCr } from "@/lib/srd/beast-forms";
-import { shapedAbilities, shapeProblem, shapeRuleFor } from "@/lib/srd/shape-rules";
+import { findBeastForm, formatCr, formList } from "@/lib/srd/beast-forms";
+import { shapedAbilities, shapeForms, shapeProblem, shapeRuleFor } from "@/lib/srd/shape-rules";
 import { conditionEffectsFor } from "@/lib/srd/condition-effects";
 import { applyDmMutation, castBarred } from "@/lib/dm/mutations";
 import { resolveEnemyRef } from "@/lib/dm/enemy-damage";
@@ -195,12 +195,6 @@ export function handleCastBuff(
   // whole stat block as a transformation (the wildShape machinery: beast HP
   // pool, stat override, natural attacks). Resolved before the slot spends.
   const polymorphForm = condition === "polymorphed" ? findBeastForm(args.variant ?? "") : null;
-  if (condition === "polymorphed" && !polymorphForm) {
-    return {
-      error: `${resolvedMech.name} needs a beast form the table knows: pass variant (e.g. 'giant ape', 'brown bear', 'tyrannosaurus rex'). Ask the player which, unless they named one.`,
-      retry: true,
-    };
-  }
   // A marking spell names its quarry among the enemies.
   const encounterNow = getActiveEncounter(campaign.id);
   const quarry =
@@ -248,11 +242,18 @@ export function handleCastBuff(
   // and Large (Animal Shapes), or the caster's level (Shapechange):
   // src/lib/srd/shape-rules.ts.
   const shapeRule = shapeRuleFor(engine);
+  if (condition === "polymorphed" && !polymorphForm) {
+    const asked = args.variant?.trim() ? `The beast-form table holds no "${args.variant.trim()}"` : `${resolvedMech.name} needs the beast in variant`;
+    return {
+      error: `${asked}; ${targetSheets[0].name} can become: ${formList(shapeForms(shapeRule, targetSheets[0], sheet.level))}. Ask the player which, unless they named one. Nothing was spent.`,
+      retry: true,
+    };
+  }
   if (polymorphForm) {
     for (const target of targetSheets) {
       const problem = shapeProblem(shapeRule, polymorphForm, target, sheet.level);
       if (problem) {
-        return { ...problem, error: `${problem.error.replace(`CR ${polymorphForm.cr}`, `CR ${formatCr(polymorphForm.cr)}`)} Nothing was spent.` };
+        return { ...problem, error: `${problem.error.replace(`CR ${polymorphForm.cr}`, `CR ${formatCr(polymorphForm.cr)}`)} Within it: ${formList(shapeForms(shapeRule, target, sheet.level))}. Nothing was spent.` };
       }
     }
   }

@@ -8,14 +8,14 @@ import type { DmTurn } from "@/lib/db/dm-turns";
 import { d20Expression, rollExpression } from "@/lib/dice";
 import { publishPersisted, publishWithSeq } from "@/lib/events";
 import { proficiencyBonus } from "@/lib/srd";
-import { findBeastForm } from "@/lib/srd/beast-forms";
+import { findBeastForm, findNamed } from "@/lib/srd/beast-forms";
 import { applyEnemyDamage, publishEncounter, resolveEnemyRef } from "@/lib/dm/enemy-damage";
 import { enemyAcWithEffects } from "@/lib/dm/ac-effects";
 import { petAttackCost } from "@/lib/dm/pet-attack-cost";
 import { resolveSheetRef } from "@/lib/dm/rolls";
 import type { CharacterSheet, SheetPet } from "@/lib/schemas/sheet";
 import { allSpellNames } from "@/lib/srd/spell-lists";
-import { FAMILIAR_FORMS } from "@/lib/srd/familiar-forms";
+import { FAMILIAR_FORMS, familiarOffer } from "@/lib/srd/familiar-forms";
 import { toolError, type ToolError, type ToolResult } from "@/lib/dm/tool-errors";
 
 // The creatures bound to a character: familiars (Find Familiar, Pact of the
@@ -240,18 +240,19 @@ export function buildPet(
         refused: "rules",
       };
     }
-    const wanted = args.form.trim().toLowerCase();
-    const form = FAMILIAR_FORMS.find((entry) => entry.form.toLowerCase() === wanted)
-      ?? FAMILIAR_FORMS.find((entry) => wanted.includes(entry.form.toLowerCase()));
+    const form = findNamed(FAMILIAR_FORMS, args.form, (entry) => entry.form);
     if (!form) {
+      const offer = familiarOffer(hasPactOfTheChain(sheet));
       return {
-        error: `Unknown familiar form "${args.form}". Offer: ${FAMILIAR_FORMS.filter((entry) => !entry.chainOnly).map((entry) => entry.form.toLowerCase()).join(", ")}${hasPactOfTheChain(sheet) ? ", imp, quasit, pseudodragon, sprite" : ""}.`,
+        error: args.form.trim()
+          ? `Unknown familiar form "${args.form.trim()}". The forms there are: ${offer}. Ask the player which, unless they named one.`
+          : `A familiar needs its form: ${offer}. Ask the player which, unless they named one.`,
         retry: true,
       };
     }
     if (form.chainOnly && !hasPactOfTheChain(sheet)) {
       return {
-        error: `A ${form.form} familiar needs Pact of the Chain; ${sheet.name} can take an ordinary form instead (${FAMILIAR_FORMS.filter((entry) => !entry.chainOnly).map((entry) => entry.form.toLowerCase()).join(", ")}). Ask the player which.`,
+        error: `A ${form.form} familiar needs Pact of the Chain; ${sheet.name} can take an ordinary form instead (${familiarOffer(false)}). Ask the player which.`,
         retry: true,
       };
     }
