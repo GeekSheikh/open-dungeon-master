@@ -1,7 +1,7 @@
 import { currentScene } from "@/lib/dm/sky";
 import { z } from "zod";
 import { capsFor, isErrorResponse, isLead, requireMember } from "@/lib/campaign-api";
-import { CAMPAIGN_DIFFICULTIES } from "@/lib/campaign-types";
+import { ADVENTURE_BEGINS_NOTE, CAMPAIGN_DIFFICULTIES } from "@/lib/campaign-types";
 import { deleteCampaignWithFiles } from "@/lib/campaign-deletion";
 import {
   allocateSeq,
@@ -295,9 +295,9 @@ export async function PATCH(
       seq,
       authorType: "system",
       glyph: "cue-bell",
-      content: humanDm
-        ? "The party is assembled and the adventure begins. The Dungeon Master opens the scene."
-        : "The party is assembled and the adventure begins. Introduce the opening scene, set the premise, and give the party their first decision.",
+      // The AI's instruction for the opening is the prompt's, not the
+      // table's (OPENING_SCENE_CUE in src/lib/dm/prompt.ts).
+      content: humanDm ? `${ADVENTURE_BEGINS_NOTE} The Dungeon Master opens the scene.` : ADVENTURE_BEGINS_NOTE,
     });
     publishWithSeq(campaignId, seq, "message_added", { message });
     // An assisted table asked for this in the wizard ("the AI fills this in

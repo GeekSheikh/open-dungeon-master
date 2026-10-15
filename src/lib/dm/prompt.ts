@@ -4,7 +4,7 @@ import { sceneIds } from "@/lib/ambience/catalog";
 import type { CampaignMessage } from "@/lib/db/messages";
 import type { StoredRoll } from "@/lib/db/rolls";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
-import { LEAD_NOTE_PREFIX, type CampaignMember } from "@/lib/campaign-types";
+import { ADVENTURE_BEGINS_NOTE, LEAD_NOTE_PREFIX, OPENING_SCENE_CUE, type CampaignMember } from "@/lib/campaign-types";
 import { heldRollUserIds } from "@/lib/dice/held-rolls";
 import { computeSheetDerived, findSkill, formatModifier, sizeForRace, speedFor, SRD_SKILLS } from "@/lib/srd";
 import { encumbranceFor } from "@/lib/srd/encumbrance";
@@ -1425,7 +1425,9 @@ export function buildDmMessages(
             ? `[Authoritative direction from the party lead; weave it into the story now] ${message.content.slice(LEAD_NOTE_PREFIX.length)}`
             : message.content.startsWith(OFFER_NOTE_PREFIX)
               ? `[An offer was settled by the player's own answer; authoritative, and never to be offered or asked again] ${message.content.slice(OFFER_NOTE_PREFIX.length)}`
-              : `[Table note] ${message.content}`
+              : message.content === ADVENTURE_BEGINS_NOTE
+                ? `[Table note] ${ADVENTURE_BEGINS_NOTE} ${OPENING_SCENE_CUE}`
+                : `[Table note] ${message.content}`
           : message.content.startsWith('"') || message.content.startsWith("(ooc)")
             ? `[${name}] ${message.content}`
             : `[${name} | attempt] ${message.content}`;
