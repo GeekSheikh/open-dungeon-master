@@ -1,4 +1,5 @@
 import { readiedHeld } from "@/lib/dm/readied-kinds";
+import { findNamed } from "@/lib/srd/beast-forms";
 import { carriedLight, lightPlacement } from "@/lib/dm/light-timers";
 import { getClock } from "@/lib/db/clock";
 import type { Campaign } from "@/lib/db/campaigns";
@@ -235,15 +236,25 @@ function resolveAnyToken(
     return getTokenByRef(map.id, sheet.id);
   }
   const enemies = listEnemies(encounterId);
-  const enemy =
-    enemies.find((entry) => entry.id === trimmed) ??
-    enemies.find((entry) => entry.displayName.toLowerCase() === trimmed.toLowerCase()) ??
-    enemies.find((entry) => entry.displayName.toLowerCase().includes(trimmed.toLowerCase()));
-  if (enemy) {
-    return getTokenByRef(map.id, enemy.id);
+  const byId = enemies.find((entry) => entry.id === trimmed);
+  if (byId) {
+    return getTokenByRef(map.id, byId.id);
   }
-  // The DM's own pieces, by name.
-  return listTokens(map.id).find((token) => token.name.toLowerCase() === trimmed.toLowerCase()) ?? null;
+  // An enemy or one of the DM's own pieces by its name, or by a part of one
+  // name only (beast-forms.ts findNamed): "goblin" with Goblin 1 and Goblin 2
+  // on the board is neither, and is asked again (unknownCombatant).
+  const named = [
+    ...enemies.map((enemy) => ({ name: enemy.displayName, token: () => getTokenByRef(map.id, enemy.id) })),
+    ...listTokens(map.id)
+      .filter((token) => token.kind !== "pc" && token.kind !== "enemy")
+      .map((token) => ({ name: token.name, token: () => token })),
+  ];
+  return findNamed(named, trimmed, (entry) => entry.name)?.token() ?? null;
+}
+
+// A name the board holds no single token for: the names it does hold.
+function unknownCombatant(map: BattleMap, name: string): ToolError {
+  return { error: `No single combatant on the battle map is called "${name}"; it holds ${listTokens(map.id).map((token) => token.name).join(", ")}.`, retry: true };
 }
 
 export function handleTeleportToken(
@@ -271,7 +282,7 @@ export function handleTeleportToken(
   }
   const token = resolveAnyToken(map, board.id, args.tokenName, sheets, sheetsById);
   if (!token) {
-    return { error: `Unknown combatant "${args.tokenName}"; use a name from the battle map.`, retry: true };
+    return unknownCombatant(map, args.tokenName);
   }
   if (args.x < 0 || args.y < 0 || args.x >= map.width || args.y >= map.height) {
     return { error: `(${args.x},${args.y}) is outside the ${map.width}x${map.height} map.`, retry: true };
@@ -347,7 +358,7 @@ export function handleSetMovement(
   }
   const token = resolveAnyToken(map, board.id, args.tokenName, sheets, sheetsById);
   if (!token) {
-    return { error: `Unknown combatant "${args.tokenName}"; use a name from the battle map.`, retry: true };
+    return unknownCombatant(map, args.tokenName);
   }
   if (token.movement === args.movement) {
     return { ok: true, name: token.name, movement: args.movement, note: "Already so." };
@@ -479,7 +490,7 @@ export function handleMoveToken(
   }
   const resolved = resolveMoveTarget(map, encounter.id, args.tokenName, sheets, sheetsById);
   if (!resolved) {
-    return { error: `Unknown combatant "${args.tokenName}"; use a name from the battle map.`, retry: true };
+    return unknownCombatant(map, args.tokenName);
   }
   if (resolved.kind === "pc" && !args.forced) {
     // An AI companion walks on its own turn as a player walks from the
