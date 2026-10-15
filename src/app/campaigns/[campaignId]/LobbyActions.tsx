@@ -27,7 +27,16 @@ function SeatOffer({ campaignId, wide = false }: { campaignId: string; wide?: bo
       .catch(() => setHeroes([]));
   }, []);
   const page = `/campaigns/${campaignId}/character`;
-  if (!heroes?.length) {
+  if (heroes === null) {
+    // Held in place until the library answers, so the button under a thumb
+    // does not change its mind mid-tap.
+    return (
+      <span aria-hidden="true" className={cn(ui.btnPrimary, "invisible", wide ? "w-full" : "px-6")}>
+        Create your character
+      </span>
+    );
+  }
+  if (!heroes.length) {
     return (
       <Link href={page} className={cn(ui.btnPrimary, wide ? "w-full" : "px-6")}>
         Create your character
