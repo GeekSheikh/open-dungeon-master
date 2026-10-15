@@ -9,6 +9,7 @@ import { loreExcerpt, renderLoreBlock, type LoreTrace, type WorldLoreEntry } fro
 import { loreBudgetChars, selectLore, type LoreMoment } from "@/lib/dm/lore-selection";
 import { computeBudgets, promptWindowTokens } from "@/lib/dm/context-budget";
 import { selectRuleChunks } from "@/lib/dm/rules-activation-logic";
+import { isNarration } from "@/lib/dm/ooc-question";
 import { renderHouseRules, renderVariantRules } from "@/lib/dm/rules-logic";
 import { computeIdf, fuseRanked, lexicalScore } from "@/lib/dm/fusion-logic";
 
@@ -49,7 +50,7 @@ function buildMoment(campaign: Campaign, history: CampaignMessage[]): LoreMoment
     const message = history[index];
     if (message.authorType === "player") {
       playerLines.unshift(message.content.slice(0, 400));
-    } else if (message.authorType === "dm" && playerLines.length) {
+    } else if (isNarration(message) && playerLines.length) {
       break;
     }
   }

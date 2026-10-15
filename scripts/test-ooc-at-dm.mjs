@@ -6,12 +6,16 @@
 import assert from "node:assert/strict";
 import { openWorld } from "./lib/enforce-world.mjs";
 import { suite } from "./lib/enforce-harness.mjs";
-import { fakeModel, reply } from "./lib/enforce-narrator.mjs";
+import { failure, fakeModel, reply } from "./lib/enforce-narrator.mjs";
 
 const { test, finish } = suite("test-ooc-at-dm");
 
-const { addressesDm, oocQuestionPending, oocAnswer, OOC_ANSWER_INSTRUCTION } = await import("../src/lib/dm/ooc-question.ts");
-const { listRecentMessages } = await import("../src/lib/db/messages.ts");
+const { addressesDm, isNarration, oocQuestionPending, oocAnswer, OOC_ANSWER_INSTRUCTION, OOC_UNANSWERED_PREFIX } = await import(
+  "../src/lib/dm/ooc-question.ts"
+);
+const { getLatestDmMessage, listRecentMessages } = await import("../src/lib/db/messages.ts");
+const { setFloor } = await import("../src/lib/db/campaigns.ts");
+const { declaredThisTurn } = await import("../src/lib/dm/player-word.ts");
 const { getLatestDmTurnId } = await import("../src/lib/db/dm-turns.ts");
 const { dmQueueDepth } = await import("../src/lib/dm/queue.ts");
 const { getDmStatus } = await import("../src/lib/dm/status.ts");
@@ -37,6 +41,18 @@ await test("Only table talk since the DM last spoke, one line naming the DM, mak
   assert.equal(oocQuestionPending([dm, ask, move]), false, "a move since makes it a real turn");
   assert.equal(oocQuestionPending([dm, note, ask]), false, "an End Turn's note since makes it a real turn");
   assert.equal(oocQuestionPending([ask, dm]), false, "already answered");
+  // A spotlight still waiting on others holds the moves already in, so a
+  // question among them is still only a question.
+  assert.equal(oocQuestionPending([dm, move, ask], { heldMoves: true }), true, "a held spotlight answer");
+  assert.equal(oocQuestionPending([dm, move, note, ask], { heldMoves: true }), false, "an End Turn's note is still a real turn");
+  // A question that got no answer leaves a table note; asking again is
+  // still only a question.
+  const unanswered = { authorType: "system", content: `${OOC_UNANSWERED_PREFIX}. Ask again, or carry on.` };
+  assert.equal(oocQuestionPending([dm, ask, unanswered, ask]), true, "asked again after a failure");
+  const answer = { authorType: "dm", content: "(ooc) Yes." };
+  assert.equal(isNarration(dm), true);
+  assert.equal(isNarration(answer), false, "an out-of-character answer is not narration");
+  assert.equal(isNarration(ask), false);
   assert.equal(oocAnswer("(ooc) Yes, with a DC 12 Athletics check."), "(ooc) Yes, with a DC 12 Athletics check.");
   assert.equal(oocAnswer("OOC: The bell is out of reach."), "(ooc) The bell is out of reach.", "Codex's own label");
   assert.equal(oocAnswer("(ooc) OOC - not yet."), "(ooc) not yet.");
@@ -98,6 +114,8 @@ await test("@DM gets an out-of-character answer at once: one call with no tools,
   assert.equal(stored.dmTurnId ?? null, null, "the answer is linked to a turn");
   assert.equal(getLatestDmTurnId(world.campaignId), turnBefore, "the answer made a turn row");
   assert.equal(getDmStatus(world.campaignId), "idle");
+  // The passage a reroll or a Continue takes is still the story's last one.
+  assert.equal(getLatestDmMessage(world.campaignId)?.content, "A rope bridge sways over the gorge, its middle planks gone.");
 });
 
 await test("The next move is a real turn, and the DM has its own answer in front of it.", async () => {
@@ -106,6 +124,42 @@ await test("The next move is a real turn, and the DM has its own answer in front
   assert.equal(model.served(), 1);
   assert.ok(model.requests[0].tools?.length, "a move ran without the DM's tools");
   assert.match(JSON.stringify(model.requests[0].messages), /about ten feet/);
+});
+
+await test("A question while a spotlight waits on another player is answered, and the moves already in wait for the last answer.", async () => {
+  const bram = world.addHero({ name: "Bram", class: "rogue", level: 1 });
+  const bramUser = world.sheet(bram.id).userId;
+  world.say("dm", "The far ledge crumbles. Kara, Bram: what do you do?");
+  setFloor(world.campaignId, { mode: "spotlight", userIds: [userId, bramUser], prompt: "What do you do?", respondedUserIds: [] });
+  model.script([]);
+  assert.equal(await act(world, userId, "I throw my rope to the far post.", "do"), 202);
+  assert.equal(model.served(), 0, "the spotlight still waits on Bram");
+  model.script([reply({ text: "The post looks solid enough to hold one of you at a time." })]);
+  assert.equal(await act(world, bramUser, "@DM would the post hold both of us?", "ooc"), 202);
+  assert.equal(model.served(), 1);
+  assert.ok(!model.requests[0].tools?.length, "the question ran a real turn while the spotlight waited");
+  assert.match(said().at(-1)[1], /^\(ooc\) The post looks solid/);
+  assert.equal(declaredThisTurn(world.campaignId, kara.id), true, "the answer took Kara's move from the turn");
+  model.script([reply({ text: "Kara's rope snaps taut around the post, and Bram goes first." })]);
+  assert.equal(await act(world, bramUser, "I cross on the rope first.", "do"), 202);
+  assert.equal(model.served(), 1, "the last answer wakes the turn");
+  assert.ok(model.requests[0].tools?.length);
+  assert.match(JSON.stringify(model.requests[0].messages), /throw my rope/);
+});
+
+await test("A question the backend could not answer says so, and asking again is still a question.", async () => {
+  model.script([failure(500), failure(500), failure(500), failure(500)]);
+  assert.equal(await act(world, userId, "@DM is the rope still there?", "ooc"), 202);
+  assert.ok(model.served() >= 1);
+  const [author, content] = said().at(-1);
+  assert.equal(author, "system");
+  assert.ok(content.startsWith(OOC_UNANSWERED_PREFIX), content);
+  assert.equal(getDmStatus(world.campaignId), "idle");
+  model.script([reply({ text: "It is, tied off on this side." })]);
+  assert.equal(await act(world, userId, "@DM is the rope still there?", "ooc"), 202);
+  assert.equal(model.served(), 1);
+  assert.ok(!model.requests[0].tools?.length, "asking again ran a real turn");
+  assert.deepEqual(said().at(-1), ["dm", "(ooc) It is, tied off on this side."]);
 });
 
 await test("@DM in a fight answers and moves nothing: the turn, the round and the floor stay where they were.", async () => {

@@ -42,7 +42,7 @@ import { imagesAvailable } from "@/lib/capabilities";
 import { imageProducerReady } from "@/lib/image-generate";
 import { enqueueNarrationAudio } from "@/lib/tts";
 import { requestDmMessage } from "@/lib/dm/model";
-import { OOC_ANSWER_INSTRUCTION, oocAnswer, oocQuestionPending } from "@/lib/dm/ooc-question";
+import { OOC_ANSWER_INSTRUCTION, OOC_UNANSWERED_PREFIX, oocAnswer, oocQuestionPending } from "@/lib/dm/ooc-question";
 import { releaseHarnessConversation } from "@/lib/harness/bridge";
 import { toMcpTools } from "@/lib/harness/render";
 import { setDmStatus } from "@/lib/dm/status";
@@ -414,7 +414,13 @@ export async function startDmTurn(campaignId: string) {
   // Table talk put to the DM and nothing else since it last spoke: the turn
   // is an out-of-character answer, which spends nothing a real turn would
   // (src/lib/dm/ooc-question.ts).
-  const oocOnly = !pendingWhispers.length && oocQuestionPending(history);
+  //
+  // A spotlight still waiting on other players holds the moves already in
+  // for the turn its last answer wakes, so a question asked meanwhile is
+  // still only a question.
+  const floor = getFloor(campaignId);
+  const spotlightWaiting = floor.mode === "spotlight" && !floor.userIds.every((id) => floor.respondedUserIds.includes(id));
+  const oocOnly = !pendingWhispers.length && oocQuestionPending(history, { heldMoves: spotlightWaiting });
 
   const context = loadContext(campaign);
   // Combat can never wedge on missing initiative: when nothing is pending,
@@ -1688,18 +1694,33 @@ function cardPlayed(
 async function answerOutOfCharacter(campaign: Campaign, conversation: DmTurn["conversation"]) {
   const campaignId = campaign.id;
   const seq = allocateSeq(campaignId);
-  const { message, error } = await requestDmMessage(
-    campaign.settings,
-    [...conversation, { role: "user", content: OOC_ANSWER_INSTRUCTION }],
-    { tools: [], toolChoice: "none", harness: { campaignId, turn: true }, thinking: false },
-  );
-  const answer = error ? "" : stripToolText(extractStoryText(message?.content)).trim();
-  if (answer) {
-    // No speech: an aside is not read aloud as narration.
-    const inserted = insertCampaignMessage({ campaignId, seq, authorType: "dm", content: oocAnswer(answer).slice(0, 4_000), speech: [] });
-    publishWithSeq(campaignId, allocateSeq(campaignId), "message_added", { message: inserted });
+  try {
+    const { message, error } = await requestDmMessage(
+      campaign.settings,
+      [...conversation, { role: "user", content: OOC_ANSWER_INSTRUCTION }],
+      { tools: [], toolChoice: "none", harness: { campaignId, turn: true }, thinking: false },
+    );
+    const answer = error ? "" : stripToolText(extractStoryText(message?.content)).trim();
+    if (answer) {
+      // No speech: an aside is not read aloud as narration.
+      const inserted = insertCampaignMessage({ campaignId, seq, authorType: "dm", content: oocAnswer(answer).slice(0, 4_000), speech: [] });
+      publishWithSeq(campaignId, allocateSeq(campaignId), "message_added", { message: inserted });
+      return;
+    }
+    // A question that got no answer says so, rather than leaving the player
+    // waiting on one that never comes.
+    const failure = error ? ((await error.json().catch(() => null)) as { error?: string } | null)?.error : "";
+    const notice = insertCampaignMessage({
+      campaignId,
+      seq,
+      authorType: "system",
+      glyph: "cue-bell",
+      content: `${OOC_UNANSWERED_PREFIX}${failure ? ` (${failure.slice(0, 300)})` : ""}. Ask again, or carry on.`,
+    });
+    publishWithSeq(campaignId, allocateSeq(campaignId), "message_added", { message: notice });
+  } finally {
+    setDmStatus(campaignId, "idle");
   }
-  setDmStatus(campaignId, "idle");
 }
 
 // The last call goes out with toolChoice "none", yet some servers still

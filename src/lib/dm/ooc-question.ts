@@ -22,12 +22,18 @@ export function addressesDm(text: string): boolean {
 
 type Line = { authorType: string; content: string };
 
+// The table note left when the answer could not be had. It is not a move,
+// so asking again is still only a question.
+export const OOC_UNANSWERED_PREFIX = "The Dungeon Master could not answer that out of character";
+
 // Whether the turn about to run is only an answer to table talk put to the
 // DM: everything since the DM last spoke is a player's out-of-character line,
 // and one of them names the DM. Anything else since (a move, a table note
 // from an End Turn, a roll's line) is a real turn, which answers the
-// question with the rest.
-export function oocQuestionPending(history: readonly Line[]): boolean {
+// question with the rest. `heldMoves`: a spotlight still waits on other
+// players, so the moves already in are held for the turn its last answer
+// wakes, and a question among them is still only a question.
+export function oocQuestionPending(history: readonly Line[], { heldMoves = false } = {}): boolean {
   let lastDm = -1;
   for (let index = history.length - 1; index >= 0; index -= 1) {
     if (history[index].authorType === "dm") {
@@ -35,12 +41,21 @@ export function oocQuestionPending(history: readonly Line[]): boolean {
       break;
     }
   }
-  const since = history.slice(lastDm + 1);
+  const since = history
+    .slice(lastDm + 1)
+    .filter((line) => !(line.authorType === "system" && line.content.startsWith(OOC_UNANSWERED_PREFIX)));
   return (
-    since.length > 0 &&
-    since.every((line) => line.authorType === "player" && line.content.startsWith(OOC_PREFIX)) &&
-    since.some((line) => addressesDm(line.content))
+    since.some((line) => line.authorType === "player" && line.content.startsWith(OOC_PREFIX) && addressesDm(line.content)) &&
+    since.every((line) => line.authorType === "player" && (heldMoves || line.content.startsWith(OOC_PREFIX)))
   );
+}
+
+// A DM line that is story: anything the DM wrote but an out-of-character
+// answer. "Since the DM last narrated" (the moves a turn answers, the newest
+// passage a reroll may take, a join notice still unanswered) is counted from
+// these, so a question answered in between changes none of it.
+export function isNarration(line: Line): boolean {
+  return line.authorType === "dm" && !isOocAnswer(line.content);
 }
 
 // The DM's answer is stored as table talk too, so the transcript, the prompt
