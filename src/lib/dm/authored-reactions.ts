@@ -291,8 +291,9 @@ function resolve(ctx: Ctx, found: Found): ToolResult | ToolError {
       if (!does.types.includes(type)) {
         return { error: `${reaction.name} answers ${does.types.join(", ")} damage; the hit on ${target.name} was ${type || "untyped"}. Nothing was spent.`, refused: "rules" };
       }
+      // Resistance does not stack: the reaction is taken, and changes nothing.
       if (pcResistances(target).includes(type)) {
-        return { error: `${target.name} already resists ${type} damage. Nothing was spent.`, refused: "rules" };
+        return { applied: `${target.name} already resists ${type} damage: ${reaction.name} changes nothing.` };
       }
       const corrected = hit.record.swings.map((entry) => (lower(entry.type ?? hit.record.type) === type && entry.hit ? { ...entry, raw: Math.floor(entry.raw / 2) } : entry));
       const settled = settle(ctx, hit.record, corrected, label);

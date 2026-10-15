@@ -55,9 +55,6 @@ export function enemyShapeProblem(
   if (enemy.stats.polymorphedFrom) {
     return { error: `${name} is already a ${enemy.stats.polymorphedFrom.form} under ${enemy.stats.polymorphedFrom.spell}; it takes no second form until that one ends. Nothing was spent.`, refused: "rules" };
   }
-  if (enemy.currentHp <= 0) {
-    return { error: `${rule.spell} has no effect on a creature at 0 hit points, and ${name} is at 0. Ask the player for another target. Nothing was spent.`, retry: true };
-  }
   const cap = enemyCr(enemy);
   if (form.cr > cap) {
     return { error: `${form.name} is CR ${formatCr(form.cr)}, above the CR ${formatCr(cap)} ${rule.spell} allows for ${name}: the beast's challenge rating may be no higher than the creature's own. Nothing was spent; offer a lesser form.`, retry: true };
@@ -67,7 +64,10 @@ export function enemyShapeProblem(
 
 // Why the spell, cast at this creature, has no effect on it, or null: it is
 // cast, and spent, all the same (SRD 5.1).
-export function enemyShapeNoEffect(rule: EnemyShapeSpell, enemy: { displayName: string; stats: EnemyStats }): string | null {
+export function enemyShapeNoEffect(rule: EnemyShapeSpell, enemy: { displayName: string; currentHp: number; stats: EnemyStats }): string | null {
+  if (enemy.currentHp <= 0) {
+    return `${enemy.displayName} is at 0 hit points: ${rule.spell} has no effect on it.`;
+  }
   // Immutable Form (the golems): no spell alters its form.
   if (immutableForm(enemy.stats)) {
     return `${enemy.displayName} has Immutable Form, immune to any spell that would alter its form: ${rule.spell} has no effect on it.`;

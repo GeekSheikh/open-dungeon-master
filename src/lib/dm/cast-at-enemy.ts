@@ -238,8 +238,7 @@ export function handleCastAtEnemy(
   // nothing; one that also deals damage deals it, the condition dropped
   // where it is laid (src/lib/dm/spell-riders.ts layOnEnemy).
   const immune = immuneTo && !pool && !guessed ? `${enemy.displayName} is immune to ${immuneTo}: ${spellName} has no effect on it.` : null;
-  // Hold Person holds a humanoid and nothing else; Command does nothing to
-  // the undead.
+  // Hold Person holds a humanoid and nothing else.
   const creatureType = (enemy.stats.type ?? "").toLowerCase();
   // A stat block that names no type is not refused on a guess.
   if (creatureType && mech?.targetTypes?.length && !mech.targetTypes.some((type) => creatureType.includes(type))) {
@@ -248,12 +247,9 @@ export function handleCastAtEnemy(
       refused: "rules",
     };
   }
-  if (creatureType && mech?.immuneTypes?.some((type) => creatureType.includes(type))) {
-    return {
-      error: `${spellName} has no effect on ${creatureType} creatures, and ${enemy.displayName} is one. Nothing was spent; pick another target or another spell.`,
-      refused: "rules",
-    };
-  }
+  // Hold Monster and Command on the undead, Blight on a construct: cast, and
+  // spent, to no effect (SRD 5.1).
+  const spared = creatureType && mech?.immuneTypes?.some((type) => creatureType.includes(type)) ? `${spellName} has no effect on ${creatureType} creatures, and ${enemy.displayName} is one.` : null;
   if (args.overchannel) {
     const problem = overchannelProblem(sheet, facts, Boolean(named?.dice ?? callerDice));
     if (problem) {
@@ -321,10 +317,10 @@ export function handleCastAtEnemy(
     ...(cast.shares ? { shares: cast.shares } : {}),
     ...(cast.continuing ? { continuing: cast.continuing } : {}),
   };
-  // A ward around the target, an immunity to the spell's condition, or
-  // Limited Magic Immunity (the rakshasa, src/lib/dm/monster-traits.ts): the
+  // A ward around the target, an immunity to the spell's condition or
+  // creature type, or Limited Magic Immunity (the rakshasa, src/lib/dm/monster-traits.ts): the
   // spell is cast, and spent, and does nothing to it (SRD 5.1).
-  const noEffect = ward ?? immune ?? magicImmunityNote(enemy, spellName, slotLevel ?? facts?.level ?? 0);
+  const noEffect = ward ?? immune ?? spared ?? magicImmunityNote(enemy, spellName, slotLevel ?? facts?.level ?? 0);
   if (noEffect) {
     return { ok: true, ...base, noEffect, note: `${noEffect} Narrate exactly this.` };
   }
