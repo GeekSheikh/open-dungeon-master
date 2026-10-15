@@ -29,7 +29,7 @@ export type LineageSlide = LineageEntry & {
   info: { text?: string | null; reference?: ContentRef };
 };
 
-const sectionLabel = "mb-1.5 block font-display text-[8.5px] font-semibold uppercase tracking-[0.2em] text-amber-500/80";
+const sectionLabel = "mb-1.5 block font-display text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-amber-500/80";
 
 function Traits({ slide }: { slide: LineageSlide }) {
   const baseId = useId();
@@ -54,7 +54,7 @@ function Traits({ slide }: { slide: LineageSlide }) {
         const head = (
           <span className="flex w-full items-center gap-2.5 px-3 py-2">
             <span
-              className="flex size-[22px] shrink-0 items-center justify-center rounded-full border border-amber-500/40 bg-amber-950/50 font-mono text-[9px] text-amber-300"
+              className="flex size-[22px] shrink-0 items-center justify-center rounded-full border border-amber-500/40 bg-amber-950/50 font-mono text-[0.6875rem] text-amber-300"
               aria-hidden="true"
             >
               {index + 1}
@@ -152,7 +152,7 @@ export function LineageCarousel({
         <span className="flex min-w-0 flex-col">
           <span className="truncate uppercase tracking-[0.14em]">{slide.name}</span>
           {slide.canonical ? (
-            <span className="font-mono text-[10px] normal-case tracking-normal text-stone-500">
+            <span className="font-mono text-[0.6875rem] normal-case tracking-normal text-stone-500">
               {slide.canonical} in the rules
             </span>
           ) : null}
@@ -172,16 +172,16 @@ export function LineageCarousel({
             <span className="truncate">{prev.name}</span>
           </button>
           <span className="flex min-w-0 flex-col items-center gap-0.5 text-center">
-            <span className="font-mono text-[9.5px] text-stone-500" aria-live="polite">
+            <span className="font-mono text-[0.6875rem] text-stone-500" aria-live="polite">
               {index + 1} / {slides.length}
             </span>
             {slide.recommended ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-400/10 px-1.5 py-px font-display text-[8px] font-bold uppercase tracking-[0.12em] text-amber-300">
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-400/10 px-1.5 py-px font-display text-[0.6875rem] font-bold uppercase tracking-[0.12em] text-amber-300">
                 <Star className="size-2.5 fill-current" aria-hidden="true" />
                 Recommended
               </span>
             ) : null}
-            {slide.group ? <span className="truncate font-mono text-[9px] text-stone-500">{slide.group}</span> : null}
+            {slide.group ? <span className="truncate font-mono text-[0.6875rem] text-stone-500">{slide.group}</span> : null}
           </span>
           <button type="button" onClick={() => step(1)} className={navButton} aria-label={`Next: ${next.name}`}>
             <span className="truncate">{next.name}</span>
@@ -207,7 +207,7 @@ export function LineageCarousel({
               </div>
               <dl className="flex flex-col gap-[3px]">
                 {facts.map((fact) => (
-                  <div key={fact.key} className="flex items-baseline justify-between gap-2 font-mono text-[10px] text-stone-500">
+                  <div key={fact.key} className="flex items-baseline justify-between gap-2 font-mono text-[0.6875rem] text-stone-500">
                     <dt>{fact.key}</dt>
                     <dd className="text-stone-200">{fact.value}</dd>
                   </div>
