@@ -2,9 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { GameTerm } from "@/components/ui/GameTerm";
+import { cn } from "@/lib/cn";
 import { InfoButton, InfoDialog } from "@/components/ui/InfoDialog";
 import { describeFeature, describeSkill } from "@/lib/help";
 import { firstSentence } from "@/lib/help/rules-text";
+import { CLASS_ROLES, classRoles, type ClassRole } from "@/lib/srd/class-roles";
 import { subclassBlurb } from "@/lib/srd/features";
 import { SRD_SKILLS } from "@/lib/srd";
 import { displayName, type Reskinned } from "@/lib/worlds/reskin-logic";
@@ -60,6 +62,9 @@ export function CallingStep({
   const { effectiveLevel, grantedFeatures } = derived;
   const { gender } = state;
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
+  // Narrows the grid to one job in a fight, so a player who knows "I want to
+  // tank" finds every class that does it, the setting's own among them.
+  const [roleFilter, setRoleFilter] = useState<ClassRole | null>(null);
   // The skills already the character's from race or background, and the
   // source each came from: the same map the toggle refuses by, so every
   // greyed pill says why (issue #109).
@@ -74,13 +79,29 @@ export function CallingStep({
     [race, background, state.racialSkills, state.backgroundSkills],
   );
 
+  // Each class's job in a fight and which of the core four it plays like
+  // (src/lib/srd/class-roles.ts).
+  const readings = useMemo(
+    () =>
+      new Map(
+        classGroups.flatMap((group) =>
+          group.options.map((option) => [
+            option.id,
+            classRoles(classes.find((candidate) => candidate.id === option.id) ?? { id: option.id }),
+          ]),
+        ),
+      ),
+    [classGroups, classes],
+  );
+  const rolesOffered = CLASS_ROLES.filter((role) => [...readings.values()].some((reading) => reading.roles.includes(role)));
   const cardGroups = useMemo<OptionCardGroup[]>(
     () =>
       classGroups.map((group) => ({
         label: group.label,
         recommended: group.recommended,
-        options: group.options.map((option) => {
+        options: group.options.filter((option) => !roleFilter || readings.get(option.id)?.roles.includes(roleFilter)).map((option) => {
           const entry = classes.find((candidate) => candidate.id === option.id);
+          const reading = readings.get(option.id);
           // Under a reskin the canonical class name leads the tagline, the
           // same fact the dropdown kept in its meta column.
           const canonical = entry?.packName ? option.meta?.split(" · ")[1] : undefined;
@@ -91,18 +112,29 @@ export function CallingStep({
             art: classArt(option.id, gender),
             // The book leads where the group heading does not say it
             // (issue #116: a Marshal looked like a Core Rules class).
-            tagline: [canonical, option.source, entry ? `Saves ${entry.saves.map((save) => save.toUpperCase()).join(" ")}` : ""]
+            // "Plays like Fighter + Cleric" leads: it says what the class is
+            // in words a new player and a veteran new to the setting both read.
+            tagline: [
+              canonical,
+              // One of the core four says so rather than "Wizard: plays like Wizard".
+              reading
+                ? reading.playsLike.toLowerCase() === option.id.toLowerCase()
+                  ? "One of the core four"
+                  : `Plays like ${reading.playsLike}${reading.suggested ? " (suggested)" : ""}`
+                : "",
+              option.source,
+              entry?.spellAbility ? `${entry.spellAbility.toUpperCase()} caster` : "",
+              entry ? `Saves ${entry.saves.map((save) => save.toUpperCase()).join(" ")}` : "",
+            ]
               .filter(Boolean)
               .join(" · "),
-            chips: entry
-              ? [`d${entry.hitDie}`, ...(entry.spellAbility ? [`${entry.spellAbility.toUpperCase()} caster`] : [])]
-              : [],
+            chips: [...(reading?.roles ?? []), ...(entry ? [`d${entry.hitDie}`] : [])],
             icon: { kind: "family" as const, key: `class-${option.id}` },
           };
         }),
       })),
-    [classGroups, classes, gender],
-  );
+    [classGroups, classes, gender, readings, roleFilter],
+  ).filter((group) => group.options.length);
   const details = detailsFor
     ? classGroups.flatMap((group) => group.options).find((option) => option.id === detailsFor)
     : undefined;
@@ -131,6 +163,27 @@ export function CallingStep({
                 reference={{ kind: "classes", slug: klass.id }}
               />
             </span>
+          ) : null}
+          {rolesOffered.length > 1 ? (
+            <div className="mb-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Show classes by role">
+              <span className="text-xs text-stone-400">Role:</span>
+              {[null, ...rolesOffered].map((role) => (
+                <button
+                  key={role ?? "all"}
+                  type="button"
+                  aria-pressed={roleFilter === role}
+                  onClick={() => setRoleFilter(role)}
+                  className={cn(
+                    "min-h-9 rounded-full border px-3 text-xs transition-colors",
+                    roleFilter === role
+                      ? "border-amber-500/70 bg-amber-500/15 text-amber-100"
+                      : "border-stone-700 text-stone-300 hover:border-amber-500/40",
+                  )}
+                >
+                  {role ?? "All"}
+                </button>
+              ))}
+            </div>
           ) : null}
           <OptionCardGrid
             groups={cardGroups}
