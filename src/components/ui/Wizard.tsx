@@ -120,12 +120,23 @@ export function Wizard({
   const labelOf = (s: WizardStep, index: number) =>
     s.label ?? (typeof s.title === "string" ? s.title : `Step ${index + 1}`);
 
-  const go = (next: number) => {
+  // The furthest step reached so far. The wipe marks progress: it plays on
+  // Continue into a step not yet seen, and every other move (Back, a
+  // diamond, "Show me", a second pass) changes step at once, so fixing a
+  // pick never costs the ceremony twice.
+  const reached = useRef(step);
+  useEffect(() => {
+    reached.current = Math.max(reached.current, step);
+  }, [step]);
+  const go = (next: number, progress = false) => {
     // With the wipe on, the step changes once the pane has gone dark.
-    run(() => {
-      if (!controlled) setInternalStep(next);
-      onStepChange?.(next);
-    });
+    run(
+      () => {
+        if (!controlled) setInternalStep(next);
+        onStepChange?.(next);
+      },
+      !(progress && next > reached.current),
+    );
   };
   const back = () => {
     if (step === 0) onCancel?.();
@@ -137,7 +148,7 @@ export function Wizard({
       return;
     }
     if (last) onDone();
-    else go(step + 1);
+    else go(step + 1, true);
   };
 
   // The notice's "Show me" may have to change step first; what it then
