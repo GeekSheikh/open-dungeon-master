@@ -1,7 +1,7 @@
 "use client";
 
 import { Dices } from "lucide-react";
-import { useMemo, type Ref } from "react";
+import { useId, useMemo, type Ref } from "react";
 import OptionPicker, { type PickerGroup } from "@/app/characters/builder/OptionPicker";
 import { UnofficialPackNotice } from "@/components/UnofficialPackNotice";
 import { DM_MODE_HINTS, DM_MODE_LABELS, DM_MODES } from "@/lib/schemas/game-settings-options";
@@ -129,6 +129,7 @@ export function WorldPackField({
   onChoosePack: (pack: WorldPackSummary) => void;
   onClearPack: () => void;
 }) {
+  const captionId = useId();
   const packGroups = useMemo<PickerGroup[]>(
     () => [
       { label: null, options: [{ id: "", name: "No pack (plain setting)", infoText: NO_PACK_INFO }] },
@@ -148,8 +149,11 @@ export function WorldPackField({
   }
   return (
     <div>
-      <FieldLabel>Pre-built world (optional)</FieldLabel>
+      <FieldLabel>
+        <span id={captionId}>Pre-built world (optional)</span>
+      </FieldLabel>
       <OptionPicker
+        labelledBy={captionId}
         value={draft.worldPack}
         groups={packGroups}
         placeholder="No pack (plain setting)"
