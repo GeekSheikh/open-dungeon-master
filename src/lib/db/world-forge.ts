@@ -13,6 +13,7 @@ import {
   parseRef,
   pruneDoc,
   readDoc,
+  readBindings,
   readEntry,
   readSlice,
   refOf,
@@ -25,6 +26,7 @@ import {
 } from "@/lib/worldforge/model";
 import { byName } from "@/lib/language/text-logic";
 import { editableOf, mergeAgainst, type Editable, type EntryConflict } from "@/lib/worldforge/entry-merge";
+import { resolveBinding, type BoundRecord } from "@/lib/db/world-bindings";
 
 // The workshop's WorldForge: one document beside the records it describes
 // (src/lib/worldforge/model.ts says why). Everything that writes a record
@@ -48,6 +50,9 @@ export type WorldEntity = {
   // What the table plays with, shown beside the article and edited in the
   // record's own tool.
   table: Record<string, string | number | boolean>;
+  // The playable records the entry links to, resolved for this table
+  // (src/lib/db/world-bindings.ts). Empty for an entry with no links.
+  bound: BoundRecord[];
 };
 
 // ---- the document ----
@@ -104,7 +109,7 @@ export function patchWorldDoc(campaignId: string, patch: Record<string, unknown>
 export function worldEntities(campaignId: string, doc: WorldDoc = getWorldDoc(campaignId)): WorldEntity[] {
   const entry = (ref: string) => doc.entries[ref] ?? readEntry({});
   const factionNames = new Map(listFactions(campaignId).map((faction) => [faction.id, faction.name]));
-  const out: WorldEntity[] = [];
+  const out: Array<Omit<WorldEntity, "bound">> = [];
   for (const npc of listNpcs(campaignId)) {
     const ref = refOf("npc", npc.id);
     const own = entry(ref);
@@ -137,7 +142,9 @@ export function worldEntities(campaignId: string, doc: WorldDoc = getWorldDoc(ca
       table: { category: lore.category, visibility: lore.visibility, pinned: lore.pinned },
     });
   }
-  return out.sort(byName);
+  return out
+    .map((entity) => ({ ...entity, bound: entity.entry.bindings.map((binding) => resolveBinding(campaignId, binding)) }))
+    .sort(byName);
 }
 
 // The document with whatever points at a deleted record dropped, and the
@@ -170,7 +177,7 @@ export type EntityPatch = {
   aliases?: string[];
   tags?: string[];
   portrait?: string;
-} & Partial<Pick<Entry, "typeId" | "folderId" | "canon" | "article" | "hiddenTruth" | "notes" | "fields">>;
+} & Partial<Pick<Entry, "typeId" | "folderId" | "canon" | "article" | "hiddenTruth" | "notes" | "fields" | "bindings">>;
 
 export type EntityResult = { entity: WorldEntity } | { error: string; status?: number; conflicts?: EntryConflict[]; entity?: WorldEntity };
 
@@ -279,7 +286,25 @@ export function nextEntry(doc: WorldDoc, ref: string, patch: EntityPatch): Entry
     aliases: shelf === "npc" ? [] : cleanList(patch.aliases, 8, 80) ?? before.aliases,
     tags: shelf === "npc" || shelf === "location" ? cleanList(patch.tags, 8, 40) ?? before.tags : [],
     image: shelf === "location" && portrait !== undefined ? portrait : before.image,
+    // A Cast member's stat block is its own row's (Npc.statBlock): it takes
+    // no links of its own.
+    bindings: shelf === "npc" ? [] : patch.bindings === undefined ? before.bindings : readBindings(patch.bindings),
   });
+}
+
+// A link added by this patch must name a record this table can use: the
+// author's own, or the rulebook's. Links the entry already had are kept as
+// they are, found or not, so a record removed later never blocks a save.
+function unusableLink(campaignId: string, before: Entry | undefined, patch: EntityPatch): Failure | null {
+  if (patch.bindings === undefined) return null;
+  const had = new Set((before?.bindings ?? []).map((binding) => `${binding.kind}|${binding.ref}`));
+  for (const binding of readBindings(patch.bindings)) {
+    if (had.has(`${binding.kind}|${binding.ref}`)) continue;
+    if (!resolveBinding(campaignId, binding).found) {
+      return { error: binding.kind === "monster" ? "That stat block is not one this table can use." : "That item is not one this table can use.", status: 400 };
+    }
+  }
+  return null;
 }
 
 function entityOf(campaignId: string, doc: WorldDoc, ref: string): EntityResult {
@@ -292,6 +317,8 @@ export function createWorldEntity(campaignId: string, sent: { typeId?: unknown; 
   const doc = getWorldDoc(campaignId);
   const type = doc.types.find((entry) => entry.id === sent.typeId) ?? doc.types[0];
   const input = oneLoreText(type.shelf, sent);
+  const refused = unusableLink(campaignId, undefined, input);
+  if (refused) return refused;
   const made = createRecord(campaignId, type, input);
   if ("error" in made) return made;
   const failed = writeRecord(campaignId, made.ref, { aliases: input.aliases, tags: input.tags, portrait: input.portrait });
@@ -307,6 +334,7 @@ export function createWorldEntity(campaignId: string, sent: { typeId?: unknown; 
     aliases: input.aliases,
     tags: input.tags,
     portrait: input.portrait,
+    bindings: input.bindings,
   });
   saveWorldDoc(campaignId, doc);
   return entityOf(campaignId, doc, made.ref);
@@ -344,6 +372,8 @@ export function updateWorldEntity(campaignId: string, ref: string, input: Entity
     }
     patch = oneLoreText(shelf, merged.patch as EntityPatch);
   }
+  const refused = unusableLink(campaignId, doc.entries[ref], patch);
+  if (refused) return refused;
   const lore = patch.typeId ? doc.types.find((type) => type.id === patch.typeId && type.shelf === "lore") : undefined;
   const failed = writeRecord(campaignId, ref, patch, lore);
   if (failed) return failed;

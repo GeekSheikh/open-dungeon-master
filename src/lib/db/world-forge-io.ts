@@ -120,6 +120,7 @@ function overlayValues(entry: Entry): Values {
     aliases: entry.aliases,
     tags: entry.tags,
     image: entry.image,
+    bindings: entry.bindings,
     ...fieldValues(entry.fields),
   };
 }

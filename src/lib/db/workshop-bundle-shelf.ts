@@ -108,6 +108,9 @@ export function shelfForBundle(input: {
   // The workshop's prepared words (beats, notes, places, lore): an entry they
   // name is one the workshop uses.
   texts: string[];
+  // Homebrew entries a World entry links to (src/lib/worldforge/model.ts
+  // Binding), by id: used, however little the prose names them.
+  boundIds?: string[];
 }): { monsters: HomebrewMonster[]; homebrew: HomebrewEntry[]; report: ShelfReport } {
   const monsters = listHomebrewMonsters(input.ownerUserId);
   const homebrew = listHomebrew(input.ownerUserId).filter((entry) => entry.kind !== "monster");
@@ -117,7 +120,7 @@ export function shelfForBundle(input: {
   const mentioned = (name: string) => name.trim().length >= 4 && prose.includes(name.trim().toLowerCase());
   const usedMonster = (monster: HomebrewMonster) => named.has(lower(monster.draft.name)) || named.has(lower(monster.slug)) || mentioned(monster.draft.name);
   const pregens = input.sheets.map(sheetNames);
-  const ids = new Set(pregens.flatMap((names) => names.ids));
+  const ids = new Set([...pregens.flatMap((names) => names.ids), ...(input.boundIds ?? [])]);
   const has = (list: string[], name: string) => list.some((entry) => lower(entry) === lower(name));
   const usedEntry = (entry: HomebrewEntry) =>
     ids.has(entry.id) ||
@@ -181,6 +184,8 @@ export function writeShelfArrivals(userId: string, workshopId: string, bundle: W
   // kind:lower(name in the bundle) -> the name it has here.
   const renames = new Map<string, string>();
 
+  // Where each monster and entry of the bundle landed: "<kind>:<name>" to its id here.
+  const ids = new Map<string, string>();
   const mine = new Map(listHomebrewMonsters(userId).map((monster) => [lower(monster.draft.name), monster]));
   const monsterNames = new Set(mine.keys());
   for (const monster of bundle.monsters) {
@@ -188,6 +193,7 @@ export function writeShelfArrivals(userId: string, workshopId: string, bundle: W
     const held = mine.get(lower(monster.name));
     if (held && stable(held.draft.stats) === stable(draft.stats)) {
       reused.push(label("monster", monster.name));
+      ids.set(`monster:${lower(monster.name)}`, held.id);
       continue;
     }
     const name = held ? freeName(monsterNames, monster.name, bundleName) : monster.name;
@@ -195,7 +201,7 @@ export function writeShelfArrivals(userId: string, workshopId: string, bundle: W
       renames.set(`monster:${lower(monster.name)}`, name);
       renamed.push(`${label("monster", monster.name)} is "${name}" here: your own ${monster.name} has other rules.`);
     }
-    createHomebrewMonster(userId, { ...draft, name }, monster.desc);
+    ids.set(`monster:${lower(monster.name)}`, createHomebrewMonster(userId, { ...draft, name }, monster.desc).id);
     monsterNames.add(lower(name));
     copied += 1;
   }
@@ -204,7 +210,6 @@ export function writeShelfArrivals(userId: string, workshopId: string, bundle: W
   const byKey = new Map(owned.map((entry) => [`${entry.kind}:${lower(entry.name)}`, entry]));
   const names = new Map<string, Set<string>>();
   for (const entry of owned) (names.get(entry.kind) ?? names.set(entry.kind, new Set()).get(entry.kind)!).add(lower(entry.name));
-  const ids = new Map<string, string>();
   for (const entry of bundle.homebrew) {
     const normalized = normalizeHomebrewData(entry.kind, entry.data, entry.name);
     if ("error" in normalized) continue;
