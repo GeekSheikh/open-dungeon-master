@@ -242,26 +242,38 @@ export type HpBreakdown = {
   perLevel: number;
   laterLevels: number;
   bonusPerLevel: number;
+  // What a later level counts the die as: its fixed value under "average",
+  // its highest face under "max".
+  face: number;
+  // Hit points a feature adds on top: Draconic Resilience's one per
+  // sorcerer level (src/lib/srd/trait-rules.ts featureHitPoints).
+  featureHp: number;
   total: number;
 };
 
-// Mirrors suggestedStartingHp in src/lib/srd/index.ts term by term, so the
-// explainer can show its working; the test holds the two together.
+// derivedMaxHp in src/lib/srd/hit-points.ts term by term, for one class, so
+// the explainer can show its working; scripts/test-builder-hp.mjs holds the
+// two together.
 export function hpBreakdown({
   hitDie,
   con,
   level,
   bonusPerLevel = 0,
+  method = "average",
+  featureHp = 0,
 }: {
   hitDie: number;
   con: number;
   level: number;
   bonusPerLevel?: number;
+  method?: "average" | "max";
+  featureHp?: number;
 }): HpBreakdown {
   const conMod = Math.floor((con - 10) / 2);
+  const face = method === "max" ? hitDie : Math.floor(hitDie / 2) + 1;
   // Every level adds at least 1, so the floor sits on each level.
   const firstLevel = Math.max(1, hitDie + conMod + bonusPerLevel);
-  const perLevel = Math.max(1, Math.floor(hitDie / 2) + 1 + conMod + bonusPerLevel);
+  const perLevel = Math.max(1, face + conMod + bonusPerLevel);
   const laterLevels = Math.max(0, level - 1) * perLevel;
   return {
     hitDie,
@@ -270,7 +282,9 @@ export function hpBreakdown({
     perLevel,
     laterLevels,
     bonusPerLevel,
-    total: firstLevel + laterLevels,
+    face,
+    featureHp,
+    total: firstLevel + laterLevels + featureHp,
   };
 }
 

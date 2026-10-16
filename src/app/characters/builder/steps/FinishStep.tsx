@@ -47,7 +47,7 @@ export function FinishStep({
   const { portrait, setPortrait } = state;
   const { preview, acInfo, ac, effectiveLevel } = derived;
   const keptSaved = Boolean(initial?.portrait && portrait?.url === initial.portrait.url);
-  const hp = hpExplainerInput(state, derived, race, klass);
+  const hp = hpExplainerInput(derived, klass);
   // Hit points, armor class and coin are the server's to work out, so they
   // are shown with their reasons and never typed.
   const hpLine =
@@ -58,7 +58,7 @@ export function FinishStep({
           maxHp: preview.maxHp,
           range: preview.hpRange,
           method: preview.hpMethod,
-          kept: state.hpOverride !== null,
+          kept: preview.hpKept,
           atTable: Boolean(table.rules),
         })
       : null;

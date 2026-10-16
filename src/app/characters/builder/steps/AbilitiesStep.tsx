@@ -1,6 +1,5 @@
 "use client";
 
-import { hpBonusPerLevel } from "@/lib/srd/race-id";
 import { ui } from "@/lib/ui";
 import { scoresFromSlots } from "../abilityDice";
 import AbilityEditor, { ABILITY_LABELS, STANDARD_ARRAY } from "../AbilityEditor";
@@ -12,26 +11,22 @@ import type { ClassOption, RaceOption } from "../useBuilderOptions";
 import type { BuilderDerived } from "../useBuilderDerived";
 import type { BuilderState } from "../useBuilderState";
 
-// What the health explainer works from, shared with the Max HP field on the
-// last step. Null until the class and all six scores are known. The Max HP
-// field is computed by the same hpBreakdown (useBuilderDerived.ts).
+// What the health explainer works from, shared with the Max HP line on the
+// last step: both read derived.hp (builderHp.ts), the figure the server
+// saves. Null until the class and all six scores are known.
 export function hpExplainerInput(
-  state: BuilderState,
   derived: BuilderDerived,
-  race: RaceOption | undefined,
   klass: ClassOption | undefined,
 ): HpExplainerInput | null {
-  if (!klass || !derived.shownAbilities) {
+  if (!klass || !derived.shownAbilities || !derived.hp) {
     return null;
   }
   return {
     className: klass.name,
-    hitDie: klass.hitDie,
     // The Constitution the sheet will hold, a half-feat's point included.
     con: derived.shownAbilities.con,
     level: derived.effectiveLevel,
-    bonusPerLevel: race ? hpBonusPerLevel(race.id) : 0,
-    override: state.hpOverride,
+    hp: derived.hp,
   };
 }
 
@@ -75,7 +70,7 @@ function PlaceForClass({ state, klass }: { state: BuilderState; klass: ClassOpti
 
 // Step 4: the six scores by standard array, point buy or 4d6, then one card
 // per ability score improvement the level has earned. Hit points are derived
-// on the last step (with a Max HP override); the explainer under the summary
+// on the last step, never typed; the explainer under the summary
 // only shows how that number comes about.
 export function AbilitiesStep({
   state,
@@ -110,7 +105,7 @@ export function AbilitiesStep({
         gains={derived.abilityGains}
         asiCount={asiToPick}
         who={race && klass ? `${race.name} ${klass.name}`.toLowerCase() : ""}
-        hp={hpExplainerInput(state, derived, race, klass)}
+        hp={hpExplainerInput(derived, klass)}
       />
       </div>
       {asiSlotLevels.length ? (
