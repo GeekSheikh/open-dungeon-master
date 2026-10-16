@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PortraitMedallion } from "@/components/sheet/SheetParts";
 import { FxSprite } from "@/components/ui/FxSprite";
 import { GameIcon } from "@/components/ui/GameIcon";
@@ -35,6 +35,24 @@ export function MomentVeil() {
   );
 }
 
+// A set piece covers the table, and its only way out was a click on the
+// stage itself, which a keyboard cannot reach: Escape skips it too. Taken in
+// the capture phase and stopped there, so a dialog under the moment does not
+// close with it.
+function useEscapeToSkip(active: boolean, onSkip: () => void) {
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        onSkip();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [active, onSkip]);
+}
+
 const LEVEL_UP_MS = 2600;
 
 export function LevelUpMoment({ sheet, level, onDone }: { sheet: CharacterSheet; level: number; onDone: () => void }) {
@@ -43,6 +61,7 @@ export function LevelUpMoment({ sheet, level, onDone }: { sheet: CharacterSheet;
     const timer = window.setTimeout(onDone, still ? 900 : LEVEL_UP_MS);
     return () => window.clearTimeout(timer);
   }, [onDone]);
+  useEscapeToSkip(true, onDone);
 
   return (
     <div className="moment-stage" role="status" onClick={onDone}>
@@ -95,6 +114,8 @@ export function RestMoment({ auditLog, sheets }: { auditLog: AuditEntry[]; sheet
     const timer = window.setTimeout(() => setSeen(stamp), REST_MS);
     return () => window.clearTimeout(timer);
   }, [fresh.length, stamp]);
+  const skipRest = useCallback(() => setSeen(stamp), [stamp]);
+  useEscapeToSkip(fresh.length > 0, skipRest);
 
   if (!fresh.length) {
     return null;
@@ -126,7 +147,7 @@ export function RestMoment({ auditLog, sheets }: { auditLog: AuditEntry[]; sheet
           );
         })}
       </ul>
-      <p className="mt-4 text-[11px] text-stone-400">Select anywhere to return to the table</p>
+      <p className="mt-4 text-[11px] text-stone-400">Select anywhere, or press Esc, to return to the table</p>
     </div>
   );
 }
@@ -181,6 +202,8 @@ export function LootMoment({ sheet }: { sheet: CharacterSheet | null | undefined
     const timer = window.setTimeout(() => setQueue((waiting) => waiting.slice(1)), LOOT_MS);
     return () => window.clearTimeout(timer);
   }, [current]);
+  const skipLoot = useCallback(() => setQueue((waiting) => waiting.slice(1)), []);
+  useEscapeToSkip(Boolean(current), skipLoot);
 
   if (!current) {
     return null;
