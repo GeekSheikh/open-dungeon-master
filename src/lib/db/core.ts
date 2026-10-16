@@ -2683,9 +2683,8 @@ function backfillNpcBonds(db: SqliteDatabase) {
   }
 }
 
-// Copy each linked campaign sheet's portrait into its library character when
-// the library copy has none; the newest campaign sheet wins.
-// Returns how many lore entries became one text, for the tests.
+// Folds a lore entry's two texts into one body where one holds the other
+// (see the call in ensureSchema). Returns how many became one, for the tests.
 export function backfillWorldTexts(db: SqliteDatabase): number {
   const docs = db.prepare(`SELECT campaign_id, doc_json FROM world_forge`).all() as Array<{ campaign_id: string; doc_json: string }>;
   const bodyOf = db.prepare(`SELECT body FROM lore_entries WHERE id = ? AND campaign_id = ?`);
@@ -2717,6 +2716,8 @@ export function backfillWorldTexts(db: SqliteDatabase): number {
   return settled;
 }
 
+// Copy each linked campaign sheet's portrait into its library character when
+// the library copy has none; the newest campaign sheet wins.
 function backfillLibraryPortraits(db: SqliteDatabase) {
   const rows = db
     .prepare(
