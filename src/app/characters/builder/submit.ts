@@ -29,6 +29,7 @@ export type BuilderResult = { level: number; sheet: CreateSheetInput };
 // tap (issue #117: an acolyte's two languages were nine screens down).
 export type BlockerTarget =
   | "name"
+  | "background"
   | "backgroundSkills"
   | "race"
   | "languages"
@@ -342,10 +343,21 @@ export function gearBlocker(derived: BuilderDerived): StepBlock | null {
 // one soft rule: a caster with no spells needs a second press to confirm.
 export function validateBuilder(
   input: SubmitInput,
-): { kind: "error" | "spellWarning"; message: string } | null {
+): { kind: "error" | "spellWarning"; message: string; target?: BlockerTarget } | null {
   const { derived, race, klass, background } = input;
-  if (!derived.abilities || !derived.preview || !race || !klass || !background) {
-    return { kind: "error", message: "Assign all six ability scores first." };
+  // Each missing piece by its own name and step: this used to say "Assign
+  // all six ability scores first." whatever was missing.
+  if (!race) {
+    return { kind: "error", message: "Pick a race.", target: "race" };
+  }
+  if (!klass) {
+    return { kind: "error", message: "Pick a class.", target: "class" };
+  }
+  if (!background) {
+    return { kind: "error", message: "Pick a background.", target: "background" };
+  }
+  if (!derived.abilities || !derived.preview) {
+    return { kind: "error", message: "Assign all six ability scores first.", target: "scores" };
   }
   // The gates read the picks as the sheet will carry them, not as they were
   // typed: buildBuilderResult reconciles once more, and a pick that step
@@ -364,7 +376,7 @@ export function validateBuilder(
     spellsBlocker(state, derived, klass) ??
     gearBlocker(derived);
   if (blocked) {
-    return { kind: "error", message: blocked.message };
+    return { kind: "error", message: blocked.message, target: blocked.target };
   }
   // Casters with no spells at all can still be submitted (homebrew varies),
   // but not by accident: one confirmation makes it a deliberate choice.

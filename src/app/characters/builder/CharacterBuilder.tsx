@@ -50,6 +50,7 @@ export type { BuilderResult } from "./submit";
 // about a dropped pick can take the player to where it is made again.
 const STEP_OF_TARGET: Record<BlockerTarget, string> = {
   name: "identity",
+  background: "identity",
   backgroundSkills: "identity",
   race: "ancestry",
   languages: "ancestry",
@@ -247,6 +248,8 @@ function CharacterBuilderForm({
   // This builder's own root, so the footer's "Show me" looks inside it and
   // not in another builder on the page.
   const rootId = useId();
+  // What the last save found missing, until the player goes to it.
+  const [saveProblem, setSaveProblem] = useState<{ message: string; target: BlockerTarget } | null>(null);
 
   // An unfinished new character is kept on this device as it is built
   // (builderDraft.ts), and offered back the next time this door opens. The
@@ -347,9 +350,19 @@ function CharacterBuilderForm({
       if (problem.kind === "spellWarning") {
         state.setSpellWarningAck(true);
       }
-      state.setLocalError(problem.message);
+      // A pick that is missing says so above the steps with "Show me", which
+      // goes to its step and its field, the way the footer's blocker does;
+      // the warning and the unplaceable ones stay by the save button.
+      if (problem.target) {
+        state.setLocalError("");
+        setSaveProblem({ message: problem.message, target: problem.target });
+      } else {
+        setSaveProblem(null);
+        state.setLocalError(problem.message);
+      }
       return;
     }
+    setSaveProblem(null);
     state.setLocalError("");
     onSubmit(buildBuilderResult(input));
   }
@@ -500,7 +513,15 @@ function CharacterBuilderForm({
   // step it belongs to (issue #124: the list was computed and thrown away).
   const dropped = state.dropped;
   const droppedStep = dropped ? steps.findIndex((entry) => entry.key === STEP_OF_TARGET[dropped.drops[0].target]) : -1;
-  const notice: WizardNotice | undefined = dropped
+  const problemStep = saveProblem ? steps.findIndex((entry) => entry.key === STEP_OF_TARGET[saveProblem.target]) : -1;
+  const notice: WizardNotice | undefined = saveProblem
+    ? {
+        message: saveProblem.message,
+        step: problemStep >= 0 ? problemStep : undefined,
+        onShow: () => locate(saveProblem.target),
+        onDismiss: () => setSaveProblem(null),
+      }
+    : dropped
     ? {
         message: droppedMessage(dropped, droppedStep >= 0 ? steps[droppedStep].label : undefined),
         step: droppedStep >= 0 ? droppedStep : undefined,
