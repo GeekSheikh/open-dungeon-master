@@ -329,7 +329,7 @@ export function readWorldForge(raw: unknown): WorldImport | { error: string } {
   const omitted = list(world.odmOmitted, 200).map((name) => str(name, 120)).filter(Boolean);
   if (omitted.length) losses.push(`The file was saved without the pictures of ${omitted.join(", ")}: they were over the export's room for pictures.`);
   if (doc.secrets.length) {
-    notes.push("Secrets come in with the party knowing none of them yet. Who in the world knows each one comes in as written.");
+    notes.push("A secret new to this world comes in with the party knowing none of it yet; one brought in before keeps what the party has learned. Who in the world knows each one comes in as written.");
   }
   return { losses, notes, worldName, worldId, premise, records, doc, beats, mapImages };
 }
