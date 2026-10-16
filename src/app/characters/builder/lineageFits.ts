@@ -6,6 +6,7 @@
 import type { Ability } from "@/lib/schemas/sheet";
 import { SRD_CLASSES } from "@/lib/srd";
 import { multiclassPrereq } from "@/lib/srd/multiclass";
+import { compareNames } from "@/lib/language/text-logic";
 
 export type LineageFit = { kind: "any" } | { kind: "classes"; names: string[] };
 
@@ -40,6 +41,6 @@ export function lineageFits(
   const best = Math.max(...scored.map((fit) => fit.score));
   const floor = best >= 2 ? 2 : 1;
   scored.splice(0, scored.length, ...scored.filter((fit) => fit.score >= floor));
-  scored.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+  scored.sort((a, b) => b.score - a.score || compareNames(a.name, b.name));
   return { kind: "classes", names: scored.slice(0, limit).map((fit) => fit.name) };
 }
