@@ -18,6 +18,7 @@ import {
   readSlice,
   refOf,
   typeFor,
+  type Binding,
   type Entry,
   type Shelf,
   type Slice,
@@ -26,7 +27,7 @@ import {
 } from "@/lib/worldforge/model";
 import { byName } from "@/lib/language/text-logic";
 import { editableOf, mergeAgainst, type Editable, type EntryConflict } from "@/lib/worldforge/entry-merge";
-import { resolveBinding, type BoundRecord } from "@/lib/db/world-bindings";
+import { entriesBoundTo, resolveBinding, type BoundRecord } from "@/lib/db/world-bindings";
 
 // The workshop's WorldForge: one document beside the records it describes
 // (src/lib/worldforge/model.ts says why). Everything that writes a record
@@ -338,6 +339,26 @@ export function createWorldEntity(campaignId: string, sent: { typeId?: unknown; 
   });
   saveWorldDoc(campaignId, doc);
   return entityOf(campaignId, doc, made.ref);
+}
+
+// "Give it a World entry", from a stat block or an item in its own tool
+// (audit finding WF-08): a lore entry named for the record and already
+// linked to it, so a monster made in the Bestiary has an article to return
+// to and a way into a fight. A record some entry already links to gets that
+// entry back rather than a second one. A creature files under a lore type
+// the author named for creatures, an item under Artifact or one named for
+// items, and otherwise under the shelf's plainest type.
+export function createEntryForRecord(campaignId: string, binding: Binding): EntityResult {
+  const resolved = resolveBinding(campaignId, binding);
+  if (!resolved.found) return { error: binding.kind === "monster" ? "That stat block is not one this table can use." : "That item is not one this table can use.", status: 400 };
+  const doc = getWorldDoc(campaignId);
+  const already = entriesBoundTo(campaignId, doc, binding.kind, binding.ref)[0];
+  if (already) return entityOf(campaignId, doc, already.ref);
+  const lore = doc.types.filter((type) => type.shelf === "lore");
+  const named = binding.kind === "monster" ? /creature|monster|beast/i : /artifact|item|treasure/i;
+  const type = lore.find((entry) => named.test(entry.name)) ?? typeFor(doc, "lore", "");
+  if (!lore.some((entry) => entry.id === type.id)) return { error: "This world has no lore type to file it under. Add one in Types.", status: 400 };
+  return createWorldEntity(campaignId, { typeId: type.id, name: resolved.name, bindings: [{ kind: binding.kind, ref: binding.ref }] });
 }
 
 // A lore entry's account is its body (src/lib/worldforge/account.ts): an

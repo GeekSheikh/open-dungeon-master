@@ -1,6 +1,8 @@
 import { isErrorResponse, requireStoryAuthority } from "@/lib/campaign-api";
 import { entriesBoundTo } from "@/lib/db/world-bindings";
-import { getWorldDoc } from "@/lib/db/world-forge";
+import { createEntryForRecord, getWorldDoc } from "@/lib/db/world-forge";
+import { publishEphemeral } from "@/lib/events";
+import { recordsChanged } from "@/lib/workshop/record-events";
 import { BINDING_KINDS, type BindingKind } from "@/lib/worldforge/model";
 
 export const runtime = "nodejs";
@@ -22,4 +24,28 @@ export async function GET(request: Request, { params }: { params: Promise<{ camp
     return Response.json({ error: "Name a kind and a record." }, { status: 400 });
   }
   return Response.json({ entries: entriesBoundTo(campaignId, getWorldDoc(campaignId), kind, ref) });
+}
+
+// "Give it a World entry" (audit finding WF-08): a lore entry named for the
+// record and linked to it, or the entry that already links to it.
+// { kind: "monster" | "item", ref: "homebrew:<id>" | a rulebook slug }
+export async function POST(request: Request, { params }: { params: Promise<{ campaignId: string }> }) {
+  const { campaignId } = await params;
+  const context = await requireStoryAuthority(campaignId);
+  if (isErrorResponse(context)) {
+    return context;
+  }
+  const raw = (await request.json().catch(() => ({}))) as { kind?: unknown; ref?: unknown };
+  const kind = raw.kind as BindingKind;
+  const ref = typeof raw.ref === "string" ? raw.ref.trim().slice(0, 120) : "";
+  if (!BINDING_KINDS.includes(kind) || !ref) {
+    return Response.json({ error: "Name a kind and a record." }, { status: 400 });
+  }
+  const result = createEntryForRecord(campaignId, { kind, ref });
+  if ("error" in result) {
+    return Response.json({ error: result.error }, { status: result.status ?? 400 });
+  }
+  publishEphemeral(campaignId, "world_updated", { at: Date.now() });
+  recordsChanged(campaignId, "lore", "world");
+  return Response.json(result);
 }

@@ -13,6 +13,7 @@ import type { WorldApi, WorldState } from "./useWorld";
 import { EntityPage } from "./EntityPage";
 import { EntityAvatar, tint, typeOf } from "./world-ui";
 import type { OpenSystem } from "./WorldForgePanel";
+import { CreateButton } from "@/app/workshop/[workshopId]/CreateChooser";
 
 // The wiki: every entry of the world, which is every Cast member, place,
 // faction and lore entry of the workshop, filtered by type and folder and
@@ -24,6 +25,7 @@ export function WikiView({
   focus,
   onFocus,
   onOpenSystem,
+  onCreate,
   canWrite,
   canPaint,
   campaignId,
@@ -33,6 +35,7 @@ export function WikiView({
   focus: string | null;
   onFocus: (ref: string | null) => void;
   onOpenSystem: OpenSystem;
+  onCreate?: () => void;
   // Whether there is a text model to draft with and an image backend to
   // paint with (src/lib/use-capabilities.ts).
   canWrite: boolean;
@@ -48,8 +51,14 @@ export function WikiView({
   const [newName, setNewName] = useState("");
   const [folderName, setFolderName] = useState<string | null>(null);
 
+  // The tour's "new entry" step. The Create chooser names a shelf
+  // ("open-world-entry:location"), and the form starts on its first type.
   useTourPrepare((name) => {
-    if (name === "open-world-entry") setMaking(true);
+    const [asked, shelf] = name.split(":");
+    if (asked !== "open-world-entry") return;
+    const type = shelf ? doc.types.find((entry) => entry.shelf === shelf) : undefined;
+    if (type) setNewType(type.id);
+    setMaking(true);
   });
 
   const shown = useMemo(() => {
@@ -172,6 +181,14 @@ export function WikiView({
 
         <div className="flex max-h-[60vh] flex-col gap-0.5 overflow-y-auto pr-1" role="listbox" aria-label="Entries">
           {shown.length === 0 ? <p className="px-1 py-2 text-xs text-stone-500">{entities.length ? "Nothing matches." : "No entries yet. Make one, or open a WorldForge file."}</p> : null}
+          {!entities.length && onCreate ? (
+            // An empty world is where an author most expects WorldForge to
+            // make anything; Create says where each thing is made instead.
+            <div className="flex flex-col items-start gap-2 px-1 py-1" data-testid="world-empty-create">
+              <p className="text-xs text-stone-400">WorldForge keeps the story. A monster to fight, an item to hold or a map to stand on is made in its own tool, and Create takes you there.</p>
+              <CreateButton onClick={onCreate} />
+            </div>
+          ) : null}
           {shown.map((entity) => {
             const type = typeOf(doc, entity);
             // shrink-0: motion-press hides overflow, and a flex item that
