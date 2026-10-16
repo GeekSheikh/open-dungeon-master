@@ -59,6 +59,7 @@ export function FinishStep({
 }) {
   const { portrait, setPortrait } = state;
   const appearanceId = useId();
+  const alignmentId = useId();
   const { preview, acInfo, ac, effectiveLevel } = derived;
   const keptSaved = Boolean(initial?.portrait && portrait?.url === initial.portrait.url);
   const hp = hpExplainerInput(derived, klass);
@@ -164,18 +165,17 @@ export function FinishStep({
         </StepPanel>
       ) : null}
 
-
       <StepPanel
         title={
           <span className="inline-flex items-center gap-1">
-            Alignment
+            <span id={alignmentId}>Alignment</span>
             <InfoButton label="Alignment" text={alignmentInfo} />
           </span>
         }
         help="How they tend to act. It changes no number on the sheet."
       >
         <div className="sm:max-w-sm">
-          <OptionPicker value={state.alignment} groups={alignmentGroups} className={inputClass} onChange={state.setAlignment} />
+          <OptionPicker value={state.alignment} groups={alignmentGroups} labelledBy={alignmentId} className={inputClass} onChange={state.setAlignment} />
         </div>
       </StepPanel>
 
