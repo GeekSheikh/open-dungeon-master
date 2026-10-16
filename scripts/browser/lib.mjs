@@ -305,3 +305,42 @@ export async function eventually(fn, { timeoutMs = 15_000, every = 250, label = 
   }
   throw new Error(`${label} did not hold within ${timeoutMs / 1000}s${last instanceof Error ? `: ${last.message}` : ""}`);
 }
+
+// Opens a side-panel tab the way a person would on this viewport: its rail
+// or bottom-bar cell when it has one, otherwise More and the tab's row in
+// the sheet More opens (the phone bar keeps five tabs, src/lib/dm/
+// table-tabs.ts phoneBarSplit). The sheet is portalled, so its row is
+// looked for on the whole page.
+export async function openPanelTab(t, tab, { timeoutMs = 30_000 } = {}) {
+  const { page, root } = t;
+  const direct = page.locator(`${root}[data-tour="tab-${tab}"]`).locator("visible=true").first();
+  const more = page.locator(`${root}[data-tour="tab-more"]`).locator("visible=true").first();
+  await eventually(async () => (await direct.count()) > 0 || (await more.count()) > 0, {
+    timeoutMs,
+    label: `the ${tab} tab or More`,
+  });
+  if (await direct.count()) {
+    await t.tap(direct);
+    return "direct";
+  }
+  await t.tap(more);
+  const row = page.locator(`[data-more-tab="${tab}"]`).locator("visible=true").first();
+  await eventually(() => row.count(), { label: `${tab} under More` });
+  await t.tap(row);
+  return "more";
+}
+
+// Opens one of the table settings' named groups (src/app/campaigns/
+// [campaignId]/table-settings-groups.ts) if it is closed. A closed group's
+// rows are mounted but hidden, so a check that reads or presses them opens
+// the group first, as a person would.
+export async function openSettingsGroup(t, id, { timeoutMs = 30_000 } = {}) {
+  const { page, root } = t;
+  const group = page.locator(`${root}[data-table-settings] [data-group="${id}"]`).locator("visible=true").first();
+  await eventually(() => group.count(), { timeoutMs, label: `the ${id} settings group` });
+  if ((await group.getAttribute("data-open")) === null) {
+    await t.tap(group.locator(".cc-group-toggle").first());
+  }
+  await eventually(async () => (await group.getAttribute("data-open")) !== null, { label: `the ${id} group open` });
+  return group;
+}
