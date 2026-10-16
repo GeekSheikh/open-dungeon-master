@@ -67,12 +67,15 @@ export function HomebrewPanel({
   // again, never shown as "nothing of your own yet" (issue 140).
   const { loaded, loadError, settle } = useLoadStatus();
 
-  // The tour's "open the editor" step.
+  // The tour's "open the editor" step; the Create chooser names the kind
+  // ("open-homebrew-editor:spell").
   useTourPrepare((name) => {
-    if (name === "open-homebrew-editor" && !editing) {
-      setError("");
-      setEditing({ id: null, draft: blankDraft(kind) });
-    }
+    const [asked, askedKind] = name.split(":");
+    if (asked !== "open-homebrew-editor" || editing) return;
+    const editorKind = HOMEBREW_EDITOR_KINDS.includes(askedKind as EditorKind) ? (askedKind as EditorKind) : kind;
+    setKind(editorKind);
+    setError("");
+    setEditing({ id: null, draft: blankDraft(editorKind) });
   });
 
   const load = useCallback(

@@ -35,6 +35,8 @@ import type { WorkshopSummary } from "@/app/workshop/types";
 import { workshopHref, worldEntryPlace } from "@/lib/workshop/links";
 import { useWorkshopVersions } from "@/app/workshop/[workshopId]/useWorkshopVersions";
 import { mayLeaveDrafts } from "@/app/workshop/unsaved";
+import { CreateChooser } from "@/app/workshop/[workshopId]/CreateChooser";
+import type { CreateStep } from "@/lib/workshop/create-choices";
 
 // The workshop shell: a hub of system cards, or one system open.
 //
@@ -216,8 +218,10 @@ function WorkshopPageInner({ workshopId }: { workshopId: string }) {
 
   // Every move to another tool or the hub asks first when an editor has
   // changes not saved (src/app/workshop/unsaved.ts).
-  async function go(href: string) {
-    if (await mayLeaveDrafts()) router.push(href);
+  async function go(href: string): Promise<boolean> {
+    if (!(await mayLeaveDrafts())) return false;
+    router.push(href);
+    return true;
   }
 
   function openSystem(next: SystemId) {
@@ -250,6 +254,21 @@ function WorkshopPageInner({ workshopId }: { workshopId: string }) {
       openSystem(next);
     }
     setCreating((previous) => ({ prepare, ask: (previous?.ask ?? 0) + 1 }));
+  }
+
+  // A way in from the Create chooser (src/lib/workshop/create-choices.ts):
+  // the page or tool that makes the thing, with that tool's own editor
+  // asked to open once the author has left any unsaved one behind.
+  const [chooserOpen, setChooserOpen] = useState(false);
+  async function createFrom(step: CreateStep) {
+    if (step.href) {
+      await go(step.href);
+      return;
+    }
+    if (!step.system) return;
+    const there = system === step.system && (!step.view || params.get("view") === step.view);
+    if (!there && !(await go(workshopHref(pathname, { system: step.system, view: step.view })))) return;
+    if (step.prepare) setCreating((previous) => ({ prepare: step.prepare!, ask: (previous?.ask ?? 0) + 1 }));
   }
 
   // What Help can replay from here: the hub's tour and, inside a tool, that
@@ -298,11 +317,13 @@ function WorkshopPageInner({ workshopId }: { workshopId: string }) {
         <WorkshopHeader
           workshop={workshop}
           onHelp={() => setHelpOpen(true)}
+          onCreate={() => setChooserOpen(true)}
           onRenamed={(title) =>
             setWorkshop((current) => (current ? { ...current, title } : current))
           }
         />
       )}
+      <CreateChooser open={chooserOpen} onOpenChange={setChooserOpen} onGo={(step) => void createFrom(step)} />
       <Suspense fallback={null}>
         {helpMounted ? (
           <WorkshopHelpDialog
@@ -368,6 +389,7 @@ function WorkshopPageInner({ workshopId }: { workshopId: string }) {
           onOpenRecord={openRecord}
           onWorldEntry={openWorldEntry}
           onBack={() => void go(pathname)}
+          onCreate={() => setChooserOpen(true)}
           versions={versions}
           onHelp={() => setHelpOpen(true)}
           onRulesApplied={() => void load()}

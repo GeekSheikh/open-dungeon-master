@@ -43,11 +43,16 @@ export async function linkedEntries(campaignId: string, kind: "monster" | "item"
   }
 }
 
-// "Used in the World by": each linked entry, a way back to it.
+// "Used in the World by": each linked entry, a way back to it. A record no
+// entry links to offers one instead (audit finding WF-08): a lore entry
+// named for it and linked to it, opened at once, where "Add to a fight"
+// puts this exact monster into an encounter.
 // `record` is the linked record's ref ("homebrew:<id>"); React keeps the
 // name "ref" for itself.
 export function LinkedEntries({ campaignId, kind, record, onWorldEntry }: { campaignId: string; kind: "monster" | "item"; record: string; onWorldEntry: (entryRef: string) => void }) {
-  const [entries, setEntries] = useState<Array<{ ref: string; name: string }>>([]);
+  const [entries, setEntries] = useState<Array<{ ref: string; name: string }> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   useEffect(() => {
     let cancelled = false;
     void linkedEntries(campaignId, kind, record).then((found) => {
@@ -57,7 +62,36 @@ export function LinkedEntries({ campaignId, kind, record, onWorldEntry }: { camp
       cancelled = true;
     };
   }, [campaignId, kind, record]);
-  if (!entries.length) return null;
+
+  async function giveEntry() {
+    setBusy(true);
+    setError("");
+    const response = await fetch(`/api/campaigns/${campaignId}/world/bindings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, ref: record }),
+    }).catch(() => null);
+    const data = (await response?.json().catch(() => ({}))) as { entity?: { ref: string }; error?: string } | undefined;
+    setBusy(false);
+    if (!response?.ok || !data?.entity) {
+      setError(data?.error ?? "That entry could not be made.");
+      return;
+    }
+    onWorldEntry(data.entity.ref);
+  }
+
+  if (entries === null) return null;
+  if (!entries.length) {
+    return (
+      <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs text-stone-400" data-testid="linked-entries-none">
+        <span>No World entry tells its story yet.</span>
+        <KitButton tone="small" busy={busy} disabled={busy} onClick={() => void giveEntry()} data-testid="give-world-entry" title="Make a lore entry linked to it, and open it">
+          <BookOpenText className="size-3.5" /> Give it a World entry
+        </KitButton>
+        {error ? <span className="text-red-300">{error}</span> : null}
+      </div>
+    );
+  }
   return (
     <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs text-stone-400" data-testid="linked-entries">
       <span>Used in the World by</span>

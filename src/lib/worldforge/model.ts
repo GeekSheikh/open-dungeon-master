@@ -480,13 +480,15 @@ export function readDoc(value: unknown): WorldDoc {
   return doc;
 }
 
-// The type an entry reads as: its own, else the first type on its shelf.
+// The type an entry reads as: its own, else its shelf's plainest. The lore
+// shelf keeps several types, and an untyped lore entry (one made in the Lore
+// tool and never typed in WorldForge) used to read as the first of them,
+// Artifact, which says an item exists where none does (audit WF-08). It
+// reads as the shelf's "other" type, when the world still has one.
 export function typeFor(doc: Pick<WorldDoc, "types">, shelf: Shelf, typeId: string): WorldType {
-  return (
-    doc.types.find((type) => type.id === typeId && type.shelf === shelf) ??
-    doc.types.find((type) => type.shelf === shelf) ??
-    defaultTypes().find((type) => type.shelf === shelf)!
-  );
+  const plainest = (types: WorldType[]) =>
+    types.find((type) => type.shelf === shelf && (shelf !== "lore" || type.loreCategory === "other")) ?? types.find((type) => type.shelf === shelf);
+  return doc.types.find((type) => type.id === typeId && type.shelf === shelf) ?? plainest(doc.types) ?? plainest(defaultTypes())!;
 }
 
 // Every ref in the document rewritten through `map`; a ref that maps to

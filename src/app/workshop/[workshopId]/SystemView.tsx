@@ -40,6 +40,7 @@ import {
 import type { WorkshopSummary } from "@/app/workshop/types";
 import { parseRef, refOf } from "@/lib/worldforge/model";
 import type { RecordVersions } from "@/app/workshop/[workshopId]/useWorkshopVersions";
+import { CreateButton } from "@/app/workshop/[workshopId]/CreateChooser";
 
 // One system, open. A way back to the hub, the system's name with its count,
 // a sideways rail to hop to a neighbour, and then the panel itself.
@@ -61,6 +62,7 @@ export function SystemView({
   world = null,
   onChange,
   onBack,
+  onCreate,
   onHelp,
   onRulesApplied,
   onHomebrewChanged,
@@ -81,6 +83,8 @@ export function SystemView({
   world?: WorldCount | null;
   onChange: (system: SystemId) => void;
   onBack: () => void;
+  // The Create chooser, from the tool's own header and WorldForge's empty wiki.
+  onCreate: () => void;
   // The guide for this tool and its tour.
   onHelp: () => void;
   onRulesApplied: () => void;
@@ -125,13 +129,14 @@ export function SystemView({
         <GameIcon icon={systemGlyph(current.id)} size="size-9" />
         <h2 className="gold-title font-display text-xl tracking-wide">{current.label}</h2>
         <span className="text-sm text-stone-500">{count.phrase}</span>
+        <CreateButton onClick={onCreate} className="ml-auto" />
         <button
           type="button"
           aria-label={`How ${current.label} works`}
           title="Guide and tour for this tool"
           onClick={onHelp}
           data-tour="system-help"
-          className={cn(ui.iconAction, headIcon, "ml-auto")}
+          className={cn(ui.iconAction, headIcon)}
         >
           <CircleHelp className="size-4" />
         </button>
@@ -157,6 +162,7 @@ export function SystemView({
         {system === "world" ? (
           <WorldForgePanel
             campaignId={workshop.id}
+            onCreate={onCreate}
             refreshKey={versions.npc + versions.lore + versions.location + versions.faction + versions.world}
             onOpenSystem={(next, record) => {
               if (!isSystemId(next)) return;

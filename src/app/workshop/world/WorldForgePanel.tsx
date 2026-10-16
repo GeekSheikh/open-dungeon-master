@@ -72,10 +72,13 @@ export type OpenSystem = (system: string, record?: { id: string; from: string })
 export function WorldForgePanel({
   campaignId,
   onOpenSystem,
+  onCreate,
   refreshKey = 0,
 }: {
   campaignId: string;
   onOpenSystem: OpenSystem;
+  // The workshop's Create chooser, offered while the world is empty.
+  onCreate?: () => void;
   // Bumped when any record changed elsewhere (useWorkshopVersions).
   refreshKey?: number;
 }) {
@@ -124,7 +127,7 @@ export function WorldForgePanel({
   // (src/lib/tours/prepare.ts).
   // A tour's steps replace the place rather than adding to history.
   useTourPrepare((name) => {
-    if (name === "open-world-entry") void go({ view: "wiki" }, "replace");
+    if (name.split(":")[0] === "open-world-entry") void go({ view: "wiki" }, "replace");
     const asked = name.startsWith("world-view-") ? (name.slice("world-view-".length) as View) : null;
     // A tour step for a view this server does not offer has nothing to show.
     if (asked && VIEWS.some((entry) => entry.value === asked)) void go({ view: asked }, "replace");
@@ -242,7 +245,7 @@ export function WorldForgePanel({
         {world ? (
           // Keyed by view so the incoming one rises in instead of cutting.
           <div key={view} className="motion-tab">
-            {view === "wiki" ? <WikiView campaignId={campaignId} api={api} world={world} focus={focus} onFocus={setFocus} onOpenSystem={onOpenSystem} canWrite={canWrite} canPaint={canPaint} /> : null}
+            {view === "wiki" ? <WikiView campaignId={campaignId} api={api} world={world} focus={focus} onFocus={setFocus} onOpenSystem={onOpenSystem} onCreate={onCreate} canWrite={canWrite} canPaint={canPaint} /> : null}
             {view === "forge" ? <ForgeView api={api} world={world} onOpen={open} /> : null}
             {view === "ask" ? <AskView api={api} world={world} onOpen={open} /> : null}
             {view === "web" ? <WebView world={world} focus={focus} onOpen={open} /> : null}
