@@ -140,6 +140,7 @@ function recordValues(entity: WorldEntity): Values {
     hiddenTruth: entity.entry.hiddenTruth,
     notes: entity.entry.notes,
     ...fieldValues(entity.entry.fields),
+    ...(entity.shelf === "lore" ? { dmOnly: entity.table.visibility === "dm" } : {}),
   };
 }
 
@@ -272,6 +273,7 @@ export function applyWorldImport(campaignId: string, account: UploadAccount, par
           hiddenTruth: entry.hiddenTruth,
           notes: entry.notes,
           ...fieldValues(entry.fields),
+          ...(record.shelf === "lore" ? { dmOnly: Boolean(record.dmOnly) } : {}),
         };
         let take: Values;
         if (ref) {
@@ -313,13 +315,16 @@ export function applyWorldImport(campaignId: string, account: UploadAccount, par
           type.shelf === "lore" && "typeId" in take ? type : undefined,
         );
         doc.entries[ref] = { ...nextEntry(doc, ref, entryPatch(doc.entries[ref], take, portrait)), wfId: record.entry.wfId };
-        // A lore entry its author kept to the DM comes back kept to the DM.
+        // Whether a lore entry is kept to the DM is merged like its other
+        // values (src/lib/worldforge/import-merge.ts): the file's "kept to
+        // the DM" comes in where nobody changed it here, and a campaign that
+        // has since published or hidden the entry keeps its choice.
         // One that is not canon yet is held back from players by its canon
         // alone (src/lib/db/world-publication.ts), so its audience is left
         // as the author set it and publishing it later needs no second step.
         const lore = parseRef(ref);
-        if (lore?.shelf === "lore" && record.dmOnly) {
-          getDatabase().prepare(`UPDATE lore_entries SET visibility = 'dm' WHERE id = ?`).run(lore.id);
+        if (lore?.shelf === "lore" && "dmOnly" in take) {
+          getDatabase().prepare(`UPDATE lore_entries SET visibility = ? WHERE id = ?`).run(take.dmOnly ? "dm" : "party", lore.id);
         }
       });
       const after = new Map(worldEntities(campaignId, doc).map((entity) => [entity.ref, recordValues(entity)]));
