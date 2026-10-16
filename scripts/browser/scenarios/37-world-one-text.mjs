@@ -48,7 +48,9 @@ export default {
       await page.locator(`${root}form button[type="submit"]`).first().click();
       await eventually(async () => (await fetchEntity(ref))?.entry.article === "", { timeoutMs: 15_000, label: "the other text removed" });
 
-      // On a phone the list hides while an entry is open.
+      // On a phone the list hides while an entry is open; the back arrow
+      // comes back once the editor has closed, so wait for the page itself.
+      await eventually(() => entry.isVisible(), { timeoutMs: 15_000, label: "the entry page after the save" });
       const back = page.locator(`${root}button[aria-label="Back to the list"]`).first();
       if (await back.isVisible()) await back.click();
       await eventually(() => row("The Sluice Gate").isVisible(), { timeoutMs: 15_000, label: "the place in the list" });

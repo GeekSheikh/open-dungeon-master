@@ -23,8 +23,12 @@ export default {
     await tank.first().click();
     await sleep(500);
 
+    // The unfiltered grid folds to its first dozen cards, so the narrowing
+    // is read from the bar's own count, not from the folded grid.
     const after = await cards.count();
-    check(after > 0 && after < before, `the Tank filter narrows the grid (${before} to ${after})`);
+    const bar = (await page.locator(`${root}section[data-active]`).getByText(/^\d+ of \d+$/).first().innerText()).trim();
+    const [shown, total] = bar.split(" of ").map(Number);
+    check(after > 0 && after === shown && shown < total, `the Tank filter narrows the grid (${after} cards, the bar says ${bar})`);
     for (let index = 0; index < after; index += 1) {
       const card = cards.nth(index);
       const chosen = (await card.getAttribute("aria-pressed")) === "true";
