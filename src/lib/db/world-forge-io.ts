@@ -33,6 +33,10 @@ export type WorldImportResult =
       maps: number;
       beats: number;
       skipped: string[];
+      // What the file held that did not come in whole, and what came in
+      // differently on purpose (src/lib/worldforge/format.ts).
+      losses: string[];
+      notes: string[];
     }
   | { error: string; refusal?: UploadRefusal };
 
@@ -209,6 +213,8 @@ export function applyWorldImport(campaignId: string, account: UploadAccount, par
         maps: mapped.maps.length,
         beats,
         skipped,
+        losses: parsed.losses,
+        notes: parsed.notes,
       };
     })();
   } catch (error) {
@@ -224,11 +230,18 @@ export function exportWorldForge(campaignId: string): Record<string, unknown> {
   const campaign = getCampaignById(campaignId);
   const { doc, entities } = worldView(campaignId);
   let budget = MAX_EXPORT_IMAGE_CHARS;
-  const inline = (url: string) => {
+  // Whose pictures did not fit: written into the file, so whoever imports
+  // it is told rather than finding them gone.
+  const omitted: string[] = [];
+  const inline = (url: string, whose: string) => {
     if (!isUploadedImagePath(url)) return "";
     try {
       const encoded = encodeBundleImage(url, readFileSync(path.join(/*turbopackIgnore: true*/ process.cwd(), "public", url)));
-      if (!encoded || encoded.length > budget) return "";
+      if (!encoded) return "";
+      if (encoded.length > budget) {
+        omitted.push(whose);
+        return "";
+      }
       budget -= encoded.length;
       return encoded;
     } catch {
@@ -242,17 +255,18 @@ export function exportWorldForge(campaignId: string): Record<string, unknown> {
     tagline: entity.tagline,
     text: entity.text,
     tags: entity.tags,
-    portrait: inline(entity.portrait),
+    portrait: inline(entity.portrait, entity.name),
     entry: { ...entity.entry, aliases: entity.aliases },
     createdAt: entity.createdAt,
   }));
   const mapImages: Record<string, string> = {};
   for (const atlas of doc.maps) {
-    const image = inline(atlas.image);
+    const image = inline(atlas.image, `the ${atlas.name} map`);
     if (image) mapImages[atlas.id] = image;
   }
   return writeWorldForge({
     worldName: campaign?.title ?? "A world",
+    omitted,
     premise: campaign?.description ?? "",
     records,
     doc,
