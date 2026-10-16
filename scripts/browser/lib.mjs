@@ -211,6 +211,23 @@ export function pageHarness({ page, base, ids, app, viewport, outDir, tag, api }
     api,
     tap: (locator) => (touch && app ? locator.tap() : locator.click()),
     shot: (name) => page.screenshot({ path: path.join(outDir, `${tag}-${name}.png`), fullPage: false }).catch(() => {}),
+    // Where the page is: the address bar on the server; in the app, whose
+    // window stays on index.html, the shell's own navigation.
+    url: async () => {
+      if (!app) return new URL(page.url());
+      const where = await page.evaluate(() => window.odmShell?.navigation?.location?.() ?? null);
+      return new URL(`${where?.pathname ?? "/"}${where?.search ?? ""}`, base);
+    },
+    // A refresh: the browser's on the server; in the app, the shell's own
+    // (reloading index.html would restart the app at its home).
+    reload: async () => {
+      if (!app) {
+        await page.reload();
+        return;
+      }
+      await page.evaluate(() => window.odmShell?.navigation?.reload?.());
+      await sleep(1_500);
+    },
     // On the server, a URL; in the app, the shell's own navigation (the
     // runner has already signed in and entered the host).
     open: async (route) => {

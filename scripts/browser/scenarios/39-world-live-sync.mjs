@@ -19,7 +19,7 @@ export default {
     await api.post(`${base}/api/profile/tours`, { data: { finished: ["world", "cast", "lore", "factions"].map((tool) => ({ id: `workshop-${tool}`, version: 1, how: "ended" })) } });
     const entities = `${base}/api/campaigns/${id}/world/entities`;
     const rail = (label) => page.locator(`${root}[data-tour="system-rail"] button`, { hasText: label }).first();
-    const params = () => new URL(page.url()).searchParams;
+    const params = async () => (await t.url()).searchParams;
     try {
       const mara = (await (await api.post(entities, { data: { typeId: "t_character", name: "Mara Quill" } })).json()).entity;
 
@@ -49,14 +49,14 @@ export default {
       await eventually(() => ask.isVisible(), { timeoutMs: 10_000, label: "the question before leaving unsaved changes" });
       await t.shot("unsaved");
       await page.getByRole("button", { name: "Cancel" }).click();
-      check(params().get("system") === "world", "staying kept the author in WorldForge");
+      check((await params()).get("system") === "world", "staying kept the author in WorldForge");
       check((await name.inputValue()) === "Mara Quill the Younger", "staying kept the draft");
 
       // Saved, the editor is no longer asked about.
       await page.locator(`${root}form button[type="submit"]`).first().click();
       await eventually(async () => (await page.locator(`${root}form input[required]`).count()) === 0, { timeoutMs: 15_000, label: "the entry saved" });
       await rail("Cast").click();
-      await eventually(() => params().get("system") === "cast", { timeoutMs: 10_000, label: "moving on once saved, with no question" });
+      await eventually(async () => (await params()).get("system") === "cast", { timeoutMs: 10_000, label: "moving on once saved, with no question" });
       check(!(await ask.isVisible().catch(() => false)), "a saved editor was asked about");
       await eventually(() => page.getByText("Mara Quill the Younger").first().isVisible(), { timeoutMs: 15_000, label: "the saved name in the Cast" });
 
@@ -69,7 +69,7 @@ export default {
       await eventually(async () => !(await sheet.getByRole("button", { name: /Save them/ }).isDisabled().catch(() => true)), { timeoutMs: 15_000, label: "the Cast save finished" });
       await page.keyboard.press("Escape");
       await rail("Lore").click();
-      await eventually(() => params().get("system") === "lore", { timeoutMs: 10_000, label: "leaving the Cast after a save, with no question" });
+      await eventually(async () => (await params()).get("system") === "lore", { timeoutMs: 10_000, label: "leaving the Cast after a save, with no question" });
     } finally {
       await api.delete(`${base}/api/workshops/${id}`);
     }

@@ -15,7 +15,7 @@ export default {
     const id = (await made.json()).workshop.id;
     // The tools' first-visit tours open over whatever is about to be pressed.
     await api.post(`${base}/api/profile/tours`, { data: { finished: ["hub", "world", "bestiary", "encounters", "cast"].map((tool) => ({ id: `workshop-${tool}`, version: 1, how: "ended" })) } });
-    const params = () => new URL(page.url()).searchParams;
+    const params = async () => (await t.url()).searchParams;
     const chooser = page.getByRole("dialog");
     const heading = (name) => page.locator(`${root}[data-tour="world-entry"] h3`, { hasText: name });
     // The homebrew shelf is the user's, shared by every run: a name of this
@@ -31,7 +31,7 @@ export default {
       check((await chooser.locator('[data-testid="create-lands"]').innerText()) === "Bestiary", "a creature says it lands in the Bestiary");
       await t.shot("creature-ways");
       await chooser.locator('[data-testid="create-step"]', { hasText: "Build a monster" }).click();
-      await eventually(() => params().get("system") === "bestiary", { timeoutMs: 20_000, label: "the Bestiary" });
+      await eventually(async () => (await params()).get("system") === "bestiary", { timeoutMs: 20_000, label: "the Bestiary" });
       const name = page.getByPlaceholder("Bone Tyrant");
       await eventually(() => name.isVisible(), { timeoutMs: 20_000, label: "the Bestiary's builder opened" });
       await name.fill(creature);
@@ -42,7 +42,7 @@ export default {
       await eventually(() => give.isVisible(), { timeoutMs: 20_000, label: "the new stat block offering a World entry" });
       await t.shot("stat-block");
       await give.click();
-      await eventually(() => params().get("system") === "world" && (params().get("entry") ?? "").startsWith("lore:"), { timeoutMs: 20_000, label: "the new World entry" });
+      await eventually(async () => (await params()).get("system") === "world" && ((await params()).get("entry") ?? "").startsWith("lore:"), { timeoutMs: 20_000, label: "the new World entry" });
       await eventually(() => heading(creature).count(), { timeoutMs: 20_000, label: "the article for the monster" });
 
       // That exact monster into a new fight.
@@ -50,7 +50,7 @@ export default {
       check((await record.innerText()).includes(creature), "the article links the new stat block");
       await record.getByRole("button", { name: /Add to a fight/ }).click();
       await record.getByRole("button", { name: "Add it" }).click();
-      await eventually(() => params().get("system") === "encounters" && Boolean(params().get("open")), { timeoutMs: 15_000, label: "the fight opened in Encounters" });
+      await eventually(async () => (await params()).get("system") === "encounters" && Boolean((await params()).get("open")), { timeoutMs: 15_000, label: "the fight opened in Encounters" });
       const roster = page.getByRole("textbox", { name: "Roster" });
       await eventually(() => roster.isVisible(), { timeoutMs: 20_000, label: "the fight's editor" });
       check((await roster.inputValue()).includes(creature), `the roster names the new monster: ${JSON.stringify(await roster.inputValue())}`);
@@ -62,14 +62,14 @@ export default {
       await page.locator(`${root}[data-testid="world-bound-record"]`).first().getByRole("button", { name: "Open" }).click();
       const linked = page.locator('[data-testid="linked-entries"]');
       await eventually(() => linked.isVisible(), { timeoutMs: 20_000, label: "the stat block open, naming its article" });
-      check(params().get("system") === "bestiary", "the stat block opened in the Bestiary");
+      check((await params()).get("system") === "bestiary", "the stat block opened in the Bestiary");
       await page.keyboard.press("Escape");
 
       // An NPC from the tool's own header goes to the Cast's editor.
       await page.locator(`${root}[data-testid="create-open"]`).first().click();
       await chooser.locator('[data-testid="create-choice-npc"]').click();
       await chooser.locator('[data-testid="create-step"]').first().click();
-      await eventually(() => params().get("system") === "cast", { timeoutMs: 20_000, label: "the Cast" });
+      await eventually(async () => (await params()).get("system") === "cast", { timeoutMs: 20_000, label: "the Cast" });
       await eventually(() => page.getByRole("dialog", { name: "Someone new" }).isVisible(), { timeoutMs: 20_000, label: "the NPC editor opened" });
       await t.shot("npc-editor");
 
@@ -80,7 +80,7 @@ export default {
       await hub.click();
       await chooser.locator('[data-testid="create-choice-pc"]').click();
       await chooser.locator('[data-testid="create-step"]', { hasText: "Build a character" }).click();
-      await eventually(() => new URL(page.url()).pathname === "/characters/new", { timeoutMs: 20_000, label: "the character builder" });
+      await eventually(async () => (await t.url()).pathname === "/characters/new", { timeoutMs: 20_000, label: "the character builder" });
     } finally {
       await api.delete(`${base}/api/workshops/${id}`);
     }

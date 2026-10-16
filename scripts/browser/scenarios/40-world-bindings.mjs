@@ -16,7 +16,7 @@ export default {
     // The tools' first-visit tours open over whatever is about to be pressed.
     await api.post(`${base}/api/profile/tours`, { data: { finished: ["world", "bestiary", "encounters", "homebrew"].map((tool) => ({ id: `workshop-${tool}`, version: 1, how: "ended" })) } });
     const entities = `${base}/api/campaigns/${id}/world/entities`;
-    const params = () => new URL(page.url()).searchParams;
+    const params = async () => (await t.url()).searchParams;
     const heading = (name) => page.locator(`${root}[data-tour="world-entry"] h3`, { hasText: name });
     const bound = page.locator(`${root}[data-testid="world-bound"]`);
     // The homebrew shelf is the user's, shared by every run: a name of this
@@ -38,7 +38,7 @@ export default {
       // That exact monster into a new fight, which opens.
       await record.getByRole("button", { name: /Add to a fight/ }).click();
       await record.getByRole("button", { name: "Add it" }).click();
-      await eventually(() => params().get("system") === "encounters" && Boolean(params().get("open")), { timeoutMs: 15_000, label: "the fight opened in Encounters" });
+      await eventually(async () => (await params()).get("system") === "encounters" && Boolean((await params()).get("open")), { timeoutMs: 15_000, label: "the fight opened in Encounters" });
       const roster = page.getByRole("textbox", { name: "Roster" });
       await eventually(() => roster.isVisible(), { timeoutMs: 20_000, label: "the fight's editor" });
       check((await roster.inputValue()).includes(creature), `the roster names the linked monster: ${JSON.stringify(await roster.inputValue())}`);
@@ -50,7 +50,7 @@ export default {
       await bound.locator('[data-testid="world-bound-record"]').first().getByRole("button", { name: "Open" }).click();
       const linked = page.locator('[data-testid="linked-entries"]');
       await eventually(() => linked.isVisible(), { timeoutMs: 20_000, label: "the stat block open, naming the article" });
-      check(params().get("system") === "bestiary", "the stat block opened in the Bestiary");
+      check((await params()).get("system") === "bestiary", "the stat block opened in the Bestiary");
       await linked.getByRole("button", { name: creature }).click();
       await eventually(() => heading(creature).count(), { timeoutMs: 20_000, label: "the article reopened from the stat block" });
 

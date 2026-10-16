@@ -22,7 +22,7 @@ export default {
       await api.post(entities, { data: { typeId: "t_character", name: "Aldo Brine" } });
       const mara = (await (await api.post(entities, { data: { typeId: "t_character", name: "Mara Quill", tagline: "Keeps the lighthouse." } })).json()).entity;
       const bell = (await (await api.post(entities, { data: { typeId: "t_other", name: "The Drowned Bell", text: "It rings at low tide." } })).json()).entity;
-      const params = () => new URL(page.url()).searchParams;
+      const params = async () => (await t.url()).searchParams;
       const heading = (name) => page.locator(`${root}[data-tour="world-entry"] h3`, { hasText: name });
       const dialog = (name) => page.getByRole("dialog", { name });
 
@@ -33,21 +33,28 @@ export default {
       // Its own tool opens that member, not the list.
       await page.locator(`${root}button[title="Open Mara Quill's own tool"]`).click();
       await eventually(() => dialog("Mara Quill").count(), { timeoutMs: 20_000, label: "Mara's editor open in the Cast" });
-      check(params().get("system") === "cast" && params().get("open") === mara.id && params().get("from") === mara.ref, `the URL names the record and the way back: ${page.url()}`);
+      check((await params()).get("system") === "cast" && (await params()).get("open") === mara.id && (await params()).get("from") === mara.ref, `the URL names the record and the way back: ${page.url()}`);
       await t.shot("cast-editor");
 
       // Refresh lands on the same editor.
-      await page.reload();
+      await t.reload();
       await eventually(() => dialog("Mara Quill").count(), { timeoutMs: 30_000, label: "Mara's editor after a refresh" });
 
       // "World entry" comes back to her page.
       await dialog("Mara Quill").locator('[data-testid="world-entry-link"]').click();
       await eventually(() => heading("Mara Quill").count(), { timeoutMs: 20_000, label: "back on Mara's World entry" });
-      check(params().get("system") === "world" && params().get("entry") === mara.ref, `the URL names her entry: ${page.url()}`);
+      check((await params()).get("system") === "world" && (await params()).get("entry") === mara.ref, `the URL names her entry: ${page.url()}`);
 
       // Back returns to her editor; closing it leaves "Back to the World entry".
-      await page.goBack();
-      await eventually(() => dialog("Mara Quill").count(), { timeoutMs: 20_000, label: "Back reopens Mara's editor" });
+      // The browser's Back only: the app's shell owns its back gesture, and
+      // its navigation contract has no Back to drive from here.
+      if (!t.app) {
+        await page.goBack();
+        await eventually(() => dialog("Mara Quill").count(), { timeoutMs: 20_000, label: "Back reopens Mara's editor" });
+      } else {
+        await page.locator(`${root}button[title="Open Mara Quill's own tool"]`).first().click();
+        await eventually(() => dialog("Mara Quill").count(), { timeoutMs: 20_000, label: "Mara's editor reopened" });
+      }
       await page.keyboard.press("Escape");
       const backLink = page.locator(`${root}[data-testid="back-to-world-entry"]`);
       await eventually(() => backLink.isVisible(), { timeoutMs: 10_000, label: "the way back to the World entry" });
@@ -64,10 +71,10 @@ export default {
 
       // The view is in the URL too: the web survives a refresh.
       await page.locator(`${root}[data-tour="world-view-web"]`).first().click();
-      await eventually(() => params().get("view") === "web", { timeoutMs: 10_000, label: "the web view in the URL" });
-      await page.reload();
-      await eventually(async () => (await page.locator(`${root}[data-tour="world-view-web"][aria-selected="true"], ${root}[data-tour="world-view-web"][aria-current]`).count()) > 0 || params().get("view") === "web", { timeoutMs: 20_000, label: "the web view after a refresh" });
-      check(params().get("view") === "web", "the view survived a refresh");
+      await eventually(async () => (await params()).get("view") === "web", { timeoutMs: 10_000, label: "the web view in the URL" });
+      await t.reload();
+      await eventually(async () => (await page.locator(`${root}[data-tour="world-view-web"][aria-selected="true"], ${root}[data-tour="world-view-web"][aria-current]`).count()) > 0 || (await params()).get("view") === "web", { timeoutMs: 20_000, label: "the web view after a refresh" });
+      check((await params()).get("view") === "web", "the view survived a refresh");
     } finally {
       await api.delete(`${base}/api/workshops/${id}`);
     }
