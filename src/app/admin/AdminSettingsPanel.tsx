@@ -28,6 +28,8 @@ import { AdminSpeechSection } from "@/app/admin/AdminSpeechSection";
 import { AmbienceLibraryCard } from "@/app/admin/AmbienceLibraryCard";
 import { AdminHarnessSection } from "@/app/admin/AdminHarnessSection";
 import { mergeAdminConfigDraft } from "@/app/admin/merge-config-draft";
+import { Lamp, type Tone } from "@/app/setup/SetupParts";
+import { useCapabilities } from "@/lib/use-capabilities";
 import {
   Field,
   SECRET_KEPT,
@@ -65,6 +67,10 @@ function jumpTo(id: string) {
 
 export function AdminSettingsPanel() {
   const [config, setConfig] = useState<MaskedConfig | null>(null);
+  // The config as the server last saved it, so the panel can say whether
+  // anything here is waiting for Save settings.
+  const [savedConfig, setSavedConfig] = useState<MaskedConfig | null>(null);
+  const capabilities = useCapabilities();
   const [env, setEnv] = useState<EnvDefaults | null>(null);
   const [apiKey, setApiKey] = useState(SECRET_KEPT);
   const [utilityApiKey, setUtilityApiKey] = useState(SECRET_KEPT);
@@ -96,6 +102,7 @@ export function AdminSettingsPanel() {
       .then((data) => {
         if (data) {
           setConfig(data.config);
+          setSavedConfig(data.config);
           setEnv(data.envDefaults);
           setVoiceUnroutable(Boolean(data.voiceAnnounceUnroutable));
           setDeviceWorld(Boolean(data.deviceWorld));
@@ -126,9 +133,46 @@ export function AdminSettingsPanel() {
     };
   }, [drawn, section]);
 
+  const secretsTouched = [apiKey, utilityApiKey, openaiImageKey, ttsApiKey, discordSecret].some((value) => value !== SECRET_KEPT);
+  const dirty = Boolean(config && savedConfig) && (secretsTouched || JSON.stringify(config) !== JSON.stringify(savedConfig));
+
+  // Leaving with changes unsaved asks first: the form saves only with its
+  // button, and nothing else on the page says a change is waiting.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
   if (!config || !env) {
     return <PageSkeleton kind="flat" className="px-0 py-2" />;
   }
+
+  function discard() {
+    if (!savedConfig) return;
+    setConfig(savedConfig);
+    setApiKey(SECRET_KEPT);
+    setUtilityApiKey(SECRET_KEPT);
+    setOpenaiImageKey(SECRET_KEPT);
+    setTtsApiKey(SECRET_KEPT);
+    setDiscordSecret(SECRET_KEPT);
+    setError("");
+  }
+
+  // What the rail says beside the AI sections: working, saved but not
+  // answering, or off. Read from the live capabilities, so it reflects what
+  // is saved rather than what is typed.
+  const lampFor = (id: string): Tone | null => {
+    if (!capabilities) return null;
+    const of = (part: { configured: boolean; reachable: boolean }): Tone => (part.configured ? (part.reachable ? "ok" : "warn") : "off");
+    if (id === "admin-text") return of(capabilities.story);
+    if (id === "admin-images") return of(capabilities.images);
+    if (id === "admin-speech") return of(capabilities.tts);
+    return null;
+  };
 
   async function save() {
     if (!config) return;
@@ -201,6 +245,7 @@ export function AdminSettingsPanel() {
         return;
       }
       setConfig(data.config);
+      setSavedConfig(data.config);
       setVoiceUnroutable(Boolean(data.voiceAnnounceUnroutable));
       setApiKey(SECRET_KEPT);
       setUtilityApiKey(SECRET_KEPT);
@@ -218,12 +263,24 @@ export function AdminSettingsPanel() {
   return (
     <div className="space-y-4">
       <nav aria-label="Settings sections" className="contents-rail panel">
-        {STOPS.filter((stop) => !(deviceWorld && stop.server)).map((stop) => (
-          <button key={stop.id} type="button" onClick={() => jumpTo(stop.id)} className="motion-press">
-            <GameIcon icon={{ kind: "glyph", key: stop.glyph }} size="size-7" /> {stop.label}
-          </button>
-        ))}
+        {STOPS.filter((stop) => !(deviceWorld && stop.server)).map((stop) => {
+          const lamp = lampFor(stop.id);
+          return (
+            <button key={stop.id} type="button" onClick={() => jumpTo(stop.id)} className="motion-press">
+              <GameIcon icon={{ kind: "glyph", key: stop.glyph }} size="size-7" /> {stop.label}
+              {lamp ? (
+                <span title={lamp === "ok" ? "Working" : lamp === "warn" ? "Saved, but not answering" : "Off"}>
+                  <Lamp tone={lamp} className="ml-0.5" />
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
       </nav>
+      <p className="text-xs text-stone-500">
+        Changes on this page wait for <span className="text-stone-300">Save settings</span>, which follows you down the
+        page. Invites, backups, storage and player agents act at once.
+      </p>
       {deviceWorld ? (
         <p className="reveal text-xs text-stone-500">
           This world runs inside the app, which manages its address, sharing
@@ -461,9 +518,12 @@ export function AdminSettingsPanel() {
         <AdminHarnessSection
           textProvider={config.text.provider}
           imagesBackend={config.images.defaultBackend}
-          onConfig={(patch) =>
-            setConfig((current) => (current ? mergeAdminConfigDraft(current, patch) : current))
-          }
+          onConfig={(patch) => {
+            // The agent section saves its own fields: they are saved, so the
+            // snapshot takes them too and they never read as unsaved.
+            setConfig((current) => (current ? mergeAdminConfigDraft(current, patch) : current));
+            setSavedConfig((current) => (current ? mergeAdminConfigDraft(current, patch) : current));
+          }}
           speedNotes={speedNotes}
         />
       )}
@@ -591,10 +651,20 @@ export function AdminSettingsPanel() {
         <AdminStorageSection />
       </PageSection>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="admin-savebar flex flex-wrap items-center gap-3" data-dirty={dirty || undefined}>
         <button type="button" onClick={save} disabled={saving} aria-busy={saving} className={ui.btnPrimary}>
           {saving ? <Loader2 className="size-4 animate-spin" /> : null} Save settings
         </button>
+        {dirty && !saving ? (
+          <>
+            <span role="status" className="live-in inline-flex items-center gap-1.5 text-sm text-amber-200">
+              <Lamp tone="wait" /> Unsaved changes
+            </span>
+            <button type="button" onClick={discard} className={ui.btnSmall}>
+              Undo changes
+            </button>
+          </>
+        ) : null}
         {saved ? (
           <span role="status" className="live-in inline-flex items-center gap-1 text-sm text-emerald-400">
             <Check className="size-4" /> Saved
