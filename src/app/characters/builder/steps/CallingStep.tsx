@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { GameTerm } from "@/components/ui/GameTerm";
-import { cn } from "@/lib/cn";
 import { InfoButton, InfoDialog } from "@/components/ui/InfoDialog";
 import { describeFeature, describeSkill } from "@/lib/help";
 import { firstSentence } from "@/lib/help/rules-text";
@@ -12,7 +11,7 @@ import { SRD_SKILLS } from "@/lib/srd";
 import { displayName, type Reskinned } from "@/lib/worlds/reskin-logic";
 import type { WorldPack } from "@/lib/worlds/types";
 import { classArt } from "../lineage";
-import { OptionCardGrid, type OptionCardGroup } from "../OptionCardGrid";
+import { OptionCardGrid, type CardFacet, type OptionCardGroup } from "../OptionCardGrid";
 import OptionPicker, { type PickerGroup } from "../OptionPicker";
 import { classInfoText } from "../usePickerGroups";
 import { grantedSkillSources, grantingTrait } from "../reconcile";
@@ -62,9 +61,6 @@ export function CallingStep({
   const { effectiveLevel, grantedFeatures } = derived;
   const { gender } = state;
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
-  // Narrows the grid to one job in a fight, so a player who knows "I want to
-  // tank" finds every class that does it, the setting's own among them.
-  const [roleFilter, setRoleFilter] = useState<ClassRole | null>(null);
   // The skills already the character's from race or background, and the
   // source each came from: the same map the toggle refuses by, so every
   // greyed pill says why (issue #109).
@@ -93,13 +89,12 @@ export function CallingStep({
       ),
     [classGroups, classes],
   );
-  const rolesOffered = CLASS_ROLES.filter((role) => [...readings.values()].some((reading) => reading.roles.includes(role)));
   const cardGroups = useMemo<OptionCardGroup[]>(
     () =>
       classGroups.map((group) => ({
         label: group.label,
         recommended: group.recommended,
-        options: group.options.filter((option) => !roleFilter || readings.get(option.id)?.roles.includes(roleFilter)).map((option) => {
+        options: group.options.map((option) => {
           const entry = classes.find((candidate) => candidate.id === option.id);
           const reading = readings.get(option.id);
           // Under a reskin the canonical class name leads the tagline, the
@@ -125,7 +120,9 @@ export function CallingStep({
                 : "",
               option.source,
               entry?.spellAbility ? `${entry.spellAbility.toUpperCase()} caster` : "",
-              entry ? `Saves ${entry.saves.map((save) => save.toUpperCase()).join(" ")}` : "",
+              // Saves are left to the chosen-class line and the "?" box: the
+              // least of what a player chooses a class by, and the card's
+              // two lines are better spent on what it plays like.
             ]
               .filter(Boolean)
               .join(" · "),
@@ -134,8 +131,51 @@ export function CallingStep({
           };
         }),
       })),
-    [classGroups, classes, gender, readings, roleFilter],
-  ).filter((group) => group.options.length);
+    [classGroups, classes, gender, readings],
+  );
+  // The class grid's filters (OptionCardGrid): its job in a fight, how much
+  // magic it has, which of the core four it plays like, and its book or
+  // setting. Each offers only the values some class has, so a veteran can
+  // ask for the tanks among the setting's classes.
+  const classFacets = useMemo<CardFacet[]>(() => {
+    const entryOf = (id: string) => classes.find((candidate) => candidate.id === id);
+    const magicOf = (id: string) => {
+      const type = entryOf(id)?.casterType ?? "none";
+      return type === "none" ? "None" : type === "half" || type === "artificer" ? "Half caster" : "Full caster";
+    };
+    const bookOf = (id: string) => {
+      const entry = entryOf(id);
+      return entry?.genres?.length ? entry.genres.map(genreWords).join(", ") : entry?.source || "Core rules";
+    };
+    const ids = [...readings.keys()];
+    const present = (values: string[]) => [...new Set(values)].sort().map((value) => ({ value, label: value }));
+    return [
+      {
+        key: "role",
+        label: "Role",
+        options: CLASS_ROLES.filter((role) => ids.some((id) => readings.get(id)?.roles.includes(role))).map((role) => ({ value: role, label: role })),
+        test: (id, role) => Boolean(readings.get(id)?.roles.includes(role as ClassRole)),
+      },
+      {
+        key: "magic",
+        label: "Magic",
+        options: ["None", "Half caster", "Full caster"].filter((kind) => ids.some((id) => magicOf(id) === kind)).map((kind) => ({ value: kind, label: kind })),
+        test: (id, kind) => magicOf(id) === kind,
+      },
+      {
+        key: "plays",
+        label: "Plays like",
+        options: ["Fighter", "Wizard", "Cleric", "Rogue"].map((core) => ({ value: core, label: core })),
+        test: (id, core) => Boolean(readings.get(id)?.playsLike.includes(core)),
+      },
+      {
+        key: "book",
+        label: "Book",
+        options: present(ids.map(bookOf)),
+        test: (id, book) => bookOf(id) === book,
+      },
+    ];
+  }, [classes, readings]);
   const details = detailsFor
     ? classGroups.flatMap((group) => group.options).find((option) => option.id === detailsFor)
     : undefined;
@@ -165,33 +205,13 @@ export function CallingStep({
               />
             </span>
           ) : null}
-          {rolesOffered.length > 1 ? (
-            <div className="mb-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Show classes by role">
-              <span className="text-xs text-stone-400">Role:</span>
-              {[null, ...rolesOffered].map((role) => (
-                <button
-                  key={role ?? "all"}
-                  type="button"
-                  aria-pressed={roleFilter === role}
-                  onClick={() => setRoleFilter(role)}
-                  className={cn(
-                    "min-h-9 rounded-full border px-3 text-xs transition-colors",
-                    roleFilter === role
-                      ? "border-amber-500/70 bg-amber-500/15 text-amber-100"
-                      : "border-stone-700 text-stone-300 hover:border-amber-500/40",
-                  )}
-                >
-                  {role ?? "All"}
-                </button>
-              ))}
-            </div>
-          ) : null}
           <OptionCardGrid
             groups={cardGroups}
             value={klass?.id ?? ""}
             onChoose={state.changeClass}
             onDetails={setDetailsFor}
             noun="class"
+            facets={classFacets}
             compact
           />
           {/* The same write-up the dropdown's info button opened: the pack's
@@ -204,8 +224,10 @@ export function CallingStep({
             // is read about at length.
             meta={(() => {
               const reading = details ? readings.get(details.id) : undefined;
+              const saves = details ? classes.find((candidate) => candidate.id === details.id)?.saves : undefined;
               return [
                 details?.meta,
+                saves?.length ? `Saves ${saves.map((save) => save.toUpperCase()).join(" ")}` : "",
                 reading ? `Role: ${reading.roles.join(" / ")}` : "",
                 reading
                   ? reading.playsLike.toLowerCase() === details?.id.toLowerCase()
@@ -353,4 +375,10 @@ export function CallingStep({
       <ClassChoices state={state} derived={derived} actions={actions} klass={klass} />
     </div>
   );
+}
+
+// A genre id as the filter reads it ("dark-fantasy" is "Dark fantasy").
+function genreWords(genre: string): string {
+  const words = genre.replace(/[-_]/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
