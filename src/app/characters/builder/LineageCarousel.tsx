@@ -6,6 +6,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { InfoButton, renderRules, type ContentRef } from "@/components/ui/InfoDialog";
 import { cn } from "@/lib/cn";
 import { ui } from "@/lib/ui";
+import { lineageFits } from "./lineageFits";
 import { asiChips, lineageChoices, parseTrait, srdRaceFor, traitLines, wrapIndex, type LineageEntry } from "./lineage";
 
 // Everything the carousel shows for one lineage. `info` is exactly what the
@@ -142,6 +143,7 @@ export function LineageCarousel({
     ...(slide.source ? [{ key: "Source", value: slide.source }] : []),
   ];
   const chosen = slide.id === chosenId;
+  const fits = lineageFits(slide);
   const navButton = cn(ui.btnSmall, "min-w-0 max-w-[38%] px-2 py-1 text-xs");
 
   return (
@@ -217,6 +219,16 @@ export function LineageCarousel({
           </div>
 
           <div className="flex min-w-0 flex-[1_1_260px] flex-col gap-2.5">
+            {/* The classes this lineage's bonuses suit (lineageFits.ts), so a
+                player who picks the people first knows where it leads. */}
+            {fits ? (
+              <p className="text-xs leading-normal text-stone-300">
+                <span className="font-display font-semibold uppercase tracking-[0.12em] text-amber-400/90">Good fits </span>
+                {fits.kind === "any"
+                  ? "Any class: its bonuses are yours to place."
+                  : `${fits.names.join(", ")}.`}
+              </p>
+            ) : null}
             {slide.packBlurb ? (
               <p className="font-serif text-[13px] italic leading-normal text-stone-300">{slide.packBlurb}</p>
             ) : null}
