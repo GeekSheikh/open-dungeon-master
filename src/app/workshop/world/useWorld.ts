@@ -56,12 +56,13 @@ export function useWorld(campaignId: string) {
     readLoad<WorldState>(fetch(base), "The world").then((outcome) => {
       if (cancelled) return;
       settle(outcome);
-      if (outcome.payload) setWorld(outcome.payload);
+      // A reload while saves are still waiting keeps them laid over it.
+      if (outcome.payload) setWorld(withPending(outcome.payload));
     });
     return () => {
       cancelled = true;
     };
-  }, [base, reload, settle]);
+  }, [base, reload, settle, withPending]);
 
   const refresh = useCallback(() => setReload((value) => value + 1), []);
 

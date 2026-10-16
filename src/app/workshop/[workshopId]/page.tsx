@@ -33,6 +33,8 @@ const WorkshopHelpDialog = lazy(() =>
 );
 import type { WorkshopSummary } from "@/app/workshop/types";
 import { workshopHref, worldEntryPlace } from "@/lib/workshop/links";
+import { useWorkshopVersions } from "@/app/workshop/[workshopId]/useWorkshopVersions";
+import { mayLeaveDrafts } from "@/app/workshop/unsaved";
 
 // The workshop shell: a hub of system cards, or one system open.
 //
@@ -56,6 +58,8 @@ function WorkshopPageInner({ workshopId }: { workshopId: string }) {
   // came from (src/lib/workshop/links.ts).
   const openId = params.get("open");
   const from = params.get("from");
+  // Each kind of record's version, moved by changes here or in another tab.
+  const versions = useWorkshopVersions(workshopId);
   const [workshop, setWorkshop] = useState<WorkshopSummary | null>(null);
   const [bestiary, setBestiary] = useState<number | null>(null);
   const [homebrew, setHomebrew] = useState<number | null>(null);
@@ -173,6 +177,12 @@ function WorkshopPageInner({ workshopId }: { workshopId: string }) {
         }),
     [workshopId],
   );
+  // The world's counts on the hub and the rail, kept current as records
+  // change here or in another tab.
+  const changes = versions.npc + versions.lore + versions.location + versions.faction + versions.world;
+  useEffect(() => {
+    if (changes) void loadWorld();
+  }, [changes, loadWorld]);
 
   // Refetched whenever the view changes, so a person added inside Cast is
   // counted on the card the moment the DM steps back to the hub.
@@ -204,17 +214,23 @@ function WorkshopPageInner({ workshopId }: { workshopId: string }) {
     setTour(null);
   }
 
+  // Every move to another tool or the hub asks first when an editor has
+  // changes not saved (src/app/workshop/unsaved.ts).
+  async function go(href: string) {
+    if (await mayLeaveDrafts()) router.push(href);
+  }
+
   function openSystem(next: SystemId) {
-    router.push(workshopHref(pathname, { system: next }));
+    void go(workshopHref(pathname, { system: next }));
   }
 
   // One record in its own tool, with the way back to its World entry.
   function openRecord(next: SystemId, id: string, fromRef: string) {
-    router.push(workshopHref(pathname, { system: next, open: id, from: fromRef }));
+    void go(workshopHref(pathname, { system: next, open: id, from: fromRef }));
   }
 
   function openWorldEntry(ref: string) {
-    router.push(workshopHref(pathname, worldEntryPlace(ref)));
+    void go(workshopHref(pathname, worldEntryPlace(ref)));
   }
 
   // "Create an entry" from the palette: go to the system, then ask its panel
@@ -330,7 +346,7 @@ function WorkshopPageInner({ workshopId }: { workshopId: string }) {
                 phrase: (id) => systemCount(id, workshop, bestiary, homebrew, pregens, plugin, world).phrase,
                 onJump: openSystem,
                 onCreate: createIn,
-                onHub: () => router.push(pathname),
+                onHub: () => void go(pathname),
                 onHelp: () => setHelpOpen(true),
               })}
             />
@@ -351,7 +367,8 @@ function WorkshopPageInner({ workshopId }: { workshopId: string }) {
           from={from}
           onOpenRecord={openRecord}
           onWorldEntry={openWorldEntry}
-          onBack={() => router.push(pathname)}
+          onBack={() => void go(pathname)}
+          versions={versions}
           onHelp={() => setHelpOpen(true)}
           onRulesApplied={() => void load()}
           onHomebrewChanged={() => void loadHomebrew()}

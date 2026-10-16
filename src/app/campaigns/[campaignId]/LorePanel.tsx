@@ -10,6 +10,7 @@ import { SectionHead } from "@/components/ui/SectionHead";
 import { Sheet } from "@/components/ui/Sheet";
 import { KitButton, LoadFailed, PanelLoading } from "./PanelKit";
 import { WorldEntryLink, useOpenOnArrival } from "@/app/workshop/world/WorldEntryLink";
+import { useUnsavedDraft } from "@/app/workshop/unsaved";
 import { readLoad, useLoadStatus } from "@/lib/load-state";
 import { LoreEntryActions } from "@/app/workshop/lore/LoreEntryActions";
 import { LoreEditorForm } from "@/app/workshop/lore/LoreEditorForm";
@@ -34,6 +35,7 @@ export function LorePanel({
   members,
   openId,
   onWorldEntry,
+  refreshKey = 0,
 }: {
   campaignId: string;
   steersStory: boolean;
@@ -44,6 +46,8 @@ export function LorePanel({
   layout?: "list" | "rows";
   // The table, for the "some players" audience. Absent in the workshop.
   members?: Array<{ userId: string; username: string }>;
+  // Bumped when the lore changed elsewhere (the workshop's live versions).
+  refreshKey?: number;
   // In the workshop only (src/app/workshop/world/WorldEntryLink.tsx): the
   // record to open on arrival, and the way to its WorldForge entry.
   openId?: string | null;
@@ -86,7 +90,7 @@ export function LorePanel({
     return () => {
       cancelled = true;
     };
-  }, [campaignId, reload, settle]);
+  }, [campaignId, reload, refreshKey, settle]);
   const retry = () => {
     setLoading(true);
     setReload((current) => current + 1);
@@ -127,6 +131,12 @@ export function LorePanel({
   }
 
   useOpenOnArrival(openId, loaded ? entries : null, (entry) => (steersStory ? startEdit(entry) : setReadingId(entry.id)));
+  // In the workshop, an editor with changes is asked about before leaving.
+  const openEntry = editingId ? entries.find((entry) => entry.id === editingId) ?? null : null;
+  useUnsavedDraft(
+    Boolean(onWorldEntry) && (adding || editingId !== null) &&
+      JSON.stringify(draft) !== JSON.stringify(openEntry ? draftFromEntry(openEntry) : blankLoreDraft()),
+  );
 
   function closeEditor() {
     setAdding(false);

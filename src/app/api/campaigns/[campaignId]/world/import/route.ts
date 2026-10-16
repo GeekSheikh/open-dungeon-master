@@ -5,6 +5,7 @@ import { readWorldForge } from "@/lib/worldforge/format";
 import { publishEphemeral } from "@/lib/events";
 import { uploadRefusalResponse } from "@/lib/upload-budget";
 import { MAX_BUNDLE_BYTES } from "@/lib/workshop/bundle";
+import { recordsChanged } from "@/lib/workshop/record-events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,5 +52,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ cam
   }
   publishEphemeral(campaignId, "world_updated", { at: Date.now() });
   publishEphemeral(campaignId, "factions_updated", { at: Date.now() });
+  recordsChanged(campaignId, "npc", "lore", "location", "faction", "world");
   return Response.json(result);
 }

@@ -2,8 +2,9 @@
 
 import { BookOpenText, Download, Hourglass, Lock, Map as MapIcon, MessageCircleQuestion, Network, PenLine, Shapes, Sparkles, Upload } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { workshopHref } from "@/lib/workshop/links";
+import { mayLeaveDrafts } from "@/app/workshop/unsaved";
 import { IconRail, type IconRailItem } from "@/components/ui/IconRail";
 import { KitButton, Listed, PanelError } from "@/app/campaigns/[campaignId]/PanelKit";
 import { useTourPrepare } from "@/lib/tours/prepare";
@@ -68,7 +69,16 @@ type Held = { text: string; losses: string[]; notes: string[] };
 // World entry to come back to (src/lib/workshop/links.ts).
 export type OpenSystem = (system: string, record?: { id: string; from: string }) => void;
 
-export function WorldForgePanel({ campaignId, onOpenSystem }: { campaignId: string; onOpenSystem: OpenSystem }) {
+export function WorldForgePanel({
+  campaignId,
+  onOpenSystem,
+  refreshKey = 0,
+}: {
+  campaignId: string;
+  onOpenSystem: OpenSystem;
+  // Bumped when any record changed elsewhere (useWorkshopVersions).
+  refreshKey?: number;
+}) {
   const api = useWorld(campaignId);
   const capabilities = useCapabilities();
   const canWrite = offersStoryModel(capabilities);
@@ -82,7 +92,11 @@ export function WorldForgePanel({ campaignId, onOpenSystem }: { campaignId: stri
   const chosenView: View = VIEWS.some((entry) => entry.value === askedView) ? (askedView as View) : "wiki";
   const view: View = !canWrite && AI_VIEWS.has(chosenView) ? "wiki" : chosenView;
   const focus = params.get("entry");
-  function go(next: { view?: View; entry?: string | null }, how: "push" | "replace" = "push") {
+  // A move to another entry or view closes an open editor, so it asks first
+  // when the editor has changes (src/app/workshop/unsaved.ts); a tour's
+  // moves do not ask.
+  async function go(next: { view?: View; entry?: string | null }, how: "push" | "replace" = "push") {
+    if (how === "push" && !(await mayLeaveDrafts())) return;
     const href = workshopHref(pathname, {
       system: "world",
       view: next.view ?? chosenView,
@@ -91,25 +105,32 @@ export function WorldForgePanel({ campaignId, onOpenSystem }: { campaignId: stri
     if (how === "replace") router.replace(href, { scroll: false });
     else router.push(href, { scroll: false });
   }
-  const setView = (next: View) => go({ view: next });
-  const setFocus = (ref: string | null) => go({ entry: ref });
+  const setView = (next: View) => void go({ view: next });
+  const setFocus = (ref: string | null) => void go({ entry: ref });
   const [report, setReport] = useState<ImportReport | null>(null);
   const [reading, setReading] = useState(false);
   const [held, setHeld] = useState<Held | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const world = api.world;
 
+  // Records changed here or in another tab: the world is read again. An
+  // open entry editor keeps its draft (WF-02 handles a clash on save).
+  const { refresh } = api;
+  useEffect(() => {
+    if (refreshKey) refresh();
+  }, [refreshKey, refresh]);
+
   // The tour and the palette ask for a view, or for a new entry, by name
   // (src/lib/tours/prepare.ts).
   // A tour's steps replace the place rather than adding to history.
   useTourPrepare((name) => {
-    if (name === "open-world-entry") go({ view: "wiki" }, "replace");
+    if (name === "open-world-entry") void go({ view: "wiki" }, "replace");
     const asked = name.startsWith("world-view-") ? (name.slice("world-view-".length) as View) : null;
     // A tour step for a view this server does not offer has nothing to show.
-    if (asked && VIEWS.some((entry) => entry.value === asked)) go({ view: asked }, "replace");
+    if (asked && VIEWS.some((entry) => entry.value === asked)) void go({ view: asked }, "replace");
   });
 
-  const open = (ref: string | null) => go(ref ? { view: "wiki", entry: ref } : { entry: null });
+  const open = (ref: string | null) => void go(ref ? { view: "wiki", entry: ref } : { entry: null });
 
   async function bringIn(text: string, accept: boolean) {
     setReading(true);

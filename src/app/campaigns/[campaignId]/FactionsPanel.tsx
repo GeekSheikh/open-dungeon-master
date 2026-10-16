@@ -12,6 +12,20 @@ import { Slider } from "@/components/ui/Slider";
 import { LoreImageField } from "@/app/workshop/lore/LoreFields";
 import { GlyphChip, KitButton, LoadFailed, PanelLoading, panelField, panelRow } from "./PanelKit";
 import { WorldEntryLink, useOpenOnArrival } from "@/app/workshop/world/WorldEntryLink";
+import { useUnsavedDraft } from "@/app/workshop/unsaved";
+
+// A faction as the editor's draft.
+function draftOf(faction: FactionView): Draft {
+  return {
+    name: faction.name,
+    blurb: faction.blurb,
+    goal: faction.goal ?? "",
+    attitude: faction.attitude,
+    power: faction.power ?? 1,
+    tags: faction.tags.join(", "),
+    portraitPath: faction.portraitPath,
+  };
+}
 import { readLoad, useLoadStatus } from "@/lib/load-state";
 import { FACTION_ATTITUDES, REPUTATION_MAX, REPUTATION_MIN, reputationLabel, type FactionAttitude } from "@/lib/dm/faction-logic";
 import { DictateField } from "@/components/DictateField";
@@ -86,17 +100,16 @@ export function FactionsPanel({
   }, [campaignId, refreshKey, reload, settle]);
 
   function startEdit(faction: FactionView) {
-    setDraft({
-      name: faction.name,
-      blurb: faction.blurb,
-      goal: faction.goal ?? "",
-      attitude: faction.attitude,
-      power: faction.power ?? 1,
-      tags: faction.tags.join(", "),
-      portraitPath: faction.portraitPath,
-    });
+    setDraft(draftOf(faction));
     setEditing(faction.id);
   }
+
+  // In the workshop, an editor with changes is asked about before leaving.
+  const openFaction = editing && editing !== "new" ? factions?.find((faction) => faction.id === editing) ?? null : null;
+  useUnsavedDraft(
+    Boolean(onWorldEntry) && editing !== null &&
+      JSON.stringify(draft) !== JSON.stringify(openFaction ? draftOf(openFaction) : blank()),
+  );
 
   useOpenOnArrival(openId, steersStory ? factions : null, startEdit);
 

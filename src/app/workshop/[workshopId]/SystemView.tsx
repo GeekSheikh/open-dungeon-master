@@ -39,6 +39,7 @@ import {
 } from "@/app/workshop/[workshopId]/systems";
 import type { WorkshopSummary } from "@/app/workshop/types";
 import { parseRef, refOf } from "@/lib/worldforge/model";
+import type { RecordVersions } from "@/app/workshop/[workshopId]/useWorkshopVersions";
 
 // One system, open. A way back to the hub, the system's name with its count,
 // a sideways rail to hop to a neighbour, and then the panel itself.
@@ -69,6 +70,7 @@ export function SystemView({
   from = null,
   onOpenRecord,
   onWorldEntry,
+  versions,
 }: {
   workshop: WorkshopSummary;
   system: SystemId;
@@ -93,6 +95,9 @@ export function SystemView({
   // record's World entry.
   onOpenRecord: (system: SystemId, id: string, from: string) => void;
   onWorldEntry: (ref: string) => void;
+  // Each kind of record's version (useWorkshopVersions): a tool refetches
+  // when its own kind's moves.
+  versions: RecordVersions;
 }) {
   const current = WORKSHOP_SYSTEMS.find((entry) => entry.id === system) ?? WORKSHOP_SYSTEMS[0];
   const count = systemCount(current.id, workshop, bestiary, homebrew, pregens, plugin, world);
@@ -152,6 +157,7 @@ export function SystemView({
         {system === "world" ? (
           <WorldForgePanel
             campaignId={workshop.id}
+            refreshKey={versions.npc + versions.lore + versions.location + versions.faction + versions.world}
             onOpenSystem={(next, record) => {
               if (!isSystemId(next)) return;
               if (record) onOpenRecord(next, record.id, record.from);
@@ -173,7 +179,7 @@ export function SystemView({
         {system === "region" ? (
           <OverworldPanel campaignId={workshop.id} genre={workshop.gameSettings.genre} steersStory />
         ) : null}
-        {system === "cast" ? <DmNpcForgePanel campaignId={workshop.id} layout="rows" openId={openId} onWorldEntry={(id) => onWorldEntry(refOf("npc", id))} /> : null}
+        {system === "cast" ? <DmNpcForgePanel campaignId={workshop.id} layout="rows" refreshKey={versions.npc} openId={openId} onWorldEntry={(id) => onWorldEntry(refOf("npc", id))} /> : null}
         {system === "encounters" ? (
           // Rows mode renders the workbench itself, as the collapsible
           // "How hard is this?" card above the fights.
@@ -192,11 +198,11 @@ export function SystemView({
         ) : null}
         {system === "lore" ? (
           <>
-            <LorePanel campaignId={workshop.id} steersStory isDm layout="rows" openId={openId} onWorldEntry={(id) => onWorldEntry(refOf("lore", id))} />
+            <LorePanel campaignId={workshop.id} steersStory isDm layout="rows" refreshKey={versions.lore} openId={openId} onWorldEntry={(id) => onWorldEntry(refOf("lore", id))} />
             <MarketPanel campaignId={workshop.id} steersStory isDm mySheet={null} />
           </>
         ) : null}
-        {system === "factions" ? <FactionsPanel campaignId={workshop.id} steersStory openId={openId} onWorldEntry={(id) => onWorldEntry(refOf("faction", id))} /> : null}
+        {system === "factions" ? <FactionsPanel campaignId={workshop.id} steersStory refreshKey={versions.faction} openId={openId} onWorldEntry={(id) => onWorldEntry(refOf("faction", id))} /> : null}
         {system === "tables" ? <DmTablesPanel campaignId={workshop.id} layout="rows" /> : null}
         {system === "plugin" ? (
           <PluginPanel workshopId={workshop.id} onChanged={onPluginChanged} />
