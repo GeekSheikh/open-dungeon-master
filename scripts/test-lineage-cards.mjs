@@ -209,16 +209,71 @@ test("every bundled race resolves to its own family plate, in all three genders"
 test("pack lineages borrow the family in their slug or name, else the adventurer", () => {
   assert.equal(lineageFamily("dwarf"), "dwarf");
   assert.equal(lineageFamily("odm-drow"), "drow");
-  assert.equal(lineageFamily("humanhalf-elf-heritage"), "half-elf");
-  assert.equal(lineageFamily("elfshadow-fey-heritage"), "elf");
-  assert.equal(lineageFamily("dwarf-chassis"), "warforged");
+  assert.equal(lineageFamily("humanhalf-elf-heritage"), "darakhul-human");
+  assert.equal(lineageFamily("elfshadow-fey-heritage"), "darakhul-elf");
+  assert.equal(lineageFamily("dwarf-chassis"), "gearforged-dwarf");
   assert.equal(lineageFamily("stoor-halfling"), "halfling");
-  assert.equal(lineageFamily("orc"), "half-orc");
-  assert.equal(lineageFamily("catfolk"), "tabaxi");
+  assert.equal(lineageFamily("orc"), "orc");
+  assert.equal(lineageFamily("x", "Orc"), "orc");
+  assert.equal(lineageFamily("half-orc"), "half-orc");
+  assert.equal(lineageFamily("x", "Half-Orc"), "half-orc");
+  assert.equal(lineageFamily("deep_gnome"), "deep-gnome");
+  assert.equal(lineageFamily("x", "Gnome (Deep)"), "deep-gnome");
+  assert.equal(lineageFamily("x", "Deep Gnome"), "deep-gnome");
+  assert.equal(lineageFamily("x", "Gnome (Rock)"), "gnome");
+  for (const element of ["air", "earth", "fire", "water"]) {
+    assert.equal(lineageFamily(`${element}_genasi`), `genasi-${element}`);
+    assert.equal(lineageFamily("x", `Genasi (${element[0].toUpperCase()}${element.slice(1)})`), `genasi-${element}`);
+  }
+  assert.equal(lineageFamily("genasi"), "genasi");
+  assert.equal(lineageFamily("x", "Genasi"), "genasi");
+  assert.equal(lineageFamily("catfolk"), "catfolk");
+  assert.equal(lineageFamily("tabaxi"), "tabaxi");
   assert.equal(lineageFamily("reskinned", "Hill Dwarf"), "dwarf");
-  assert.equal(lineageFamily("mushroomfolk"), null);
-  const fallback = lineageArt("mushroomfolk", "Mushroomfolk", "");
+  assert.equal(lineageFamily("spacefolk", "Spacefolk"), null);
+  const fallback = lineageArt("spacefolk", "Spacefolk", "");
   assert.ok(exists(fallback), `${fallback} exists`);
+});
+
+// Every Tome of Heroes row in both Open5e shapes: the v1 slug and the v2
+// "toh_" key, by id alone and by an unknown id carrying only the name.
+const TOH = {
+  alseid: "alseid", catfolk: "catfolk", malkin: "malkin", pantheran: "pantheran",
+  darakhul: "darakhul-human", "derro-heritage": "darakhul-derro", "dragonborn-heritage": "darakhul-dragonborn",
+  "drow-heritage": "darakhul-drow", "dwarf-heritage": "darakhul-dwarf", "elfshadow-fey-heritage": "darakhul-elf",
+  "gnome-heritage": "darakhul-gnome", "halfling-heritage": "darakhul-halfling", "humanhalf-elf-heritage": "darakhul-human",
+  "kobold-heritage": "darakhul-kobold", ravenfolk: "darakhul-ravenfolk", "tiefling-heritage": "darakhul-tiefling",
+  "trollkin-heritage": "darakhul-trollkin",
+  derro: "derro", "far-touched": "derro", mutated: "derro", uncorrupted: "derro",
+  delver: "drow", "fever-bit": "drow", purified: "drow",
+  erina: "erina", gearforged: "warforged", "dwarf-chassis": "gearforged-dwarf", "gnome-chassis": "gearforged-gnome",
+  "kobold-chassis": "gearforged-kobold", "human-chassis": "warforged",
+  minotaur: "minotaur", "bhain-kwai": "minotaur", boghaid: "minotaur",
+  mushroomfolk: "mushroomfolk", "acid-cap": "mushroomfolk", favored: "mushroomfolk", morel: "mushroomfolk",
+  satarre: "satarre", shade: "shade",
+};
+
+test("every Tome of Heroes row has its own plate, by v1 slug and v2 key", () => {
+  for (const [slug, family] of Object.entries(TOH)) {
+    assert.equal(lineageFamily(slug), family, slug);
+    assert.equal(lineageFamily(`toh_${slug}`), family, `toh_${slug}`);
+    for (const gender of ["", "Male", "Female"]) {
+      assert.ok(exists(lineageArt(`toh_${slug}`, "", gender)), `${slug}/${gender} exists`);
+    }
+  }
+  assert.equal(lineageFamily("toh_drow"), "drow");
+});
+
+test("heritage and chassis names win over the living race's word", () => {
+  assert.equal(lineageFamily("x", "Darakhul (Drow Heritage)"), "darakhul-drow");
+  assert.equal(lineageFamily("x", "Darakhul (Ravenfolk Heritage)"), "darakhul-ravenfolk");
+  assert.equal(lineageFamily("x", "Darakhul (Human/Half-Elf Heritage)"), "darakhul-human");
+  assert.equal(lineageFamily("x", "Darakhul (Elf/Shadow Fey Heritage)"), "darakhul-elf");
+  assert.equal(lineageFamily("x", "Gearforged (Kobold Chassis)"), "gearforged-kobold");
+  assert.equal(lineageFamily("x", "Ravenfolk"), "kenku");
+  assert.equal(lineageFamily("x", "Drow (Fever-Bit)"), "drow");
+  assert.equal(lineageFamily("x", "Catfolk (Malkin)"), "malkin");
+  assert.equal(lineageFamily("x", "Minotaur (Bhain Kwai)"), "minotaur");
 });
 
 test("every class card has a plate that exists, and a neutral look still shows the class", () => {
