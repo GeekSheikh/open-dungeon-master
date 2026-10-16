@@ -36,6 +36,28 @@ async function axeViolations(page, selector) {
   }, selector);
 }
 
+// What axe does not catch: a field caption that names nothing, a tab with no
+// panel, or a score summary laid out as loose spans.
+async function semantics(page) {
+  return page.evaluate(() => {
+    const root = document.querySelector("[data-builder-root] [data-active]") ?? document.querySelector("[data-builder-root]");
+    if (!root) return ["no builder root"];
+    const problems = [];
+    for (const group of root.querySelectorAll('[role="group"][aria-labelledby]')) {
+      const caption = document.getElementById(group.getAttribute("aria-labelledby"));
+      if (!caption?.textContent?.trim()) problems.push(`a field group's caption is missing or empty (${group.getAttribute("aria-labelledby")})`);
+    }
+    for (const tab of root.querySelectorAll('[role="tab"]')) {
+      const panel = document.getElementById(tab.getAttribute("aria-controls") ?? "");
+      if (!panel) problems.push(`a tab without a panel: ${tab.textContent?.trim()}`);
+    }
+    for (const summary of root.querySelectorAll("table")) {
+      if (!summary.querySelector('th[scope="col"]')) problems.push("a table without column headers");
+    }
+    return problems;
+  });
+}
+
 function report(where, violations) {
   return violations.map((violation) => `${where}: ${violation.id} (${violation.impact}) ${violation.help} at ${violation.nodes.join(", ")}`);
 }
@@ -58,7 +80,28 @@ export default {
         await sleep(700);
       }
       found.push(...report(`step ${step}`, await axeViolations(page, "[data-builder-root]")));
+      found.push(...(await semantics(page)).map((problem) => `step ${step}: ${problem}`));
     }
+
+    // The "Show me" highlight under reduced motion: the global rule cuts the
+    // flash to 0.01ms, so the block must keep a still outline instead.
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const outline = await page.evaluate(async () => {
+      // A block on the open step: one in a hidden step has no outline drawn.
+      const target = [...document.querySelectorAll("[data-builder-root] [data-builder-target]")].find(
+        (block) => block.getClientRects().length,
+      );
+      if (!target) return "no visible target";
+      target.setAttribute("data-flash", "");
+      // A card's own transition runs under the global 0.01ms cap; read the
+      // outline once it has settled, a moment in, as a player would see it.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const { outlineStyle, outlineWidth } = getComputedStyle(target);
+      target.removeAttribute("data-flash");
+      return outlineStyle !== "none" && parseFloat(outlineWidth) > 0 ? "" : `outline ${outlineStyle} ${outlineWidth}`;
+    });
+    await page.emulateMedia({ reducedMotion: null });
+    if (outline) found.push(`Show me highlight is invisible with reduced motion: ${outline}`);
 
     // The lineage carousel over a new character's Ancestry step.
     await t.open("/characters/new");

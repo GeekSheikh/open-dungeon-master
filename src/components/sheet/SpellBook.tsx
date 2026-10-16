@@ -136,9 +136,9 @@ export function SpellBook({
 }) {
   const [filter, setFilter] = useState("");
   const needle = filter.trim().toLowerCase();
-  // The tab strip says which tab is chosen only once mounted. The travelling
-  // pill (src/lib/motion/pill.ts) decorates every tablist that has a chosen
-  // tab as soon as the page loads, and a pill appended to server-rendered
+  // The level row says which level is chosen only once mounted. The travelling
+  // pill (src/lib/motion/pill.ts) decorates every pill group that has a chosen
+  // button as soon as the page loads, and a pill appended to server-rendered
   // markup before React hydrates it is a hydration mismatch (the builder
   // renders this book on the server, inside a hidden step).
   const mounted = useSyncExternalStore(noSubscribe, () => true, () => false);
@@ -231,7 +231,10 @@ export function SpellBook({
       ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
-        <div role="tablist" aria-label="Spell level" className="flex flex-wrap gap-1">
+        {/* A row of toggle buttons, not tabs: a search shows every level at
+            once with none chosen, which a tab strip cannot say, and the tiles
+            below are a filtered list rather than one panel per level. */}
+        <div role="group" aria-label="Spell level" data-pill-group className="flex flex-wrap gap-1">
           {keys.map((key) => {
             const count = chosenIn(key);
             const selected = !needle && key === active;
@@ -239,8 +242,8 @@ export function SpellBook({
               <button
                 key={key}
                 type="button"
-                role="tab"
-                aria-selected={mounted && selected}
+                aria-pressed={mounted && selected}
+                data-on={mounted && selected ? "" : undefined}
                 title={levelLabel(key)}
                 onClick={() => {
                   setTab(key);

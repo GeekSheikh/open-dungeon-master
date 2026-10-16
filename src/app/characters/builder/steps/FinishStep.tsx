@@ -1,6 +1,7 @@
 "use client";
 
 import { Camera, UserRound } from "lucide-react";
+import { useId } from "react";
 import { InfoButton } from "@/components/ui/InfoDialog";
 import { cn } from "@/lib/cn";
 import { contentSlug } from "@/lib/help";
@@ -57,6 +58,7 @@ export function FinishStep({
   alignmentInfo: string;
 }) {
   const { portrait, setPortrait } = state;
+  const appearanceId = useId();
   const { preview, acInfo, ac, effectiveLevel } = derived;
   const keptSaved = Boolean(initial?.portrait && portrait?.url === initial.portrait.url);
   const hp = hpExplainerInput(state, derived, race, klass);
@@ -219,8 +221,8 @@ export function FinishStep({
             </p>
           </div>
         </div>
-        <Field label="Appearance" className="mt-4">
-          <p className="mb-2 text-xs text-stone-500">
+        <Field label="Appearance" className="mt-4" captionId={appearanceId}>
+          <p id={`${appearanceId}-help`} className="mb-2 text-xs text-stone-500">
             {paintsPortraits
               ? "Used to paint your character's portrait if you don't upload a photo."
               : "How your character looks, for the party and the DM to picture."}
@@ -228,6 +230,8 @@ export function FinishStep({
           <textarea
             value={state.appearance}
             onChange={(event) => state.setAppearance(event.target.value)}
+            aria-labelledby={appearanceId}
+            aria-describedby={`${appearanceId}-help`}
             rows={2}
             maxLength={500}
             placeholder="Silver hair, weathered face, a scar across one eye..."

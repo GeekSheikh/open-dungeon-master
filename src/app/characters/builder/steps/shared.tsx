@@ -1,7 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { InfoButton, type ContentRef } from "@/components/ui/InfoDialog";
 import { Ribbon } from "@/components/ui/Ribbon";
 import { cn } from "@/lib/cn";
@@ -81,20 +81,30 @@ export function StepPanel({
 // are lists of buttons, and a <label> forwards any click on its caption or
 // its empty space to the first button it contains, which opened the info
 // dialog from the word "Alignment" and closed the list from a group heading.
+// The caption names the block as a group instead, so a screen reader hears
+// "Alignment" on the way in while a picker's trigger keeps announcing the
+// value it holds. A single native control can take the caption as its own
+// name: pass `captionId` and point the control's aria-labelledby at it.
 export function Field({
   label,
   anchor,
+  captionId,
   children,
   className,
 }: {
   label: ReactNode;
   anchor?: string;
+  captionId?: string;
   children: ReactNode;
   className?: string;
 }) {
+  const ownId = useId();
+  const id = captionId ?? ownId;
   return (
-    <div className={cn("block", className)} data-builder-target={anchor}>
-      <span className="mb-1 block text-xs text-stone-400">{label}</span>
+    <div role="group" aria-labelledby={id} className={cn("block", className)} data-builder-target={anchor}>
+      <span id={id} className="mb-1 block text-xs text-stone-400">
+        {label}
+      </span>
       {children}
     </div>
   );
