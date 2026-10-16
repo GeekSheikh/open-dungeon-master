@@ -277,6 +277,9 @@ export function useBuilderState({
   // (useBuilderDerived), not a number typed here.
   const [gold, setGold] = useState(initial?.gold ?? 0);
   const [hpOverride, setHpOverride] = useState<number | null>(initial?.maxHp ?? null);
+  // The level and Constitution the stored hit points (hpOverride) stand on.
+  // The server keeps them only while both stand (builderHp.ts).
+  const [storedHp] = useState(() => (initial ? { level: storedLevel, con: initial.abilities.con } : null));
   // Only a pinned AC comes back pinned. A derived one re-derives from the
   // gear, or saving an edit would pin it and armour changed in play would
   // stop moving it.
@@ -662,6 +665,7 @@ export function useBuilderState({
     asiRecorded,
     asiReachedLevel,
     primalChampionHeld: initialHoldsPrimalChampion(initial, initialLevel),
+    storedHp,
     name, setName,
     alignment, setAlignment,
     level, changeLevel,
