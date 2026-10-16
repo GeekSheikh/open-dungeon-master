@@ -17,8 +17,10 @@ import {
   assignStandard,
   canRerollPool,
   placeFromPool,
+  poolHighlight,
   poolSum,
   rollTier,
+  rollWord,
   scoresFromSlots,
   type PoolEntry,
   type PoolSlots,
@@ -203,6 +205,7 @@ export default function AbilityEditor({
   const placedCount = ABILITY_KEYS.filter((key) => slots[key] !== null).length;
   const complete = ABILITY_KEYS.every((key) => scores[key] !== null);
   const total = pool ? poolSum(pool) : 0;
+  const highlight = pool ? poolHighlight(pool) : null;
   const rerollOpen = canRerollPool(pool, rerollBelow);
   const keptDate =
     keptAt ? new Date(keptAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
@@ -425,7 +428,7 @@ export default function AbilityEditor({
                       draggable={!anyRolling}
                       disabled={anyRolling}
                       aria-pressed={inHand}
-                      aria-label={`Throw of ${entry.total}${owner ? `, on ${ABILITY_LABELS[owner]}` : ", not placed"}`}
+                      aria-label={`Throw of ${entry.total}, ${rollWord(entry.total)}${owner ? `, on ${ABILITY_LABELS[owner]}` : ", not placed"}`}
                       onClick={() => setHeld(inHand ? null : index)}
                       onDragStart={(event) => startDrag(event, index)}
                       onDragEnd={() => {
@@ -449,6 +452,11 @@ export default function AbilityEditor({
                       <span className={cn("dice-total", `roll-tier-${rollTier(entry.total)}`)} data-phase={rolling ? "rolling" : undefined}>
                         {entry.total}
                       </span>
+                      {anyRolling ? null : (
+                        <span className={cn("pool-tier", `roll-tier-${rollTier(entry.total)}`)} aria-hidden="true">
+                          {rollWord(entry.total)}
+                        </span>
+                      )}
                       <span className="pool-tag">{owner ? owner.toUpperCase() : inHand ? "in hand" : "free"}</span>
                     </button>
                   );
@@ -464,6 +472,9 @@ export default function AbilityEditor({
                         <span className="text-amber-200">Your kept roll{keptDate ? ` from ${keptDate}` : ""}.</span>
                         <span className="text-stone-600"> · </span>
                       </>
+                    ) : null}
+                    {highlight ? (
+                      <span className="pool-highlight block">{highlight}</span>
                     ) : null}
                     <span className="font-mono text-amber-200">Total {total}</span>
                     <span className="text-stone-600"> · </span>
