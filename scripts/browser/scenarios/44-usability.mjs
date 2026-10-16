@@ -140,6 +140,31 @@ export default {
     await t.shot("hub-task");
     await page.keyboard.press("Escape");
 
+    // A species of the DM's own takes the Dragonborn's ancestry and breath
+    // from the published traits, by name, not typed from memory (a player's
+    // "Half-Dragon"), and the editor says what the player will be asked.
+    await api.post(`${base}/api/profile/tours`, { data: { finished: [{ id: "workshop-homebrew", version: 1, how: "ended" }] } });
+    await t.open(`/workshop/${workshopId}?system=homebrew`);
+    const kinds = page.locator(`${root}[data-tour="homebrew-kinds"]`).locator("visible=true").first();
+    await eventually(() => kinds.count(), { timeoutMs: 30_000, label: "the homebrew shelf" });
+    await t.tap(kinds.getByText(/^Species/).first());
+    await t.tap(page.getByRole("button", { name: /New species/ }).locator("visible=true").first());
+    const traitSearch = page.getByRole("textbox", { name: "Search the published species traits" }).locator("visible=true").first();
+    await eventually(() => traitSearch.count(), { timeoutMs: 20_000, label: "the published-trait search in the species editor" });
+    const traitsBox = page.getByRole("textbox", { name: /^Traits/ }).locator("visible=true").first();
+    for (const [typed, trait] of [["draconic", "Draconic Ancestry"], ["breath", /^Breath Weapon/]]) {
+      await traitSearch.fill(typed);
+      const pick = page.locator("[data-species-trait-picker] li button").filter({ hasText: trait }).locator("visible=true").first();
+      await eventually(() => pick.count(), { timeoutMs: 20_000, label: `${typed} among the published traits` });
+      await t.tap(pick);
+    }
+    const written = await traitsBox.inputValue();
+    check(/\*\*_Draconic Ancestry\._\*\*/.test(written) && /\*\*_Breath Weapon/.test(written), `the traits were written in the book's words: ${JSON.stringify(written.slice(0, 120))}`);
+    const note = page.locator(`${root}[data-draconic-note]`).locator("visible=true").first();
+    await eventually(async () => /breath weapon's damage and save/.test(await note.innerText().catch(() => "")), { label: "the editor saying the player picks a dragon" });
+    await t.shot("species-draconic");
+    await page.keyboard.press("Escape");
+
     // The home's menu stays inside the title screen's frame on a short
     // laptop window: the ways in and your places stand side by side.
     if (viewport === "desktop" && !t.app) {

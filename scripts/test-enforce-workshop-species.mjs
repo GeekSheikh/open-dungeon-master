@@ -19,6 +19,8 @@ const { draftFromCatalog } = await import("../src/app/workshop/homebrew/draft.ts
 const { packRaceOptions } = await import("../src/lib/content/race-options.ts");
 const { sizeForRace, speedFor } = await import("../src/lib/srd/index.ts");
 const { innateCantripsFor, takesDraconicAncestry } = await import("../src/lib/srd/racial-grants.ts");
+const { populateResources } = await import("../src/lib/srd/class-resources.ts");
+const { publishedTraits, withTrait } = await import("../src/lib/workshop/species-traits.ts");
 const { traitSaveAdvantages } = await import("../src/lib/srd/trait-rules.ts");
 
 // The SRD's rows, so the suite runs the same with or without the pack.
@@ -36,6 +38,11 @@ async function brewCopy(slug, name) {
   const row = srdRow(slug);
   const table = raceMechanicsOf({ ...row, source: "open5e" }, srdRow);
   const { data } = draftFromCatalog("race", { ...row, table });
+  return brew(name, data);
+}
+
+// A species saved in the workshop, as the builder will read it.
+async function brew(name, data) {
   world.signIn(world.owner);
   const response = await homebrew.POST(
     new Request("http://test/", { method: "POST", body: JSON.stringify({ kind: "race", name, data }) }),
@@ -53,6 +60,21 @@ const stonefolk = await brewCopy("hill-dwarf", "Stonefolk");
 const plainsfolk = await brewCopy("human", "Plainsfolk");
 const hellspawn = await brewCopy("tiefling", "Hellspawn");
 const drakeborn = await brewCopy("dragonborn", "Drakeborn");
+
+// A Half-Dragon of the DM's own: its own scores and a trait of its own, and
+// two traits picked from the published ones in the species editor.
+const published = publishedTraits(rows.map((row) => ({ name: row.name, traits: String(raceMechanicsOf({ ...row, source: "open5e" }, srdRow)?.traits ?? "") })));
+let halfDragonTraits = "**_Scaled Hide._** Your scales turn the first blow of a fight.";
+for (const name of ["Draconic Ancestry", "Breath Weapon", "Draconic Ancestry"]) {
+  halfDragonTraits = withTrait(halfDragonTraits, published.find((trait) => trait.name === name));
+}
+const halfDragon = await brew("Half-Dragon", {
+  asi: [{ attributes: ["Strength"], value: 2 }, { attributes: ["Constitution"], value: 1 }],
+  speed: { walk: 30 },
+  size: "Medium",
+  languages: ["Common", "Draconic"],
+  traits: halfDragonTraits,
+});
 
 const anchor = world.addHero({ class: "fighter", level: 5 });
 const hero = world.addHero({ class: "fighter", level: 5 });
@@ -132,6 +154,15 @@ await test("A workshop copy of the Dragonborn takes a draconic ancestry.", async
   const dragon = become(drakeborn);
   assert.equal(takesDraconicAncestry(dragon.race), true);
   assert.equal(takesDraconicAncestry(plainsfolk.id), false);
+});
+
+await test("A species of the DM's own that picks Draconic Ancestry and Breath Weapon from the published traits takes an ancestry and breathes (a Half-Dragon).", async () => {
+  assert.equal(halfDragonTraits.match(/Draconic Ancestry\._\*\*/g)?.length, 1, "picking a held trait again wrote it twice");
+  assert.match(halfDragonTraits, /^\*\*_Scaled Hide\._\*\*/, "the DM's own trait was lost");
+  const dragon = become(halfDragon);
+  assert.equal(takesDraconicAncestry(dragon.race), true, "the Half-Dragon asks for no ancestry");
+  const counters = Object.keys(populateResources(halfDragon.features, 5, { con: 1 }));
+  assert.ok(counters.includes("breath_weapon"), `no breath weapon among ${counters}`);
 });
 
 await test("A content-pack species is the size its text says (Tome of Heroes' Derro: \"Your size is Small.\").", async () => {
