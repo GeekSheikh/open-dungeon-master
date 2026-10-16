@@ -15,6 +15,7 @@ import { traitCheckRiders } from "@/lib/srd/check-traits";
 import { itemCheckRiders } from "@/lib/srd/item-check-riders";
 import { initiativeAdvantage, traitSaveAdvantages } from "@/lib/srd/trait-rules";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 // An unspent bonus die a character is holding for their next check or save:
 // Bardic Inspiration from a bard, or the warlock's own Dark One's Own Luck.
@@ -65,7 +66,7 @@ export function rollFeatureRiders(
     // The roller moved no more than half their speed this turn (Supreme Sneak).
     movedLittle?: boolean;
   },
-): RollFeatureRiders | { error: string } {
+): RollFeatureRiders | ToolError {
   const { kind: derivationKind, ability: derivationAbility } = context;
   const skillId =
     derivationKind === "skill_check" ? findSkill((args.skill ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_"))?.id : undefined;
@@ -107,6 +108,7 @@ export function rollFeatureRiders(
   if (args.useInspiration && derivationKind && sheet && !heldInspiration(sheet)) {
     return {
       error: `${sheet.name} holds no Inspiration to spend. The DM awards it with set_condition condition "inspiration"; roll without useInspiration.`,
+      retry: true,
     };
   }
   const inspired = Boolean(args.useInspiration && derivationKind && sheet);

@@ -8,6 +8,7 @@ import { canAct } from "@/lib/dm/can-act";
 import { attacksAllowedFor, budgetFor, storeBudget } from "@/lib/dm/turn-budget";
 import { conditionExtraActions } from "@/lib/srd/condition-effects";
 import type { CharacterSheet, SheetPet } from "@/lib/schemas/sheet";
+import { toolError, type ToolError } from "@/lib/dm/tool-errors";
 
 // What commanding a pet's attack costs its owner in a fight (SRD 5.1 and
 // the subclasses' own text): a Beast Master's companion takes the ranger's
@@ -20,10 +21,10 @@ export function petAttackCost(
   sheet: CharacterSheet,
   pet: SheetPet,
   encounter: NonNullable<ReturnType<typeof getActiveEncounter>>,
-): { error: string } | { commit: () => string } {
+): ToolError | { commit: () => string } {
   const allowed = canAct({ sheet, encounter, kind: pet.kind === "drake" ? "bonus" : "action" });
   if (!allowed.ok) {
-    return { error: `${allowed.error} ${pet.name} attacks when ${sheet.name} commands it on their turn.` };
+    return { ...toolError(allowed), error: `${allowed.error} ${pet.name} attacks when ${sheet.name} commands it on their turn.` };
   }
   const budget = budgetFor(encounter, sheet.id, attacksAllowedFor(sheet), conditionExtraActions(sheet.conditions));
   if (!budget) {
@@ -34,7 +35,7 @@ export function petAttackCost(
   if (pet.kind === "familiar") {
     const once = claimOncePerTurn(budget, `familiar:${pet.name.toLowerCase()}`);
     if (!once) {
-      return { error: `${pet.name} has already attacked with its reaction this turn.` };
+      return { error: `${pet.name} has already attacked with its reaction this turn.`, refused: "rules" };
     }
     spent = spendAttack(once, sheet.name, { hasteOk: false });
     economy = `${pet.name} attacked with its reaction in place of one of ${sheet.name}'s attacks.`;
@@ -46,7 +47,7 @@ export function petAttackCost(
     economy = `Commanding ${pet.name} used ${sheet.name}'s action.`;
   }
   if (!spent.ok) {
-    return { error: spent.error };
+    return toolError(spent);
   }
   const priced = spent.budget;
   return {

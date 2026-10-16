@@ -1,6 +1,7 @@
 import type { EquipmentItem } from "@/lib/schemas/sheet";
 import { matchArmor } from "@/lib/srd/armor";
 import { matchWeapon } from "@/lib/srd/weapons";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 // Pure consumable knowledge for the use_item tool: healing potion tiers,
 // generic consumable detection, and ammunition lookup. Database-free so
@@ -97,29 +98,43 @@ const KEPT = /\b(water ?skins?|canteens?|necklaces?|prayer beads)\b/i;
 // consumable. Weapons are wielded through pc_attack, armor is worn, and a
 // durable magic item keeps its place in the pack; ammunition and thrown
 // weapons are spent by the attacks that use them, never here.
-export function itemUseProblem(name: string): string | null {
+export function itemUseProblem(name: string): ToolError | null {
   const text = name.trim();
   if (KEPT.test(text)) {
-    return /water ?skin|canteen/i.test(text)
+    return { error: /water ?skin|canteen/i.test(text)
       ? "a waterskin is drunk from and refilled, never used up; narrate the drink without use_item."
-      : "it is kept, not consumed: a necklace's beads are powers that return at dawn. Narrate its use without use_item.";
+      : "it is kept, not consumed: a necklace's beads are powers that return at dawn. Narrate its use without use_item.", retry: true };
   }
   if (CONSUMABLE.test(text) && !/\b(wand|staff|rod|ring)\b/i.test(text)) {
     // A dagger or a javelin is a weapon first: thrown, it is spent by the
     // attack; used here it would vanish for nothing.
     if (matchWeapon(text) && !/\b(potion|oil|scroll|flask|vial)\b/i.test(text)) {
-      return "it is a weapon; attacks with it go through pc_attack, which tracks thrown and ammunition use.";
+      return { error: "it is a weapon; attacks with it go through pc_attack, which tracks thrown and ammunition use.", retry: true };
     }
     return null;
   }
   if (matchWeapon(text)) {
-    return "it is a weapon; attacks with it go through pc_attack.";
+    return { error: "it is a weapon; attacks with it go through pc_attack.", retry: true };
   }
   if (matchArmor(text)) {
-    return "it is armor, worn rather than used up.";
+    return { error: "it is armor, worn rather than used up.", retry: true };
   }
   if (DURABLE.test(text)) {
-    return "it is kept, not consumed: a wand or staff spends charges on a cast, and worn items work while worn. Narrate its use without use_item.";
+    return { error: "it is kept, not consumed: a wand or staff spends charges on a cast, and worn items work while worn. Narrate its use without use_item.", retry: true };
   }
   return null;
+}
+
+// An item a character does not carry. A name the table's rules know (isTableGearName)
+// is the game saying no; a name nobody knows is the call's to fix, from what
+// they do carry.
+export function notCarried(who: string, carried: string[], name: string, known: boolean): ToolError {
+  return known
+    ? { error: `${who} does not carry "${name}".`, refused: "rules" }
+    : {
+        error: `${who} carries nothing called "${name}", and no item by that name is known. ${
+          carried.length ? `They carry: ${carried.join(", ")}.` : "They carry nothing."
+        } Send the one meant, by the name on the sheet.`,
+        retry: true,
+      };
 }

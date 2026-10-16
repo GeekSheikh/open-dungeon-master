@@ -5,6 +5,7 @@ import { getPreparedMap } from "@/lib/db/prepared-maps";
 import { describeExtras, formatRoster } from "@/lib/dm/encounter-template-logic";
 import { applyTemplateExtras, applyTemplateMap } from "@/lib/dm/template-apply";
 import type { ToolDef } from "@/lib/dm/encounter-tool-defs";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 // The prepared fights, offered to the AI storyteller (#154).
 //
@@ -121,7 +122,7 @@ export function runPreparedEncounter(
   campaign: Campaign,
   rawArguments: string,
   start: (rawArguments: string) => Record<string, unknown>,
-): Record<string, unknown> {
+): ToolResult {
   // A weak tool caller sends null, an array or a bare string as often as an
   // object; each reads as no arguments and earns the refusal below.
   let args: Record<string, unknown> = {};
@@ -138,6 +139,7 @@ export function runPreparedEncounter(
       error: names.length
         ? `No prepared fight is called that. The prepared fights are: ${names.slice(0, 12).join(", ")}.`
         : "There are no prepared fights at this table; use start_encounter.",
+      retry: true,
     };
   }
   const started = start(

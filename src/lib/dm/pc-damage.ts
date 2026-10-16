@@ -43,6 +43,7 @@ import { summonImmunities, summonResistances, summonVulnerabilities } from "@/li
 import { summonAfterDamage } from "@/lib/dm/summon-store";
 import { absorbByWard } from "@/lib/dm/arcane-ward";
 import { afflictionStress } from "@/lib/dm/afflictions";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 export type PcDamageInput = {
   // What was rolled or sent, before resistance.
@@ -99,14 +100,14 @@ export function applyPcDamage(
   turnId: string,
   sheet: CharacterSheet,
   input: PcDamageInput,
-): Record<string, unknown> {
+): ToolResult {
   const amount = Math.floor(input.amount);
   const reason = (input.reason ?? "").slice(0, 200);
   if (!(amount >= 1)) {
-    return { error: "apply_damage needs a positive amount." };
+    return { error: "apply_damage needs a positive amount.", retry: true };
   }
   if (sheet.deathSaves?.dead) {
-    return { error: `${sheet.name} is already dead.` };
+    return { error: `${sheet.name} is already dead.`, retry: true };
   }
   // An abjurer's Arcane Ward takes the blow first, as it lands: the ward has
   // none of the wizard's own resistances, immunities or vulnerabilities

@@ -17,6 +17,7 @@ import type { SummonForm } from "@/lib/srd/summon-forms";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { removeSummon, spawnSummons, summonsOf } from "@/lib/dm/summon-store";
 import { SUMMONED, summonRecord } from "@/lib/dm/summon-rules";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 export type SummonCastArgs = {
   caster: CharacterSheet;
@@ -173,11 +174,11 @@ function reassertControl(
   args: SummonCastArgs,
   slotLevel: number,
   cast: (input: Record<string, unknown>) => Record<string, unknown>,
-): Record<string, unknown> {
+): ToolResult {
   const { caster, spell } = args;
   const held = summonsOf(campaign.id, caster.id, spell.name);
   if (!held.length) {
-    return { error: `${caster.name} has no creatures of ${spell.name} to reassert control over. Nothing was spent.` };
+    return { error: `${caster.name} has no creatures of ${spell.name} to reassert control over. Nothing was spent.`, refused: "rules" };
   }
   const most = (spell.reassert ?? 0) + (spell.reassertPerSlot ?? 0) * Math.max(0, slotLevel - spell.level);
   const spent = cast({ characterId: caster.id, spell: spell.name, level: slotLevel, via: "buff", reason: (args.reason ?? "reasserting control").slice(0, 200) });

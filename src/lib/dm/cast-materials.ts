@@ -18,6 +18,7 @@
 import type { SpellFacts } from "@/lib/srd/spell-facts";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { COPPER_PER_GOLD, purseCopper } from "@/lib/srd/currency";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 export type MaterialComponent = {
   // The words a carried line must share.
@@ -119,7 +120,7 @@ export type MaterialContext = {
 type Holder = Pick<CharacterSheet, "name" | "equipment" | "gold" | "copper">;
 
 // How many times a component's count is taken.
-function unitsFor(component: MaterialComponent, spell: string, ctx: MaterialContext): number | string {
+function unitsFor(component: MaterialComponent, spell: string, ctx: MaterialContext): number | ToolError {
   if (!component.per) {
     return 1;
   }
@@ -133,12 +134,12 @@ function unitsFor(component: MaterialComponent, spell: string, ctx: MaterialCont
     // Create Undead: three corpses at 6th level, one more for each slot above.
     return Math.max(1, (ctx.slotLevel ?? 6) - 3);
   }
-  return `${spell}'s component is worth ${component.gp} gp per Hit Die of its target: name the target so the server knows its Hit Dice. Nothing was spent.`;
+  return { error: `${spell}'s component is worth ${component.gp} gp per Hit Die of its target: name the target so the server knows its Hit Dice. Nothing was spent.`, retry: true };
 }
 
 const title = (word: string) => `${word[0].toUpperCase()}${word.slice(1)}`;
 
-export function materialPlan(sheet: Holder, facts: SpellFacts | null, ctx: MaterialContext = {}): MaterialPlan | { error: string } {
+export function materialPlan(sheet: Holder, facts: SpellFacts | null, ctx: MaterialContext = {}): MaterialPlan | ToolError {
   const components = materialComponents(facts);
   if (!facts || !components.length) {
     return { kind: "none" };
@@ -149,8 +150,8 @@ export function materialPlan(sheet: Holder, facts: SpellFacts | null, ctx: Mater
   let purse = purseCopper({ gold: sheet.gold ?? 0, copper: sheet.copper ?? 0 });
   for (const component of components) {
     const units = unitsFor(component, facts.name, ctx);
-    if (typeof units === "string") {
-      return { error: units };
+    if (typeof units !== "number") {
+      return units;
     }
     const words = materialWords(component.what);
     // Lines that name the component and state what one is worth.
@@ -192,12 +193,14 @@ export function materialPlan(sheet: Holder, facts: SpellFacts | null, ctx: Mater
     const printed = `${pieces > 1 ? `${pieces} × ` : ""}${component.what.replace(/\.$/, "")}${stated ? "" : ` worth ${component.gp} gp${pieces > 1 ? " each" : ""}`}${component.consumed && !/consum/i.test(component.what) ? ", which the spell consumes" : ""}`;
     if (ctx.inFight) {
       return {
-        error: `${facts.name} needs ${printed}, and ${sheet.name} does not carry it (a line on the sheet that states its worth, like "${name}"). There is no buying one in the middle of a fight. No slot was spent.`,
+        error: `${facts.name} needs ${printed}, and ${sheet.name} does not carry it (a line on the sheet that states its worth, like "${name}"). There is no buying one in the middle of a fight. Nothing was spent.`,
+        refused: "rules",
       };
     }
     if (purse < copper) {
       return {
-        error: `${facts.name} needs ${printed}. ${sheet.name} carries none (a line on the sheet that states its worth, like "${name}") and has not the gold to buy it. No slot was spent.`,
+        error: `${facts.name} needs ${printed}. ${sheet.name} carries none (a line on the sheet that states its worth, like "${name}") and has not the gold to buy it. Nothing was spent.`,
+        refused: "rules",
       };
     }
     purse -= copper;
@@ -230,7 +233,7 @@ const CLASS_FOCUS: Record<string, string[]> = {
 // A material with no price needs a component pouch or the caster's focus.
 // The priced parts are the materialPlan's to find; an item's own spell (a
 // scroll, a wand) never asks (cast-guard.ts castFromItem).
-export function focusProblem(sheet: Pick<CharacterSheet, "name" | "class" | "classes" | "equipment">, facts: SpellFacts | null): string | null {
+export function focusProblem(sheet: Pick<CharacterSheet, "name" | "class" | "classes" | "equipment">, facts: SpellFacts | null): ToolError | null {
   if (!facts?.material || materialComponents(facts).length) {
     return null;
   }
@@ -247,5 +250,5 @@ export function focusProblem(sheet: Pick<CharacterSheet, "name" | "class" | "cla
     return null;
   }
   const what = kinds.length ? kinds.map((kind) => (kind === "arcane" ? "an arcane focus" : kind === "holy" ? "a holy symbol" : kind === "druidic" ? "a druidic focus" : kind === "instrument" ? "a musical instrument" : "artisan's tools")).join(" or ") : "a spellcasting focus";
-  return `${facts.name} has a material component${facts.materialText ? ` (${facts.materialText.replace(/\.$/, "")})` : ""}: ${sheet.name} needs a component pouch or ${what} to cast it, and carries neither. Add one to the sheet. No slot was spent.`;
+  return { error: `${facts.name} has a material component${facts.materialText ? ` (${facts.materialText.replace(/\.$/, "")})` : ""}: ${sheet.name} needs a component pouch or ${what} to cast it, and carries neither. Add one to the sheet. Nothing was spent.`, refused: "rules" };
 }

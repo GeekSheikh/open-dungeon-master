@@ -171,7 +171,7 @@ export function enemyActionsView(encounter: ActingEncounter, enemy: EncounterEne
       ...(ability.condition ? { condition: ability.condition } : {}),
       ...(ability.rounds ? { rounds: ability.rounds } : {}),
       resource: abilityResource(ability),
-      refusal: abilityRefusal(enemy.displayName, ability, ledger),
+      refusal: abilityRefusal(enemy.displayName, ability, ledger)?.error ?? null,
     }));
 
   const allowed = canEnemyAct({ enemy, encounter, kind: "action" });

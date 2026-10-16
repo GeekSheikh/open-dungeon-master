@@ -1,11 +1,12 @@
 "use client";
 
 import { ChevronDown, ChevronLeft, ChevronRight, Star } from "lucide-react";
-import { useState, type CSSProperties } from "react";
+import { useId, useState, type CSSProperties } from "react";
 import { Dialog } from "@/components/ui/Dialog";
 import { InfoButton, renderRules, type ContentRef } from "@/components/ui/InfoDialog";
 import { cn } from "@/lib/cn";
 import { ui } from "@/lib/ui";
+import { lineageFits } from "./lineageFits";
 import { asiChips, lineageChoices, parseTrait, srdRaceFor, traitLines, wrapIndex, type LineageEntry } from "./lineage";
 
 // Everything the carousel shows for one lineage. `info` is exactly what the
@@ -29,9 +30,10 @@ export type LineageSlide = LineageEntry & {
   info: { text?: string | null; reference?: ContentRef };
 };
 
-const sectionLabel = "mb-1.5 block font-display text-[8.5px] font-semibold uppercase tracking-[0.2em] text-amber-500/80";
+const sectionLabel = "mb-1.5 block font-display text-[0.6875rem] font-semibold uppercase tracking-[0.2em] text-amber-500/80";
 
 function Traits({ slide }: { slide: LineageSlide }) {
+  const baseId = useId();
   const lines = traitLines(slide);
   // The first trait with something to say arrives open, so the panel never
   // opens onto a wall of closed rows.
@@ -49,29 +51,47 @@ function Traits({ slide }: { slide: LineageSlide }) {
       {lines.map((line, index) => {
         const parsed = parseTrait(line, slide);
         const open = openTrait === index && Boolean(parsed.body);
+        const bodyId = `${baseId}-trait-${index}`;
+        const head = (
+          <span className="flex w-full items-center gap-2.5 px-3 py-2">
+            <span
+              className="flex size-[22px] shrink-0 items-center justify-center rounded-full border border-amber-500/40 bg-amber-950/50 font-mono text-[0.6875rem] text-amber-300"
+              aria-hidden="true"
+            >
+              {index + 1}
+            </span>
+            <span className="min-w-0 flex-1 font-display text-[12.5px] font-semibold text-amber-200">{parsed.head}</span>
+            {parsed.body ? <ChevronDown className="creator-chevron size-3.5 shrink-0 text-stone-500" aria-hidden="true" /> : null}
+          </span>
+        );
+        // A trait with text has a toggle holding its name only, and its body
+        // in a region below; one with nothing more to say is a plain row.
         return (
-          <button
+          <div
             key={`${index}-${line}`}
-            type="button"
-            onClick={() => setOpenTrait(open ? null : index)}
-            aria-expanded={parsed.body ? open : undefined}
-            disabled={!parsed.body}
             className="creator-trait creator-trait-rise"
+            data-open={open || undefined}
             style={{ "--i": Math.min(index, 8) } as CSSProperties}
           >
-            <span className="flex w-full items-center gap-2.5 px-3 py-2">
-              <span className="flex size-[22px] shrink-0 items-center justify-center rounded-full border border-amber-500/40 bg-amber-950/50 font-mono text-[9px] text-amber-300">
-                {index + 1}
-              </span>
-              <span className="min-w-0 flex-1 font-display text-[12.5px] font-semibold text-amber-200">{parsed.head}</span>
-              {parsed.body ? <ChevronDown className="creator-chevron size-3.5 shrink-0 text-stone-500" aria-hidden="true" /> : null}
-            </span>
+            {parsed.body ? (
+              <button
+                type="button"
+                onClick={() => setOpenTrait(open ? null : index)}
+                aria-expanded={open}
+                aria-controls={bodyId}
+                className="creator-trait-toggle"
+              >
+                {head}
+              </button>
+            ) : (
+              head
+            )}
             {open ? (
-              <span className="creator-trait-body pb-2.5 pl-[42px] pr-3 font-serif text-[12.5px] leading-normal text-stone-300">
+              <div id={bodyId} className="creator-trait-body pb-2.5 pl-[42px] pr-3 font-serif text-[12.5px] leading-normal text-stone-300">
                 {parsed.body}
-              </span>
+              </div>
             ) : null}
-          </button>
+          </div>
         );
       })}
     </div>
@@ -123,6 +143,7 @@ export function LineageCarousel({
     ...(slide.source ? [{ key: "Source", value: slide.source }] : []),
   ];
   const chosen = slide.id === chosenId;
+  const fits = lineageFits(slide);
   const navButton = cn(ui.btnSmall, "min-w-0 max-w-[38%] px-2 py-1 text-xs");
 
   return (
@@ -133,7 +154,7 @@ export function LineageCarousel({
         <span className="flex min-w-0 flex-col">
           <span className="truncate uppercase tracking-[0.14em]">{slide.name}</span>
           {slide.canonical ? (
-            <span className="font-mono text-[10px] normal-case tracking-normal text-stone-500">
+            <span className="font-mono text-[0.6875rem] normal-case tracking-normal text-stone-500">
               {slide.canonical} in the rules
             </span>
           ) : null}
@@ -153,16 +174,16 @@ export function LineageCarousel({
             <span className="truncate">{prev.name}</span>
           </button>
           <span className="flex min-w-0 flex-col items-center gap-0.5 text-center">
-            <span className="font-mono text-[9.5px] text-stone-500" aria-live="polite">
+            <span className="font-mono text-[0.6875rem] text-stone-500" aria-live="polite">
               {index + 1} / {slides.length}
             </span>
             {slide.recommended ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-400/10 px-1.5 py-px font-display text-[8px] font-bold uppercase tracking-[0.12em] text-amber-300">
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-400/10 px-1.5 py-px font-display text-[0.6875rem] font-bold uppercase tracking-[0.12em] text-amber-300">
                 <Star className="size-2.5 fill-current" aria-hidden="true" />
                 Recommended
               </span>
             ) : null}
-            {slide.group ? <span className="truncate font-mono text-[9px] text-stone-500">{slide.group}</span> : null}
+            {slide.group ? <span className="truncate font-mono text-[0.6875rem] text-stone-500">{slide.group}</span> : null}
           </span>
           <button type="button" onClick={() => step(1)} className={navButton} aria-label={`Next: ${next.name}`}>
             <span className="truncate">{next.name}</span>
@@ -188,7 +209,7 @@ export function LineageCarousel({
               </div>
               <dl className="flex flex-col gap-[3px]">
                 {facts.map((fact) => (
-                  <div key={fact.key} className="flex items-baseline justify-between gap-2 font-mono text-[10px] text-stone-500">
+                  <div key={fact.key} className="flex items-baseline justify-between gap-2 font-mono text-[0.6875rem] text-stone-500">
                     <dt>{fact.key}</dt>
                     <dd className="text-stone-200">{fact.value}</dd>
                   </div>
@@ -198,6 +219,16 @@ export function LineageCarousel({
           </div>
 
           <div className="flex min-w-0 flex-[1_1_260px] flex-col gap-2.5">
+            {/* The classes this lineage's bonuses suit (lineageFits.ts), so a
+                player who picks the people first knows where it leads. */}
+            {fits ? (
+              <p className="text-xs leading-normal text-stone-300">
+                <span className="font-display font-semibold uppercase tracking-[0.12em] text-amber-400/90">Good fits </span>
+                {fits.kind === "any"
+                  ? "Any class: its bonuses are yours to place."
+                  : `${fits.names.join(", ")}.`}
+              </p>
+            ) : null}
             {slide.packBlurb ? (
               <p className="font-serif text-[13px] italic leading-normal text-stone-300">{slide.packBlurb}</p>
             ) : null}

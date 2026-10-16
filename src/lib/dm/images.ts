@@ -13,6 +13,7 @@ import { publishEphemeral, publishPersisted } from "@/lib/events";
 import { enqueueMediaJob } from "@/lib/media-queue";
 import { toEnglishForImage } from "@/lib/image-english";
 import type { AspectPreset, GeneratedImage, ImageRequest, StorySettings } from "@/lib/types";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 // Ephemeral progress refinements for the pending-media placeholders. The
 // durable truth stays derivable (a message with imageRequest and no
@@ -141,19 +142,19 @@ export async function fulfillAutoImage(
 export function handleGenerateImage(
   campaign: Campaign,
   rawArguments: string,
-): Record<string, unknown> {
+): ToolResult {
   if (!campaign.settings.imageGenerationEnabled) {
-    return { error: "Image generation is off for this campaign." };
+    return { error: "Image generation is off for this campaign.", retry: true };
   }
   let args: ImageToolArgs;
   try {
     args = imageToolArgsSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: illustrating needs a prompt." };
+    return { error: "Invalid arguments: illustrating needs a prompt.", retry: true };
   }
   const message = getLatestDmMessage(campaign.id);
   if (!message) {
-    return { error: "Narrate something first; the picture hangs under the passage it draws." };
+    return { error: "Narrate something first; the picture hangs under the passage it draws.", retry: true };
   }
   const request: ImageRequest = {
     needed: true,
@@ -165,7 +166,7 @@ export function handleGenerateImage(
     characterIds: [],
   };
   if (!setMessageImageRequest(message.id, request)) {
-    return { error: "That passage is no longer there." };
+    return { error: "That passage is no longer there.", retry: true };
   }
   const updated = getCampaignMessage(message.id);
   if (updated) {

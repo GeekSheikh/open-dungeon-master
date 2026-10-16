@@ -65,6 +65,12 @@ export function chosenOptions(features: Array<{ name: string }>, kind: OptionKin
     .map((feature) => feature.name.slice(KINDS[kind].prefix.length).trim());
 }
 
+// Whether a bare name is an option of any kind ("Riposte", "Agonizing Blast").
+export function isOptionName(name: string): boolean {
+  const wanted = normalize(name);
+  return OPTIONS.some((option) => normalize(option.n) === wanted);
+}
+
 // Any option pick on a sheet, whatever its kind. Used by the help layer so
 // "Invocation: Agonizing Blast" can explain itself.
 export function findOptionByFeatureName(featureName: string): OptionDef | null {

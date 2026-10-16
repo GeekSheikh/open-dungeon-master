@@ -37,6 +37,7 @@ import {
 import { matchWeapon } from "@/lib/srd/weapons";
 import { poisonAt } from "@/lib/srd/table-hazards";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 const lower = (value: string) => value.trim().toLowerCase();
 
@@ -115,7 +116,7 @@ function slashesOrPierces(damage: string): boolean {
 }
 
 // Why the vial cannot be used, before it is spent: nothing to coat.
-export function poisonCoatRefusal(sheet: CharacterSheet, itemName: string): string | null {
+export function poisonCoatRefusal(sheet: CharacterSheet, itemName: string): ToolError | null {
   if (!isBasicPoison(itemName, sheet.campaignId)) {
     return null;
   }
@@ -125,7 +126,7 @@ export function poisonCoatRefusal(sheet: CharacterSheet, itemName: string): stri
   });
   return coatable
     ? null
-    : `${sheet.name} carries no slashing or piercing weapon or ammunition to coat with the poison; the vial stays in the pack.`;
+    : { error: `${sheet.name} carries no slashing or piercing weapon or ammunition to coat with the poison; the vial stays in the pack.`, refused: "rules" };
 }
 
 // The vial just used: the coat goes on, for a minute (ten rounds). Which

@@ -11,6 +11,7 @@ import CharacterBuilder, {
 import type { Genre } from "@/lib/schemas/game-settings";
 import type { CreateSheetInput } from "@/lib/schemas/sheet";
 import { refusalText } from "@/app/characters/builder/refusal";
+import { builderDraftKey, clearBuilderDraft } from "@/app/characters/builder/builderDraft";
 
 // Whoever steers the story (the party lead in an AI campaign, the DM in a
 // human-run one) builds a lasting companion with the full character creator.
@@ -100,6 +101,7 @@ export function CompanionBuilderDialog({
         setError(refusalText(data, "Could not create the companion."));
         return;
       }
+      clearBuilderDraft(builderDraftKey("companion", campaignId));
       onCreated?.();
       onClose();
     } catch {
@@ -193,6 +195,10 @@ export function CompanionBuilderDialog({
             worldPackId={worldPackId}
             initial={tweaking?.sheet}
             initialLevel={tweaking?.level}
+            // A companion built from scratch is kept on this device until it
+            // is added, so an Escape or a stray click on the overlay costs
+            // nothing; one changed from the library is not.
+            draftKey={tweaking ? undefined : builderDraftKey("companion", campaignId)}
             submitLabel="Add companion"
             onSubmit={submit}
             busy={busy}

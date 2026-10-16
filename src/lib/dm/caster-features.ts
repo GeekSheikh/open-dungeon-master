@@ -19,6 +19,7 @@ import { applyPcDamage } from "@/lib/dm/pc-damage";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import type { SpellFacts } from "@/lib/srd/spell-facts";
 import { rollCard } from "@/lib/dm/roll-card";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 type Featured = Pick<CharacterSheet, "features">;
 
@@ -48,18 +49,18 @@ export function sculptedIds(
 // ---- Overchannel ----
 
 // Whether this casting may be overchanneled, or why not.
-export function overchannelProblem(caster: CharacterSheet, facts: SpellFacts | null, dealsDamage: boolean): string | null {
+export function overchannelProblem(caster: CharacterSheet, facts: SpellFacts | null, dealsDamage: boolean): ToolError | null {
   if (!holds(caster, "overchannel")) {
-    return `${caster.name} does not have Overchannel (School of Evocation, 14th level).`;
+    return { error: `${caster.name} does not have Overchannel (School of Evocation, 14th level). Ask the player whether to cast it without Overchannel.`, retry: true };
   }
   if (!facts || facts.level < 1 || facts.level > 5) {
-    return "Overchannel works on a wizard spell of 1st through 5th level.";
+    return { error: "Overchannel works on a wizard spell of 1st through 5th level. Ask the player whether to cast it without Overchannel.", retry: true };
   }
   if (facts.classes?.length && !facts.classes.some((entry) => entry.toLowerCase() === "wizard")) {
-    return `Overchannel works on a wizard spell, and ${facts.name} is not one.`;
+    return { error: `Overchannel works on a wizard spell, and ${facts.name} is not one. Ask the player whether to cast it without Overchannel.`, retry: true };
   }
   if (!dealsDamage) {
-    return `Overchannel maximizes damage, and ${facts.name} deals none.`;
+    return { error: `Overchannel maximizes damage, and ${facts.name} deals none. Ask the player whether to cast it without Overchannel.`, retry: true };
   }
   return null;
 }

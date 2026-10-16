@@ -71,6 +71,29 @@ export function rollTier(total: number): 1 | 2 | 3 | 4 | 5 {
   return 5;
 }
 
+// The tier in words, shown beside the colour so a reader who cannot tell red
+// from green, or hears the tray read aloud, gets the same grade.
+const TIER_WORDS = { 1: "grim", 2: "poor", 3: "fair", 4: "good", 5: "heroic" } as const;
+export function rollWord(total: number): string {
+  return TIER_WORDS[rollTier(total)];
+}
+
+// The line a remarkable throw earns, or null: an 18, four sixes in one
+// throw, a pool that sums to 80 or more. The story players retell, noticed
+// in words first, so it reads the same with the effects turned down.
+export function poolHighlight(pool: PoolEntry[]): string | null {
+  if (pool.some((entry) => entry.roll?.dice.every((die) => die === 6))) {
+    return "Four sixes in one throw. The dice favour you.";
+  }
+  if (pool.some((entry) => entry.total === 18)) {
+    return "An 18. The dice favour you.";
+  }
+  if (poolSum(pool) >= 80) {
+    return "A heroic pool. Your table will hear about this.";
+  }
+  return null;
+}
+
 // Standard d6 pip layouts on a 42-unit face: a 3x3 grid inset to 12/21/30.
 const PIP_GRID = {
   tl: [12, 12], tc: [21, 12], tr: [30, 12],

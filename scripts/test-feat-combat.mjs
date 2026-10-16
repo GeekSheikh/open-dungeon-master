@@ -29,11 +29,11 @@ test("the -5/+10 trade belongs to the feat that fits the weapon", () => {
   const shot = { weaponAttack: true, ranged: true, heavy: false, proficient: true };
   assert.equal(powerAttackFeat(sheet(["Great Weapon Master"]), melee).feat, "Great Weapon Master");
   assert.equal(powerAttackFeat(sheet(["Sharpshooter"]), shot).feat, "Sharpshooter");
-  assert.match(powerAttackFeat(sheet([]), melee).refused, /none of them/);
-  assert.match(powerAttackFeat(sheet(["Great Weapon Master"]), shot).refused, /needs Sharpshooter/);
-  assert.match(powerAttackFeat(sheet(["Sharpshooter"]), melee).refused, /needs Great Weapon Master/);
-  assert.match(powerAttackFeat(sheet(["Great Weapon Master"]), { ...melee, heavy: false }).refused, /heavy melee weapon/);
-  assert.match(powerAttackFeat(sheet(["Great Weapon Master"]), { ...melee, weaponAttack: false }).refused, /spell attack/);
+  assert.match(powerAttackFeat(sheet([]), melee).refused.error, /none of them/);
+  assert.match(powerAttackFeat(sheet(["Great Weapon Master"]), shot).refused.error, /needs Sharpshooter/);
+  assert.match(powerAttackFeat(sheet(["Sharpshooter"]), melee).refused.error, /needs Great Weapon Master/);
+  assert.match(powerAttackFeat(sheet(["Great Weapon Master"]), { ...melee, heavy: false }).refused.error, /heavy melee weapon/);
+  assert.match(powerAttackFeat(sheet(["Great Weapon Master"]), { ...melee, weaponAttack: false }).refused.error, /spell attack/);
   // A feat written as a feature (a DM's tool) counts the same.
   assert.equal(powerAttackFeat(sheet([], { features: [{ name: "Great Weapon Master" }] }), melee).feat, "Great Weapon Master");
 });

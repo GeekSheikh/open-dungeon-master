@@ -73,7 +73,7 @@ function optionRefusal(
     derived,
     budget: turn.myTurn ? budgetOf(turn, sheet) : null,
   });
-  return "refused" in verdict ? verdict.refused : null;
+  return "refused" in verdict ? verdict.refused.error : null;
 }
 
 // The toggles an attack card offers: only the ones the sheet could ever use
@@ -96,7 +96,7 @@ export function attackOptionsFor(
       id: "useInspiration",
       label: "Inspiration",
       note: "Spend your Inspiration: advantage on this attack roll.",
-      disabled: inspirationProblem(sheet, true),
+      disabled: inspirationProblem(sheet, true)?.error ?? null,
     });
   }
   // Stroke of Luck (rogue 20): a miss becomes a hit; spent only on a miss.
@@ -105,7 +105,7 @@ export function attackOptionsFor(
       id: "strokeOfLuck",
       label: "Stroke of Luck",
       note: "If this attack misses, it hits instead. Spent only on a miss; back on a short or long rest.",
-      disabled: strokeOfLuckProblem(sheet, true),
+      disabled: strokeOfLuckProblem(sheet, true)?.error ?? null,
     });
   }
   // Hurl Through Hell (Fiend 14): the hit creature is gone until the end of
@@ -115,7 +115,7 @@ export function attackOptionsFor(
       id: "hurlThroughHell",
       label: "Hurl Through Hell",
       note: "On a hit: gone through the lower planes until the end of your next turn, then 10d10 psychic unless a fiend. Once a long rest.",
-      disabled: hurlProblem(sheet, true),
+      disabled: hurlProblem(sheet, true)?.error ?? null,
     });
   }
   // Rapid Strike (Samurai 15): this swing's advantage traded for one more
@@ -138,7 +138,7 @@ export function attackOptionsFor(
     const spend = spendAttack(budgetOf(turn, sheet, swing.allowed), sheet.name, { unarmed: true });
     const flurry = spend.ok && (spend.budget.flurryStrikes ?? 0) < before;
     for (const option of OPEN_HAND_OPTIONS) {
-      options.push({ ...option, group: "openHand", disabled: flurry ? null : OPEN_HAND_NOT_FLURRY });
+      options.push({ ...option, group: "openHand", disabled: flurry ? null : OPEN_HAND_NOT_FLURRY.error });
     }
   }
   if (holds(sheet, "reckless attack") && melee) {

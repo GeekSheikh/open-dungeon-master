@@ -1,5 +1,6 @@
 import { normalizeReputation } from "@/lib/dm/faction-logic";
 import { describeFormation, normalizeFormationChange, type FormationChange } from "@/lib/dm/formation-logic";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 // The party as a thing in its own right.
 //
@@ -123,10 +124,10 @@ function normalizeItem(raw: Record<string, unknown>): PartyItem | null {
 export function addPartyItem(
   inventory: PartyItem[],
   item: { name: string; qty?: number; weight?: number; identified?: boolean },
-): { inventory: PartyItem[] } | { error: string } {
+): { inventory: PartyItem[] } | ToolError {
   const name = item.name.trim().slice(0, PARTY_ITEM_NAME_MAX);
   if (!name) {
-    return { error: "Name what goes in the pack." };
+    return { error: "Name what goes in the pack.", retry: true };
   }
   const qty = Math.max(1, Math.round(item.qty ?? 1));
   const known = item.identified !== false;
@@ -136,7 +137,7 @@ export function addPartyItem(
   );
   if (index < 0) {
     if (inventory.length >= MAX_PARTY_ITEMS) {
-      return { error: `The pack holds ${MAX_PARTY_ITEMS} kinds of thing; hand something out first.` };
+      return { error: `The pack holds ${MAX_PARTY_ITEMS} kinds of thing; something is handed out first. Ask the party what.`, retry: true };
     }
     return {
       inventory: [
@@ -155,14 +156,24 @@ export function addPartyItem(
   return { inventory: next };
 }
 
+// `known`: the table's rules know an item by that name (isTableGearName), so
+// one the pack lacks is the game saying no rather than a name to fix.
 export function removePartyItem(
   inventory: PartyItem[],
   name: string,
+  known: boolean,
   qty = 1,
-): { inventory: PartyItem[]; removed: number; item: PartyItem } | { error: string } {
+): { inventory: PartyItem[]; removed: number; item: PartyItem } | ToolError {
   const index = inventory.findIndex((row) => row.name.toLowerCase() === name.trim().toLowerCase());
   if (index < 0) {
-    return { error: `The pack does not hold "${name}".` };
+    return known
+      ? { error: `The pack does not hold "${name}".`, refused: "rules" }
+      : {
+          error: `The pack holds nothing called "${name}", and no item by that name is known. ${
+            inventory.length ? `It holds: ${inventory.map((row) => row.name).join(", ")}.` : "It is empty."
+          } Send the one meant, by the name in the pack.`,
+          retry: true,
+        };
   }
   const item = inventory[index];
   const removed = Math.min(item.qty, Math.max(1, Math.round(qty)));

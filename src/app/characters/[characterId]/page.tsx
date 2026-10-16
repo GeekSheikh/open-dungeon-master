@@ -415,8 +415,20 @@ export default function CharacterDetailPage({
             <GameIcon icon={{ kind: "glyph", key: "tab-campaigns" }} size="size-6" />{" "}
             {character.role === "companion" ? "Bring to a campaign" : "Use in a campaign"}
           </button>
+          {/* Levelling is the change made most often; it opens the build one
+              level up instead of making the player find the level field.
+              A multiclass split levels at a table, where the class is
+              chosen. */}
+          {character.level < 20 && (character.sheet?.classes ?? []).length <= 1 ? (
+            <Link
+              href={`/characters/${characterId}/edit?levelUp=1`}
+              className={cn(ui.btnSecondary, "min-w-0 flex-1 sm:flex-none")}
+            >
+              <GameIcon icon={{ kind: "glyph", key: "rest-level-up" }} size="size-6" /> Level up to {character.level + 1}
+            </Link>
+          ) : null}
           <Link href={`/characters/${characterId}/edit`} className={cn(ui.btnSecondary, "min-w-0 flex-1 sm:flex-none")}>
-            <GameIcon icon={{ kind: "glyph", key: "rest-level-up" }} size="size-6" /> Edit build
+            <GameIcon icon={{ kind: "glyph", key: "ui-edit" }} size="size-6" /> Edit build
           </Link>
           <KebabMenu
             items={actions}

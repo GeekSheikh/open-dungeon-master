@@ -7,6 +7,9 @@ import { PIXEL_ICONS, PixelTile } from "@/lib/ui";
 import CharacterBuilder, { type BuilderResult } from "../builder/CharacterBuilder";
 import { navigateTo } from "@/lib/navigation";
 import { refusalText } from "@/app/characters/builder/refusal";
+import { builderDraftKey, clearBuilderDraft } from "@/app/characters/builder/builderDraft";
+
+const DRAFT_KEY = builderDraftKey("library");
 
 export default function NewCharacterPage() {
   const [busy, setBusy] = useState(false);
@@ -32,6 +35,7 @@ export default function NewCharacterPage() {
         setError(refusalText(data, "Could not save the character."));
         return;
       }
+      clearBuilderDraft(DRAFT_KEY);
       navigateTo("/characters");
     } catch {
       setError("Could not reach the server.");
@@ -62,6 +66,7 @@ export default function NewCharacterPage() {
         busy={busy}
         error={error}
         role={{ value: role, onChange: setRole }}
+        draftKey={DRAFT_KEY}
         onCancel={() => navigateTo("/characters")}
       />
     </main>

@@ -5,7 +5,7 @@ import racesJson from "@/lib/srd/races.json";
 import { CUSTOM_CLASS_FEATURES } from "@/lib/classes";
 import type { SheetFeature } from "@/lib/schemas/sheet";
 import { chosenFightingStyles, fightingStyleSlots } from "@/lib/srd/feature-effects";
-import { findOptionByFeatureName, optionSlotsFor } from "@/lib/srd/options";
+import { findOptionByFeatureName, isOptionName, optionSlotsFor } from "@/lib/srd/options";
 import { featOptionSlots } from "@/lib/srd/feat-combat";
 import { srdRaceId } from "@/lib/srd/race-id";
 import { subclassNamedBare, subclassNamedExactly } from "@/lib/srd/subclass-name";
@@ -278,6 +278,23 @@ export function bundledSubclassName(classId: string, subclass: string): string |
       (entry.aliases ?? []).some((alias) => normalizeName(alias) === wanted),
   );
   return found?.name ?? null;
+}
+
+// Every feature name the bundled tables grant, at any level: base classes,
+// their subclasses and the lineages' traits, plus the option picks. A name
+// here is one the rules know, whoever holds it.
+let publishedFeatureNames: Set<string> | null = null;
+const featureKey = (name: string) => name.replace(/\s*\([^)]*\)\s*$/, "").trim().toLowerCase();
+
+export function isPublishedFeatureName(name: string): boolean {
+  if (!publishedFeatureNames) {
+    const names = Object.values(CLASS_FEATURES).flatMap((table) => [
+      ...Object.values(table.levels).flat(),
+      ...table.subclasses.flatMap((subclass) => Object.values(subclass.levels).flat()),
+    ]);
+    publishedFeatureNames = new Set([...names, ...RACES.flatMap((race) => race.traits)].map(featureKey));
+  }
+  return publishedFeatureNames.has(featureKey(name)) || isOptionName(name);
 }
 
 // Base-class features up to `level`, plus the features of whichever subclass

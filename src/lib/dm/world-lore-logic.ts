@@ -49,6 +49,10 @@ export type WorldLoreEntry = {
   audience: string[] | null;
   // A PDF that travels with the entry (section 5.3), as an /uploads/ path.
   attachmentPath: string;
+  // Held back from players because its WorldForge entry is not canon yet
+  // (draft, alternate, retired): src/lib/db/world-publication.ts. Absent for
+  // an entry with no world entry, or a canon one.
+  unpublished?: boolean;
   style: LoreStyle;
   createdAt: string;
   updatedAt: string;
@@ -132,7 +136,9 @@ export function loreReadableBy(entry: WorldLoreEntry, steersStory: boolean, user
   if (steersStory) {
     return true;
   }
-  if (entry.visibility === "dm") {
+  // The author's audience and the entry's canon both have to allow it: a
+  // draft is not the table's yet, whatever its audience will be.
+  if (entry.visibility === "dm" || entry.unpublished) {
     return false;
   }
   const audience = entry.audience ?? null;
@@ -312,7 +318,14 @@ export type LorePickInput = { entry: WorldLoreEntry; reason: string };
 export type LoreHeldInput = { entry: WorldLoreEntry; reason: string; close: boolean };
 
 function entryLine(entry: WorldLoreEntry, excerpt: string): string {
-  const secret = entry.visibility === "dm" ? " (SECRET: the party does not know this)" : "";
+  // A draft WorldForge holds back from players (src/lib/db/world-publication.ts)
+  // is no more theirs than a DM-only entry: the DM may use it, not state it.
+  const secret =
+    entry.visibility === "dm"
+      ? " (SECRET: the party does not know this)"
+      : entry.unpublished
+        ? " (NOT CANON YET: the party does not know this; use it only if it fits)"
+        : "";
   return `- [${entry.category}] ${entry.title}${secret}: ${excerpt}`;
 }
 
@@ -368,7 +381,7 @@ export function renderLoreBlock(input: {
     included,
     reason,
     ...(flags.pinned ? { pinned: true as const } : {}),
-    ...(entry.visibility === "dm" ? { secret: true as const } : {}),
+    ...(entry.visibility === "dm" || entry.unpublished ? { secret: true as const } : {}),
     ...(flags.weak ? { weak: true as const } : {}),
   });
 

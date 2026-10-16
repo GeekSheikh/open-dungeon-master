@@ -133,7 +133,7 @@ export default function OptionPicker({
                         )}
                         {option.name}
                         {option.source ? (
-                          <span className="truncate font-mono text-[10px] text-stone-500">{option.source}</span>
+                          <span className="truncate font-mono text-[0.6875rem] text-stone-500">{option.source}</span>
                         ) : null}
                         {/* A star, not a word: these rows sit in half-width
                             columns, and the group heading says the rest. */}

@@ -14,6 +14,7 @@ import type { CastInput, CastResult } from "@/lib/dm/cast-guard";
 import { turnCharge } from "@/lib/dm/cast-rules";
 import { lastCastSlot } from "@/lib/dm/spell-effects";
 import { attacksAllowedFor, budgetFor, storeBudget } from "@/lib/dm/turn-budget";
+import { toolError } from "@/lib/dm/tool-errors";
 
 // The effect of a concentration spell coming again (Call Lightning's next
 // bolt): the caster must still be up and able, and the turn pays what the
@@ -30,7 +31,7 @@ export function repeatSpell(
   input: CastInput,
 ): CastResult {
   if (sheet.deathSaves?.dead || sheet.currentHp <= 0) {
-    return { error: `${sheet.name} is ${sheet.deathSaves?.dead ? "dead" : "at 0 HP"}, and ${name} ended with their concentration.` };
+    return { error: `${sheet.name} is ${sheet.deathSaves?.dead ? "dead" : "at 0 HP"}, and ${name} ended with their concentration.`, refused: "rules" };
   }
   const slotLevel = lastCastSlot(sheet.id, name) ?? facts?.level ?? null;
   const repeatNote = `${name} is already cast and held by ${sheet.name}'s concentration: this is its effect again, and no slot is spent.`;
@@ -41,7 +42,7 @@ export function repeatSpell(
   }
   const able = canAct({ sheet, encounter: fight, kind: cost === "bonus" ? "bonus" : "action" });
   if (!able.ok) {
-    return { error: able.error };
+    return toolError(able);
   }
   const budget = budgetFor(fight, sheet.id, attacksAllowedFor(sheet), conditionExtraActions(sheet.conditions));
   // Not a casting: the bonus-action spell rule and the levelled spell mark

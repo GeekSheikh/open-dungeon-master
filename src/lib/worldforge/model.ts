@@ -116,6 +116,11 @@ export type Region = { id: string; name: string; points: XY[]; color: string; re
 export type AtlasMap = { id: string; name: string; image: string; parentPinId: string; regions: Region[] };
 export type Pin = { id: string; mapId: string; x: number; y: number; name: string; ref: string; linkedMapId: string; notes: string };
 
+// Where an imported row or entry came from ("<source>|<slice>|<id there>")
+// and how each of its values read: "<source reading>.<local reading>" as of
+// the import that last settled it (src/lib/worldforge/import-merge.ts).
+export type Origin = { from: string; at: Record<string, string> };
+
 export type WorldDoc = {
   version: 1;
   types: WorldType[];
@@ -128,6 +133,8 @@ export type WorldDoc = {
   stubs: Stub[];
   maps: AtlasMap[];
   pins: Pin[];
+  // Keyed "<slice>/<id>", or "entries/<ref>". Absent until an import.
+  origins?: Record<string, Origin>;
 };
 
 export const SLICES = ["types", "entries", "links", "folders", "calendars", "events", "secrets", "stubs", "maps", "pins"] as const;
@@ -150,7 +157,10 @@ export const LIMITS = {
   points: 200,
   refs: 40,
   name: 120,
-  article: 12_000,
+  // The article holds what a lore entry's own body does
+  // (src/lib/dm/world-lore-logic.ts LORE_BODY_MAX), so a long entry makes
+  // the round trip through a WorldForge file whole.
+  article: 20_000,
   note: 4_000,
 } as const;
 
@@ -410,6 +420,23 @@ export function readSlice<K extends Slice>(slice: K, value: unknown): WorldDoc[K
   return uniqueById(rows) as unknown as WorldDoc[K];
 }
 
+const ORIGINS_MAX = 20_000;
+
+export function readOrigins(value: unknown): Record<string, Origin> {
+  const origins: Record<string, Origin> = {};
+  for (const [key, item] of Object.entries(rec(value)).slice(0, ORIGINS_MAX)) {
+    const raw = rec(item);
+    const from = str(raw.from, 300);
+    if (!from || key.length > 120) continue;
+    const at: Record<string, string> = {};
+    for (const [name, reading] of Object.entries(rec(raw.at)).slice(0, 80)) {
+      if (typeof reading === "string" && reading.length <= 40 && name.length <= 100) at[name] = reading;
+    }
+    origins[key] = { from, at };
+  }
+  return origins;
+}
+
 export function readDoc(value: unknown): WorldDoc {
   const raw = rec(value);
   const doc = emptyDoc();
@@ -418,6 +445,7 @@ export function readDoc(value: unknown): WorldDoc {
       (doc as Record<Slice, unknown>)[slice] = readSlice(slice, raw[slice]);
     }
   }
+  if (raw.origins !== undefined) doc.origins = readOrigins(raw.origins);
   return doc;
 }
 

@@ -20,6 +20,8 @@ import { publishEncounter } from "@/lib/dm/enemy-damage";
 import { applyDmMutation } from "@/lib/dm/mutations";
 import { GRAPPLING_STRIKE, MANEUVERED, maneuverDieFor, maneuverUse, offSwingRefusal, type ManeuverUse } from "@/lib/dm/maneuver-rules";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import type { ToolError } from "@/lib/dm/tool-errors";
+import { optionsOfKind } from "@/lib/srd/options";
 
 export { superiorityDie, maneuverDieFor } from "@/lib/dm/maneuver-rules";
 
@@ -38,12 +40,12 @@ export function pickManeuver(
   sheet: CharacterSheet,
   asked: string | undefined,
   weaponAttack: boolean,
-): { refused: string } | { maneuver: ManeuverPick | null } {
+): { refused: ToolError } | { maneuver: ManeuverPick | null } {
   if (!asked?.trim()) {
     return { maneuver: null };
   }
   if (!weaponAttack) {
-    return { refused: "Maneuvers ride weapon attacks, not spells." };
+    return { refused: { error: "Maneuvers ride weapon attacks, not spells. Ask the player whether to cast it without the maneuver.", retry: true } };
   }
   const term = asked.trim().toLowerCase();
   const picks = sheet.features
@@ -54,10 +56,14 @@ export function pickManeuver(
     return bare.includes(term) || term.includes(bare);
   });
   if (!known) {
+    const theirs = picks.length ? ` Their maneuvers: ${picks.join(", ")}.` : " They have no maneuver picks.";
+    // A maneuver the rules know that they did not pick rides an attack they
+    // can still make; a name nobody knows is the call's to fix, from their
+    // picks.
     return {
-      refused: `${sheet.name} knows no maneuver "${asked}".${
-        picks.length ? ` Their maneuvers: ${picks.join(", ")}.` : " They have no maneuver picks."
-      }`,
+      refused: optionsOfKind("maneuver").some((option) => option.n.toLowerCase() === term.replace(/^maneuver:\s*/, ""))
+        ? { error: `${sheet.name} knows no maneuver "${asked}".${theirs} They can make the attack without it.`, retry: true }
+        : { error: `No maneuver called "${asked}" is known.${theirs} Send the one meant, by the name on the sheet.`, retry: true },
     };
   }
   // A reaction, a bonus action of its own or a check is not part of a swing.
@@ -69,9 +75,9 @@ export function pickManeuver(
   if (pool === null || pool.left < 1) {
     return {
       refused:
-        pool === null
-          ? `${sheet.name} has no Superiority Dice.`
-          : `${sheet.name} has 0/${pool.max} Superiority Dice left; ${asked.trim()} is not available until they rest. They can make the attack without it.`,
+        { error: pool === null
+          ? `${sheet.name} has no Superiority Dice. They can make the attack without the maneuver.`
+          : `${sheet.name} has 0/${pool.max} Superiority Dice left; ${asked.trim()} is not available until they rest. They can make the attack without it.`, retry: true },
     };
   }
   return {

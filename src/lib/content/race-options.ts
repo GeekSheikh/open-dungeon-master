@@ -36,6 +36,34 @@ export function canonicalRaceId(raceId: string): string {
   return srdRaceId(raceId);
 }
 
+// A subrace card names its parent, the way the bundled rows already read:
+// "Halfling (Stoor)", "Darakhul (Drow Heritage)", "Gearforged (Dwarf
+// Chassis)". The parent's own word is dropped from the subrace's name
+// ("Stoor Halfling" -> "Stoor", "High Elf" -> "High") unless nothing would
+// be left.
+// A name that already carries its parent, or already has a parenthesis, is
+// left alone. Darakhul's Ravenfolk is a heritage named without the word.
+export function subraceLabel(name: string, parentName?: string | null): string {
+  const sub = String(name ?? "").trim();
+  const parent = String(parentName ?? "").trim();
+  if (!parent || !sub || sub.toLowerCase() === parent.toLowerCase() || sub.includes("(")) {
+    return sub;
+  }
+  const escaped = parent.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const word = new RegExp(`(^|\\s)${escaped}(\\s|$)`, "i");
+  let rest = sub;
+  if (word.test(sub)) {
+    rest = sub.replace(word, " ").replace(/\s+/g, " ").trim();
+    if (!rest) {
+      return sub;
+    }
+  }
+  if (/^darakhul$/i.test(parent) && !/heritage/i.test(rest)) {
+    rest = `${rest} Heritage`;
+  }
+  return `${parent} (${rest})`;
+}
+
 export function srdRaceFor(raceId: string): SrdRace | null {
   const id = canonicalRaceId(raceId);
   return SRD_RACES.find((entry) => entry.id === id) ?? null;
@@ -221,7 +249,7 @@ export function packRaceOptions(rows: RaceRow[], keepIds: Iterable<string> = [])
     }
     return {
       id: idFor(row),
-      name: row.name,
+      name: subraceLabel(row.name, parent?.name),
       ...mechanics,
       note: mechanics.traitsSummary,
       slug: row.slug,

@@ -1,5 +1,6 @@
 "use client";
 
+import { Dices } from "lucide-react";
 import { useEffect, useState } from "react";
 import { UnofficialPackNotice } from "@/components/UnofficialPackNotice";
 import { GameTerm } from "@/components/ui/GameTerm";
@@ -10,6 +11,7 @@ import { describeSkill } from "@/lib/help";
 import { SRD_SKILLS } from "@/lib/srd";
 import type { WorldPack } from "@/lib/worlds/types";
 import OptionPicker, { type PickerGroup } from "../OptionPicker";
+import { rollHeroName } from "../heroNames";
 import { backgroundInfoText } from "../usePickerGroups";
 import type { BackgroundOption } from "../useBuilderOptions";
 import type { BuilderState } from "../useBuilderState";
@@ -94,15 +96,32 @@ export function IdentityStep({
       ) : null}
 
       <StepPanel title="Name your hero" ornate anchor="name">
-        <input
-          value={state.name}
-          onChange={(event) => state.setName(event.target.value)}
-          required
-          maxLength={60}
-          placeholder={pack?.nameHints || "Thornwick Ashvale"}
-          className={inputClass}
-          aria-label="Name"
-        />
+        <span className="flex items-center gap-2">
+          <input
+            value={state.name}
+            onChange={(event) => state.setName(event.target.value)}
+            required
+            maxLength={60}
+            placeholder={pack?.nameHints || "Thornwick Ashvale"}
+            className={inputClass}
+            aria-label="Name"
+          />
+          {/* The name dice: a name that fits the lineage chosen so far, or
+              the world's own people when the table has a pack. */}
+          <button
+            type="button"
+            onClick={() =>
+              state.setName(
+                rollHeroName({ raceId: state.raceId, packNames: pack?.nameSeeds.people ?? [], current: state.name }),
+              )
+            }
+            aria-label="Roll a name"
+            title="Roll a name"
+            className="flex size-11 shrink-0 items-center justify-center rounded-lg border border-stone-700 text-amber-200 transition-colors hover:border-amber-500/50 hover:bg-amber-500/10"
+          >
+            <Dices className="size-5" aria-hidden="true" />
+          </button>
+        </span>
         {pack?.nameSeeds.people.length ? (
           <span className="mt-2 flex flex-wrap gap-1">
             {pack.nameSeeds.people.slice(0, 8).map((seed) => (
@@ -184,7 +203,7 @@ export function IdentityStep({
               </>
             )}
           </Field>
-          <Field label="Background">
+          <Field label="Background" anchor="background">
             <OptionPicker
               value={background?.id ?? ""}
               groups={backgroundGroups}

@@ -567,11 +567,22 @@ function casterEntryForSpell(
   return spellcasting.casters.find((caster) => (caster.spellbook ?? []).some((entry) => entry.trim().toLowerCase() === wanted)) ?? null;
 }
 
+type DerivedSheet = Parameters<typeof computeSheetDerived>[0];
+export type CastingSheet<T extends DerivedSheet = DerivedSheet> = T & { spellcasting: NonNullable<T["spellcasting"]> };
+
+// A sheet with spellcasting, which always has a save DC (its ability is
+// required by the sheet schema).
+export function castsSpells<T extends DerivedSheet>(sheet: T): sheet is CastingSheet<T> {
+  return Boolean(sheet.spellcasting);
+}
+
 // The save DC a named spell is cast at: the owning caster class's ability
 // on a multiclass sheet, the sheet's single DC otherwise. Falls back to the
 // primary DC for spells no caster entry lists (scrolls, story grants).
+export function spellSaveDcFor(sheet: CastingSheet, spellName: string): number;
+export function spellSaveDcFor(sheet: DerivedSheet, spellName: string): number | null;
 export function spellSaveDcFor(
-  sheet: Parameters<typeof computeSheetDerived>[0],
+  sheet: DerivedSheet,
   spellName: string,
 ): number | null {
   // A spell cast from a scroll or a wand carries the item's DC
@@ -592,8 +603,10 @@ export function spellSaveDcFor(
 }
 
 // The spell-attack bonus for a named spell, same ownership rule as the DC.
+export function spellAttackFor(sheet: CastingSheet, spellName: string): number;
+export function spellAttackFor(sheet: DerivedSheet, spellName: string): number | null;
 export function spellAttackFor(
-  sheet: Parameters<typeof computeSheetDerived>[0],
+  sheet: DerivedSheet,
   spellName: string,
 ): number | null {
   const fromItem = itemCastNumbers((sheet as { id?: string }).id, spellName)?.attackBonus;

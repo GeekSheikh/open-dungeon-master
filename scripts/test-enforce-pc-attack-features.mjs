@@ -287,6 +287,19 @@ await test("Horde Breaker: once a turn, an extra weapon attack on a different cr
   assert.equal(again.ok, false, "a second Horde Breaker attack in one turn");
 });
 
+await test("Horde Breaker at a creature away from the one attacked first names the ones beside it.", async () => {
+  const [a, b, c] = await stage(ranger, { count: 3 });
+  kit.place(ranger.id, 5, 5);
+  kit.place(a.id, 6, 5);
+  kit.place(b.id, 7, 5);
+  kit.place(c.id, 4, 5);
+  world.patch(ranger.id, { features: [...base.get(ranger.id).features, { name: "Hunter's Prey: Horde Breaker", source: "choice" }] });
+  assert.equal((await kit.swing(ranger.id, a.id, [15, 4], { weapon: "Longsword" })).ok, true);
+  const away = await kit.swing(ranger.id, c.id, [15, 4], { weapon: "Longsword", hordeBreaker: true });
+  assert.equal(away.ok, false, "Horde Breaker struck a creature away from the first");
+  assert.match(away.error, new RegExp(`within 5 feet of the creature attacked first: ${b.displayName}\\. Ask the player which`));
+});
+
 // ---- crit range and Ki-Empowered Strikes ----
 
 await test("Improved Critical widens the critical range of weapon attacks only; a spell attack on a 19 is no critical hit.", async () => {

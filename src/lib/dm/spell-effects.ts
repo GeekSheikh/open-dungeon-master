@@ -25,6 +25,7 @@ import { conditionEffectsFor, type SaveAbilityId } from "@/lib/srd/condition-eff
 import { MECH_OVERRIDES } from "@/lib/srd/spell-mechanics";
 import { getDmTurn } from "@/lib/db/dm-turns";
 import { rollEnemySave } from "@/lib/dm/forced-save";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 // The SRD's own conditions. One of these with no spell recorded on it may
 // have come from anywhere (a ghoul's claw, a net), so a spell ending does not
@@ -244,7 +245,7 @@ const SPELL_EFFECT_NAMES = new Set(
 // casts a spell with cast_buff, which spends the slot, the action and the
 // concentration; a free set_condition "blessed" skipped all three (N:B2).
 // A person at the DM console may still set one, as a correction.
-export function spellEffectRefusal(condition: string, turnId: string): string | null {
+export function spellEffectRefusal(condition: string, turnId: string): ToolError | null {
   const row = conditionEffectsFor(condition);
   const names = [condition.toLowerCase(), ...(row?.match ?? []), ...(row ? [row.id.replace(/_/g, " ")] : [])];
   const spellEffect = names.some((name) => SPELL_EFFECT_NAMES.has(name) || SPELL_EFFECT_NAMES.has(name.replace(/ \(.*$/, "")));
@@ -254,7 +255,7 @@ export function spellEffectRefusal(condition: string, turnId: string): string | 
   if (getDmTurn(turnId)?.actor === "human_dm") {
     return null;
   }
-  return `${condition} is a spell's effect: cast the spell with cast_buff (or cast_at_enemy), which spends the slot and the action and tracks concentration. set_condition does not hand it out.`;
+  return { error: `${condition} is a spell's effect: cast the spell with cast_buff (or cast_at_enemy), which spends the slot and the action and tracks concentration. set_condition does not hand it out.`, retry: true };
 }
 
 // Death Ward: the first time damage would drop the holder to 0 hit points

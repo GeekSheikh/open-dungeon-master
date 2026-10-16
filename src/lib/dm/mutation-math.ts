@@ -1,6 +1,8 @@
 // Pure clamp math for DM-driven sheet mutations. No imports so the node
 // test runner (scripts/test-mutations.mjs) can import it directly as TS.
 
+import type { ToolError } from "@/lib/dm/tool-errors";
+
 export type SlotState = { max: number; used: number };
 export type EquipmentRow = {
   name: string;
@@ -28,23 +30,23 @@ export function sheetBuffViolation(
   sheet: { name: string; level: number; maxHp: number; gold: number },
   patch: { level?: number; maxHp?: number; gold?: number; abilities?: Record<string, number> },
   xpTargetLevel?: number,
-): string | null {
+): ToolError | null {
   if (typeof patch.level === "number" && patch.level > sheet.level + 1) {
-    return `A character gains at most one level at a time, and a level-up is applied through the player's own choices in the app. ${sheet.name} stays at level ${sheet.level}.`;
+    return { error: `A character gains at most one level at a time, and a level-up is applied through the player's own choices in the app. ${sheet.name} stays at level ${sheet.level}.`, retry: true };
   }
   if (typeof xpTargetLevel === "number" && xpTargetLevel > sheet.level + 1) {
-    return `Experience is earned through play with award_xp, not set by hand; ${sheet.name}'s XP is unchanged.`;
+    return { error: `Experience is earned through play with award_xp, not set by hand; ${sheet.name}'s XP is unchanged.`, retry: true };
   }
   if (typeof patch.maxHp === "number" && patch.maxHp > sheet.maxHp + 12 * Math.max(1, sheet.level)) {
-    return `${sheet.name}'s maximum HP cannot jump that far from a single change; larger gains come from leveling up in the app.`;
+    return { error: `${sheet.name}'s maximum HP cannot jump that far from a single change; larger gains come from leveling up in the app.`, retry: true };
   }
   if (typeof patch.gold === "number" && patch.gold - sheet.gold > 1000) {
-    return `Coin moves through purchases, loot, and roll_treasure, not a direct sheet edit; ${sheet.name}'s gold is unchanged.`;
+    return { error: `Coin moves through purchases, loot, and roll_treasure, not a direct sheet edit; ${sheet.name}'s gold is unchanged.`, retry: true };
   }
   if (patch.abilities) {
     for (const [ability, score] of Object.entries(patch.abilities)) {
       if (typeof score === "number" && score > 20) {
-        return `Ability scores cap at 20 here; leave ${sheet.name}'s ${ability.toUpperCase()} at 20 or lower.`;
+        return { error: `Ability scores cap at 20 here; leave ${sheet.name}'s ${ability.toUpperCase()} at 20 or lower.`, retry: true };
       }
     }
   }
@@ -199,12 +201,12 @@ export const GOLD_PURSE_MAX = 1000000;
 export const COPPER_PURSE_MAX = GOLD_PURSE_MAX * 100;
 
 // Why a quantity cannot be used, or null when it can. Absent means one.
-export function quantityProblem(qty: number | undefined, what: string): string | null {
+export function quantityProblem(qty: number | undefined, what: string): ToolError | null {
   if (qty === undefined) {
     return null;
   }
   if (!Number.isInteger(qty) || qty < 1 || qty > ITEM_QTY_PER_CALL) {
-    return `${what} takes a quantity from 1 to ${ITEM_QTY_PER_CALL}; ${qty} is outside it. Nothing changed.`;
+    return { error: `${what} takes a quantity from 1 to ${ITEM_QTY_PER_CALL}; ${qty} is outside it. Nothing changed.`, retry: true };
   }
   return null;
 }
@@ -215,21 +217,21 @@ export function grantProblem(
   before: EquipmentRow[],
   after: EquipmentRow[],
   name: string,
-): string | null {
+): ToolError | null {
   if (after.length > before.length && after.length > EQUIPMENT_ROWS_MAX) {
-    return `${owner}'s pack already holds ${EQUIPMENT_ROWS_MAX} different items, the most a sheet keeps. Remove something first, then grant ${name}.`;
+    return { error: `${owner}'s pack already holds ${EQUIPMENT_ROWS_MAX} different items, the most a sheet keeps; something goes first, then grant ${name}. Ask the player what.`, retry: true };
   }
   const over = after.find((item) => item.qty > ITEM_ROW_MAX);
   if (over) {
-    return `${owner} cannot hold more than ${ITEM_ROW_MAX} of ${over.name}; grant fewer.`;
+    return { error: `${owner} cannot hold more than ${ITEM_ROW_MAX} of ${over.name}; grant fewer.`, retry: true };
   }
   return null;
 }
 
 // Why a sum of gold cannot move in one call, or null when it can.
-export function goldProblem(gold: number, what: string): string | null {
+export function goldProblem(gold: number, what: string): ToolError | null {
   if (!Number.isFinite(gold) || Math.abs(gold) > GOLD_PER_CALL) {
-    return `${what} moves at most ${GOLD_PER_CALL} gp in one call; ${gold} gp is more than that. Nothing changed.`;
+    return { error: `${what} moves at most ${GOLD_PER_CALL} gp in one call; ${gold} gp is more than that. Nothing changed.`, retry: true };
   }
   return null;
 }

@@ -12,6 +12,7 @@ import type { Campaign } from "@/lib/db/campaigns";
 import type { DmTurn } from "@/lib/db/dm-turns";
 import { buildPet, handleSummonPet } from "@/lib/dm/pet-tools";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 export const isFindFamiliar = (spell: string) => spell.trim().toLowerCase() === "find familiar";
 
@@ -21,13 +22,13 @@ export function castFindFamiliar(
   // `castAs`: the name it is cast under, a table's workshop copy's own.
   input: { caster: CharacterSheet; castAs?: string; variant?: string; level?: number; reason?: string; sheets: CharacterSheet[]; sheetsById: Map<string, CharacterSheet> },
   cast: (args: Record<string, unknown>) => Record<string, unknown>,
-): Record<string, unknown> {
+): ToolResult {
   const { caster } = input;
   const castAs = input.castAs?.trim() || "Find Familiar";
   const form = (input.variant ?? "").trim();
   const built = buildPet(caster, { kind: "familiar", form });
   if ("error" in built) {
-    return { error: form ? `${built.error} Nothing was spent.` : `Find Familiar needs the familiar's form in variant (owl, cat, raven, bat, rat, spider, weasel, hawk, frog, snake...). Nothing was spent.` };
+    return { ...built, error: `${built.error} Nothing was spent.` };
   }
   const spent = cast({ characterId: caster.id, spell: castAs, ...(input.level ? { level: input.level } : {}), via: "buff", reason: (input.reason ?? "").slice(0, 200) });
   if ("error" in spent) {

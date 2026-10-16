@@ -20,8 +20,10 @@
 // modifiers that the same resolvers add in, and it is the only one a person
 // can create at the table.
 //
-// Pure by design: no imports at all, so scripts/test-active-effects.mjs can
+// Pure by design: no imports beyond types, so scripts/test-active-effects.mjs can
 // load it and the console can preview a stack before applying it.
+
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 // What an effect can modify. Every one of these corresponds to a number the
 // engine already computes, so an effect can never claim to change something
@@ -147,36 +149,36 @@ const ABILITIES = ["str", "dex", "con", "int", "wis", "cha"];
 // Validating what a form or a tool call sent. Returns an error string rather
 // than throwing, because every caller is a route or a tool handler that has
 // to say what went wrong.
-export function checkEffect(input: EffectInput): { effect: Omit<ActiveEffect, "id" | "campaignId" | "targetKind" | "targetId" | "createdAt"> } | { error: string } {
+export function checkEffect(input: EffectInput): { effect: Omit<ActiveEffect, "id" | "campaignId" | "targetKind" | "targetId" | "createdAt"> } | ToolError {
   const name = String(input.name ?? "").trim().slice(0, EFFECT_NAME_MAX);
   if (!name) {
-    return { error: "Name the effect." };
+    return { error: "Name the effect.", retry: true };
   }
   if (!Array.isArray(input.modifiers) || !input.modifiers.length) {
-    return { error: "An effect has to change at least one thing." };
+    return { error: "An effect has to change at least one thing.", retry: true };
   }
   if (input.modifiers.length > MAX_MODIFIERS) {
-    return { error: `An effect changes at most ${MAX_MODIFIERS} things; split it in two.` };
+    return { error: `An effect changes at most ${MAX_MODIFIERS} things; split it in two.`, retry: true };
   }
 
   const modifiers: EffectModifier[] = [];
   for (const raw of input.modifiers) {
     const field = String(raw?.field ?? "") as EffectField;
     if (!EFFECT_FIELDS.includes(field)) {
-      return { error: `"${raw?.field}" is not something an effect can change.` };
+      return { error: `"${raw?.field}" is not something an effect can change.`, retry: true };
     }
     const mode = (String(raw?.mode ?? "add") as EffectMode) || "add";
     if (!EFFECT_MODES.includes(mode)) {
-      return { error: `"${raw?.mode}" is not add, override, advantage or disadvantage.` };
+      return { error: `"${raw?.mode}" is not add, override, advantage or disadvantage.`, retry: true };
     }
     let value = 0;
     if (mode === "add" || mode === "override") {
       value = Math.round(Number(raw?.value));
       if (!Number.isFinite(value) || value === 0) {
-        return { error: `${EFFECT_FIELD_LABELS[field]} needs a nonzero amount.` };
+        return { error: `${EFFECT_FIELD_LABELS[field]} needs a nonzero amount.`, retry: true };
       }
       if (Math.abs(value) > MAX_EFFECT_VALUE) {
-        return { error: `${MAX_EFFECT_VALUE} is as far as one effect moves a number.` };
+        return { error: `${MAX_EFFECT_VALUE} is as far as one effect moves a number.`, retry: true };
       }
     }
     modifiers.push({ field, mode, value });
@@ -184,13 +186,13 @@ export function checkEffect(input: EffectInput): { effect: Omit<ActiveEffect, "i
 
   const duration = (String(input.duration ?? "manual") as EffectDuration) || "manual";
   if (!EFFECT_DURATIONS.includes(duration)) {
-    return { error: `"${input.duration}" is not rounds, minutes, encounter or manual.` };
+    return { error: `"${input.duration}" is not rounds, minutes, encounter or manual.`, retry: true };
   }
   let remaining = 0;
   if (duration === "rounds" || duration === "minutes") {
     remaining = Math.round(Number(input.remaining));
     if (!Number.isFinite(remaining) || remaining <= 0) {
-      return { error: `Say how many ${duration} it lasts.` };
+      return { error: `Say how many ${duration} it lasts.`, retry: true };
     }
     remaining = Math.min(duration === "rounds" ? MAX_EFFECT_ROUNDS : 60 * 24 * 30, remaining);
   }
@@ -198,10 +200,10 @@ export function checkEffect(input: EffectInput): { effect: Omit<ActiveEffect, "i
   const saveAbility = String(input.saveAbility ?? "").trim().toLowerCase().slice(0, 3);
   const saveDc = Math.round(Number(input.saveDc));
   if (saveAbility && !ABILITIES.includes(saveAbility)) {
-    return { error: `"${saveAbility}" is not an ability.` };
+    return { error: `"${saveAbility}" is not an ability.`, retry: true };
   }
   if (saveAbility && (!Number.isFinite(saveDc) || saveDc < 1 || saveDc > 30)) {
-    return { error: "A save to end needs a DC between 1 and 30." };
+    return { error: "A save to end needs a DC between 1 and 30.", retry: true };
   }
 
   return {
