@@ -1,7 +1,9 @@
 "use client";
 
 import { BookOpenText, Download, Hourglass, Lock, Map as MapIcon, MessageCircleQuestion, Network, PenLine, Shapes, Sparkles, Upload } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useRef, useState } from "react";
+import { workshopHref } from "@/lib/workshop/links";
 import { IconRail, type IconRailItem } from "@/components/ui/IconRail";
 import { KitButton, Listed, PanelError } from "@/app/campaigns/[campaignId]/PanelKit";
 import { useTourPrepare } from "@/lib/tours/prepare";
@@ -62,14 +64,35 @@ type ImportReport = {
 // A file that would not come in whole, waiting for the author's yes.
 type Held = { text: string; losses: string[]; notes: string[] };
 
-export function WorldForgePanel({ campaignId, onOpenSystem }: { campaignId: string; onOpenSystem: (system: string) => void }) {
+// The tool a record lives in, and optionally the record itself with the
+// World entry to come back to (src/lib/workshop/links.ts).
+export type OpenSystem = (system: string, record?: { id: string; from: string }) => void;
+
+export function WorldForgePanel({ campaignId, onOpenSystem }: { campaignId: string; onOpenSystem: OpenSystem }) {
   const api = useWorld(campaignId);
   const capabilities = useCapabilities();
   const canWrite = offersStoryModel(capabilities);
   const canPaint = offersImages(capabilities);
-  const [chosenView, setView] = useState<View>("wiki");
+  // The view and the open entry live in the URL, so refresh and Back land
+  // where the author was and an entry can be linked to (audit WF-11).
+  const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const askedView = params.get("view");
+  const chosenView: View = VIEWS.some((entry) => entry.value === askedView) ? (askedView as View) : "wiki";
   const view: View = !canWrite && AI_VIEWS.has(chosenView) ? "wiki" : chosenView;
-  const [focus, setFocus] = useState<string | null>(null);
+  const focus = params.get("entry");
+  function go(next: { view?: View; entry?: string | null }, how: "push" | "replace" = "push") {
+    const href = workshopHref(pathname, {
+      system: "world",
+      view: next.view ?? chosenView,
+      entry: next.entry === undefined ? focus : next.entry,
+    });
+    if (how === "replace") router.replace(href, { scroll: false });
+    else router.push(href, { scroll: false });
+  }
+  const setView = (next: View) => go({ view: next });
+  const setFocus = (ref: string | null) => go({ entry: ref });
   const [report, setReport] = useState<ImportReport | null>(null);
   const [reading, setReading] = useState(false);
   const [held, setHeld] = useState<Held | null>(null);
@@ -78,17 +101,15 @@ export function WorldForgePanel({ campaignId, onOpenSystem }: { campaignId: stri
 
   // The tour and the palette ask for a view, or for a new entry, by name
   // (src/lib/tours/prepare.ts).
+  // A tour's steps replace the place rather than adding to history.
   useTourPrepare((name) => {
-    if (name === "open-world-entry") setView("wiki");
+    if (name === "open-world-entry") go({ view: "wiki" }, "replace");
     const asked = name.startsWith("world-view-") ? (name.slice("world-view-".length) as View) : null;
     // A tour step for a view this server does not offer has nothing to show.
-    if (asked && VIEWS.some((entry) => entry.value === asked)) setView(asked);
+    if (asked && VIEWS.some((entry) => entry.value === asked)) go({ view: asked }, "replace");
   });
 
-  const open = (ref: string | null) => {
-    setFocus(ref);
-    if (ref) setView("wiki");
-  };
+  const open = (ref: string | null) => go(ref ? { view: "wiki", entry: ref } : { entry: null });
 
   async function bringIn(text: string, accept: boolean) {
     setReading(true);
