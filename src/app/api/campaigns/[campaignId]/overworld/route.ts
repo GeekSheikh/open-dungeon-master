@@ -26,6 +26,7 @@ import {
   MAX_STROKES,
   OVERWORLD_BRUSHES,
 } from "@/lib/overworld/paint";
+import { recordsChanged } from "@/lib/workshop/record-events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -180,5 +181,7 @@ export async function PATCH(
   // `stranded` names the places the paint left standing in sea or on a peak.
   // Reported, never moved: setOverworldAnchor accepts both on the grounds
   // that a DM who puts a lighthouse on a reef means it.
+  // Only places and their names are records; paint and pins are the map's.
+  if (patch.places || patch.rename) recordsChanged(campaignId, "location", "world");
   return Response.json({ ...overworldView(campaignId, true), stranded });
 }

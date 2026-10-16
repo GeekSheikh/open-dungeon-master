@@ -1,6 +1,7 @@
 import { isErrorResponse, requireStoryAuthority } from "@/lib/campaign-api";
 import { patchWorldDoc, worldCounts, worldView } from "@/lib/db/world-forge";
 import { publishEphemeral } from "@/lib/events";
+import { recordsChanged } from "@/lib/workshop/record-events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,5 +38,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ca
   }
   const { conflicts } = patchWorldDoc(campaignId, raw as Record<string, unknown>);
   publishEphemeral(campaignId, "world_updated", { at: Date.now() });
+  recordsChanged(campaignId, "world");
   return Response.json({ ...worldView(campaignId), ...(conflicts.length ? { conflicts } : {}) });
 }

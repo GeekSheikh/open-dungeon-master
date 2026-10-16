@@ -12,6 +12,7 @@ import {
 import { describePersonality, normalizeNpcDraft } from "@/lib/npcs/forge";
 import { isUploadedImagePath } from "@/lib/uploads";
 import { queueNpcPortrait } from "@/lib/portrait";
+import { recordsChanged } from "@/lib/workshop/record-events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -93,6 +94,7 @@ export async function PATCH(
     setNpcArchived(npcId, body.archived);
   }
 
+  recordsChanged(campaignId, "npc", "world");
   return Response.json({ ok: true, npc: getNpcById(npcId) });
 }
 
@@ -111,5 +113,6 @@ export async function DELETE(
   }
   deleteNpc(npcId);
   publishCast(campaignId);
+  recordsChanged(campaignId, "npc", "world");
   return Response.json({ ok: true });
 }

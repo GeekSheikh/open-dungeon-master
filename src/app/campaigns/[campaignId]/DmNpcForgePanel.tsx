@@ -32,6 +32,7 @@ import { RelationGraph as RelationGraphView } from "@/app/campaigns/[campaignId]
 import { CastChips, CastRows, type Npc } from "@/app/workshop/cast/CastList";
 import { useTourPrepare } from "@/lib/tours/prepare";
 import { WorldEntryLink, useOpenOnArrival } from "@/app/workshop/world/WorldEntryLink";
+import { useUnsavedDraft } from "@/app/workshop/unsaved";
 import { NpcEditorFields } from "@/app/workshop/cast/NpcEditorFields";
 import { compareNames } from "@/lib/language/text-logic";
 
@@ -60,9 +61,12 @@ export function DmNpcForgePanel({
   layout = "chips",
   openId,
   onWorldEntry,
+  refreshKey = 0,
 }: {
   campaignId: string;
   layout?: "chips" | "rows";
+  // Bumped when the Cast changed elsewhere (the workshop's live versions).
+  refreshKey?: number;
   // In the workshop only (src/app/workshop/world/WorldEntryLink.tsx): the
   // record to open on arrival, and the way to its WorldForge entry.
   openId?: string | null;
@@ -126,7 +130,7 @@ export function DmNpcForgePanel({
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshKey]);
 
   // Places come from the overworld and the geography lore; both lists are
   // read once, and a world with neither simply offers no dropdown.
@@ -159,6 +163,11 @@ export function DmNpcForgePanel({
 
   const selected = npcs.find((npc) => npc.id === selectedId) ?? null;
   useOpenOnArrival(openId, loaded ? npcs : null, open);
+  // In the workshop, an editor with changes is asked about before leaving.
+  useUnsavedDraft(
+    Boolean(onWorldEntry) && rows && editorOpen &&
+      JSON.stringify(draft) !== JSON.stringify(selected ? draftFrom(selected as Parameters<typeof draftFrom>[0]) : blankDraft()),
+  );
 
   // The tour's "open the editor" step, answered where the editor is a sheet.
   useTourPrepare((name) => {
