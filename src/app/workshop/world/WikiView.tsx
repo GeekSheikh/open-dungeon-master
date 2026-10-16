@@ -12,6 +12,7 @@ import { folderAndBelow, folderTree, removeFolder } from "@/lib/worldforge/tree"
 import type { WorldApi, WorldState } from "./useWorld";
 import { EntityPage } from "./EntityPage";
 import { EntityAvatar, tint, typeOf } from "./world-ui";
+import type { OpenSystem } from "./WorldForgePanel";
 
 // The wiki: every entry of the world, which is every Cast member, place,
 // faction and lore entry of the workshop, filtered by type and folder and
@@ -30,7 +31,7 @@ export function WikiView({
   world: WorldState;
   focus: string | null;
   onFocus: (ref: string | null) => void;
-  onOpenSystem: (system: string) => void;
+  onOpenSystem: OpenSystem;
   // Whether there is a text model to draft with and an image backend to
   // paint with (src/lib/use-capabilities.ts).
   canWrite: boolean;

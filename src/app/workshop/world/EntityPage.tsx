@@ -13,6 +13,7 @@ import { folderPath } from "@/lib/worldforge/tree";
 import type { WorldEntity } from "@/lib/db/world-forge";
 import type { WorldApi, WorldState } from "./useWorld";
 import { EntityEditor } from "./EntityEditor";
+import type { OpenSystem } from "./WorldForgePanel";
 import { LinkEditor } from "./LinkEditor";
 import { EntityAvatar, SHELF_SYSTEMS, TypeChip, typeOf } from "./world-ui";
 
@@ -58,7 +59,7 @@ export function EntityPage({
   entity: WorldEntity;
   onFocus: (ref: string) => void;
   onBack: () => void;
-  onOpenSystem: (system: string) => void;
+  onOpenSystem: OpenSystem;
   canWrite: boolean;
   canPaint: boolean;
 }) {
@@ -213,7 +214,7 @@ export function EntityPage({
               {isPainting ? null : <Brush className="size-3.5" />} {isPainting ? "Painting" : "Paint"}
             </KitButton>
           ) : null}
-          <KitButton tone="small" onClick={() => onOpenSystem(home.system)} title={`Open ${entity.name}'s own tool`}>
+          <KitButton tone="small" onClick={() => onOpenSystem(home.system, { id: entity.id, from: entity.ref })} title={`Open ${entity.name}'s own tool`}>
             <ExternalLink className="size-3.5" /> {home.label}
           </KitButton>
           <KitButton tone="iconDanger" always aria-label={`Delete ${entity.name}`} onClick={remove}>

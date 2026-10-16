@@ -32,6 +32,7 @@ const WorkshopHelpDialog = lazy(() =>
   import("@/components/WorkshopHelpDialog").then((module) => ({ default: module.WorkshopHelpDialog })),
 );
 import type { WorkshopSummary } from "@/app/workshop/types";
+import { workshopHref, worldEntryPlace } from "@/lib/workshop/links";
 
 // The workshop shell: a hub of system cards, or one system open.
 //
@@ -48,8 +49,13 @@ import type { WorkshopSummary } from "@/app/workshop/types";
 function WorkshopPageInner({ workshopId }: { workshopId: string }) {
   const router = useRouter();
   const pathname = usePathname();
-  const requested = useSearchParams().get("system");
+  const params = useSearchParams();
+  const requested = params.get("system");
   const system: SystemId | null = isSystemId(requested) ? requested : null;
+  // The record the tool opens on arrival, and the World entry the author
+  // came from (src/lib/workshop/links.ts).
+  const openId = params.get("open");
+  const from = params.get("from");
   const [workshop, setWorkshop] = useState<WorkshopSummary | null>(null);
   const [bestiary, setBestiary] = useState<number | null>(null);
   const [homebrew, setHomebrew] = useState<number | null>(null);
@@ -199,7 +205,16 @@ function WorkshopPageInner({ workshopId }: { workshopId: string }) {
   }
 
   function openSystem(next: SystemId) {
-    router.push(`${pathname}?system=${next}`);
+    router.push(workshopHref(pathname, { system: next }));
+  }
+
+  // One record in its own tool, with the way back to its World entry.
+  function openRecord(next: SystemId, id: string, fromRef: string) {
+    router.push(workshopHref(pathname, { system: next, open: id, from: fromRef }));
+  }
+
+  function openWorldEntry(ref: string) {
+    router.push(workshopHref(pathname, worldEntryPlace(ref)));
   }
 
   // "Create an entry" from the palette: go to the system, then ask its panel
@@ -332,6 +347,10 @@ function WorkshopPageInner({ workshopId }: { workshopId: string }) {
           plugin={plugin}
           world={world}
           onChange={openSystem}
+          openId={openId}
+          from={from}
+          onOpenRecord={openRecord}
+          onWorldEntry={openWorldEntry}
           onBack={() => router.push(pathname)}
           onHelp={() => setHelpOpen(true)}
           onRulesApplied={() => void load()}

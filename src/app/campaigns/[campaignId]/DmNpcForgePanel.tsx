@@ -31,6 +31,7 @@ import { Sheet } from "@/components/ui/Sheet";
 import { RelationGraph as RelationGraphView } from "@/app/campaigns/[campaignId]/RelationGraph";
 import { CastChips, CastRows, type Npc } from "@/app/workshop/cast/CastList";
 import { useTourPrepare } from "@/lib/tours/prepare";
+import { WorldEntryLink, useOpenOnArrival } from "@/app/workshop/world/WorldEntryLink";
 import { NpcEditorFields } from "@/app/workshop/cast/NpcEditorFields";
 import { compareNames } from "@/lib/language/text-logic";
 
@@ -57,9 +58,15 @@ import { compareNames } from "@/lib/language/text-logic";
 export function DmNpcForgePanel({
   campaignId,
   layout = "chips",
+  openId,
+  onWorldEntry,
 }: {
   campaignId: string;
   layout?: "chips" | "rows";
+  // In the workshop only (src/app/workshop/world/WorldEntryLink.tsx): the
+  // record to open on arrival, and the way to its WorldForge entry.
+  openId?: string | null;
+  onWorldEntry?: (id: string) => void;
 }) {
   const [npcs, setNpcs] = useState<Npc[]>([]);
   const [graph, setGraph] = useState<RelationGraph>({ nodes: [], edges: [] });
@@ -151,6 +158,7 @@ export function DmNpcForgePanel({
   }, [campaignId]);
 
   const selected = npcs.find((npc) => npc.id === selectedId) ?? null;
+  useOpenOnArrival(openId, loaded ? npcs : null, open);
 
   // The tour's "open the editor" step, answered where the editor is a sheet.
   useTourPrepare((name) => {
@@ -349,6 +357,7 @@ export function DmNpcForgePanel({
         factions={factions}
       />
 
+      {onWorldEntry && selected ? <WorldEntryLink onOpen={() => onWorldEntry(selected.id)} /> : null}
       <div className="flex flex-wrap items-center gap-1.5">
         <button
           type="button"

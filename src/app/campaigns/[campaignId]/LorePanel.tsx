@@ -9,6 +9,7 @@ import { WORLD_LORE_CATEGORIES, type LoreLinkTarget } from "@/lib/dm/world-lore-
 import { SectionHead } from "@/components/ui/SectionHead";
 import { Sheet } from "@/components/ui/Sheet";
 import { KitButton, LoadFailed, PanelLoading } from "./PanelKit";
+import { WorldEntryLink, useOpenOnArrival } from "@/app/workshop/world/WorldEntryLink";
 import { readLoad, useLoadStatus } from "@/lib/load-state";
 import { LoreEntryActions } from "@/app/workshop/lore/LoreEntryActions";
 import { LoreEditorForm } from "@/app/workshop/lore/LoreEditorForm";
@@ -31,6 +32,8 @@ export function LorePanel({
   isDm = false,
   layout = "list",
   members,
+  openId,
+  onWorldEntry,
 }: {
   campaignId: string;
   steersStory: boolean;
@@ -41,6 +44,10 @@ export function LorePanel({
   layout?: "list" | "rows";
   // The table, for the "some players" audience. Absent in the workshop.
   members?: Array<{ userId: string; username: string }>;
+  // In the workshop only (src/app/workshop/world/WorldEntryLink.tsx): the
+  // record to open on arrival, and the way to its WorldForge entry.
+  openId?: string | null;
+  onWorldEntry?: (id: string) => void;
 }) {
   const [loading, setLoading] = useState(true);
   // Whether a load has landed and what the last one said (issue 140): a
@@ -118,6 +125,8 @@ export function LorePanel({
     setAdding(false);
     setEditingId(entry.id);
   }
+
+  useOpenOnArrival(openId, loaded ? entries : null, (entry) => (steersStory ? startEdit(entry) : setReadingId(entry.id)));
 
   function closeEditor() {
     setAdding(false);
@@ -355,6 +364,7 @@ export function LorePanel({
                   onDelete={() => void remove(editing.id).then(closeEditor)}
                 />
               ) : null}
+              {editing && onWorldEntry ? <WorldEntryLink onOpen={() => onWorldEntry(editing.id)} /> : null}
             </div>
           ) : reading ? (
             <div className="reveal space-y-1">
