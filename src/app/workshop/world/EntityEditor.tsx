@@ -10,6 +10,7 @@ import { LoreImageField } from "@/app/workshop/lore/LoreFields";
 import { CANON_STATES, type Canon, type FieldDef, type FieldValue, type WorldDoc, type YearValue } from "@/lib/worldforge/model";
 import { folderTree } from "@/lib/worldforge/tree";
 import type { WorldEntity } from "@/lib/db/world-forge";
+import { ROW_TEXT, olderText } from "@/lib/worldforge/account";
 import type { EntryInput } from "./useWorld";
 import { typeOf } from "./world-ui";
 
@@ -19,7 +20,8 @@ import { typeOf } from "./world-ui";
 
 const CANON_WORDS: Record<Canon, string> = { canon: "Canon", draft: "Draft", alternate: "Alternate", retired: "Retired" };
 const LINE_LIMIT = { npc: 200, faction: 400 } as const;
-const TEXT_LIMIT = { location: 2_000, lore: 4_000 } as const;
+// What each record's own row holds (src/lib/worldforge/account.ts).
+const TEXT_LIMIT = ROW_TEXT;
 
 const field = (label: string, child: React.ReactNode, hint?: string) => (
   <label className="flex flex-col gap-1">
@@ -86,23 +88,29 @@ export function EntityEditor({
       return { ...current, fields };
     });
 
-  // The draft lands in the field the entry's text lives in, unsaved, for
-  // the DM to keep, cut or throw away.
+  // The draft lands in the entry's account, unsaved, for the DM to keep,
+  // cut or throw away: a lore entry's body, every other entry's article
+  // (src/lib/worldforge/account.ts). A place's arrival text stays the DM's.
   async function draftIt() {
     if (!onDraft) return;
     setDrafting(true);
     const text = await onDraft(draftHint);
     setDrafting(false);
     if (!text) return;
-    if (shortRow) set("article", text);
-    else set("text", text.slice(0, TEXT_LIMIT[entity.shelf as "location" | "lore"]));
+    if (entity.shelf === "lore") set("text", text.slice(0, TEXT_LIMIT.lore));
+    else set("article", text);
   }
+
+  // A lore entry's older article, when it says something its body does not.
+  const older = olderText({ shelf: entity.shelf, text: draft.text, entry: { article: draft.article } });
 
   function save() {
     onSave({
       name: draft.name,
       ...(shortRow ? { tagline: draft.tagline } : { text: draft.text }),
-      article: draft.article,
+      // A lore entry keeps an older article only while it differs from the
+      // body; one the body already holds is cleared.
+      article: entity.shelf === "lore" ? older : draft.article,
       aliases: textList(draft.aliases),
       tags: textList(draft.tags),
       portrait: draft.portrait,
@@ -163,17 +171,34 @@ export function EntityEditor({
             <input className={ui.input} maxLength={LINE_LIMIT[entity.shelf as "npc" | "faction"]} value={draft.tagline} onChange={(event) => set("tagline", event.target.value)} />,
           )
         : field(
-            entity.shelf === "location" ? "The place (what the DM reads on arrival)" : "The entry",
+            entity.shelf === "location" ? "On arrival (what the DM reads when the party arrives)" : "The entry",
             <textarea className={cn(ui.input, "min-h-28")} maxLength={TEXT_LIMIT[entity.shelf as "location" | "lore"]} value={draft.text} onChange={(event) => set("text", event.target.value)} />,
-            `${draft.text.length} of ${TEXT_LIMIT[entity.shelf as "location" | "lore"]} characters`,
+            `${draft.text.length.toLocaleString("en")} of ${TEXT_LIMIT[entity.shelf as "location" | "lore"].toLocaleString("en")} characters${entity.shelf === "lore" ? ". Players read this one when the entry is theirs to read." : ""}`,
           )}
-      {shortRow || draft.article
+      {entity.shelf !== "lore"
         ? field(
-            "Article",
+            entity.shelf === "location" ? "In full (the wiki's article)" : "Article",
             <textarea className={cn(ui.input, "min-h-32")} maxLength={12_000} value={draft.article} onChange={(event) => set("article", event.target.value)} />,
-            "The wiki's full account. Names of other entries link themselves.",
+            entity.shelf === "location"
+              ? "The wiki's full account, shown above the arrival text. Leave it empty and the wiki shows the arrival text alone."
+              : "The wiki's full account. Names of other entries link themselves.",
           )
         : null}
+      {older ? (
+        <div className="flex flex-col gap-2 rounded-lg border border-amber-700/50 bg-amber-950/30 p-3 text-sm text-amber-100" data-testid="older-text">
+          <span className="eyebrow text-[10px] text-amber-300">An older text from an import</span>
+          <p className="text-xs text-amber-200/80">Kept beside the entry because the two say different things. Players never see it. Nothing is lost until you remove one.</p>
+          <p className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md bg-stone-950/40 p-2 text-xs leading-5 text-stone-300">{older}</p>
+          <span className="flex flex-wrap gap-2">
+            <KitButton tone="small" onClick={() => setDraft((current) => ({ ...current, text: current.article.slice(0, TEXT_LIMIT.lore), article: current.text }))}>
+              Use this one instead
+            </KitButton>
+            <KitButton tone="small" onClick={() => set("article", "")}>
+              Remove it
+            </KitButton>
+          </span>
+        </div>
+      ) : null}
 
       {onDraft ? (
         <div className="flex flex-wrap items-center gap-2 motion-pop">

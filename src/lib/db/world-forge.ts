@@ -283,9 +283,10 @@ function entityOf(campaignId: string, doc: WorldDoc, ref: string): EntityResult 
 }
 
 // A new entry of a type: the record on the type's shelf, and its overlay.
-export function createWorldEntity(campaignId: string, input: { typeId?: unknown; name?: unknown } & EntityPatch): EntityResult {
+export function createWorldEntity(campaignId: string, sent: { typeId?: unknown; name?: unknown } & EntityPatch): EntityResult {
   const doc = getWorldDoc(campaignId);
-  const type = doc.types.find((entry) => entry.id === input.typeId) ?? doc.types[0];
+  const type = doc.types.find((entry) => entry.id === sent.typeId) ?? doc.types[0];
+  const input = oneLoreText(type.shelf, sent);
   const made = createRecord(campaignId, type, input);
   if ("error" in made) return made;
   const failed = writeRecord(campaignId, made.ref, { aliases: input.aliases, tags: input.tags, portrait: input.portrait });
@@ -306,7 +307,16 @@ export function createWorldEntity(campaignId: string, input: { typeId?: unknown;
   return entityOf(campaignId, doc, made.ref);
 }
 
-export function updateWorldEntity(campaignId: string, ref: string, patch: EntityPatch): EntityResult {
+// A lore entry's account is its body (src/lib/worldforge/account.ts): an
+// article sent for one, with no body beside it, is written as the body. An
+// article sent with a body, or an empty one, is kept as sent, which is how
+// the editor keeps or clears an older article an import left.
+function oneLoreText<T extends EntityPatch>(shelf: Shelf | undefined, patch: T): T {
+  return shelf === "lore" && patch.article && patch.text === undefined ? { ...patch, text: patch.article, article: "" } : patch;
+}
+
+export function updateWorldEntity(campaignId: string, ref: string, input: EntityPatch): EntityResult {
+  const patch = oneLoreText(parseRef(ref)?.shelf, input);
   const doc = getWorldDoc(campaignId);
   const lore = patch.typeId ? doc.types.find((type) => type.id === patch.typeId && type.shelf === "lore") : undefined;
   const failed = writeRecord(campaignId, ref, patch, lore);
