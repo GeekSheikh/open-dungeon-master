@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { capsFor, isErrorResponse, requireMember } from "@/lib/campaign-api";
 import { admitSheet, refusal } from "@/lib/characters/admit";
+import { announceMidGameJoin } from "@/lib/characters/mid-game-join";
 import { createCharacter } from "@/lib/db/characters";
 import { createSheet, getSheetForUser } from "@/lib/db/sheets";
 import { seatAddedSheet } from "@/lib/character-seat";
@@ -57,5 +58,6 @@ export async function POST(
   queueLibraryPortrait(libraryCharacter);
   seatAddedSheet(context.campaign, context.user.id, sheet.id);
   publishPersisted(campaignId, "sheet_updated", { sheet });
+  announceMidGameJoin(context, sheet);
   return Response.json({ sheet }, { status: 201 });
 }

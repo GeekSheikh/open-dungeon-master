@@ -16,6 +16,7 @@ import type { CreateSheetInput } from "@/lib/schemas/sheet";
 import { navigateTo } from "@/lib/navigation";
 import { refusalText } from "@/app/characters/builder/refusal";
 import { builderDraftKey, clearBuilderDraft } from "@/app/characters/builder/builderDraft";
+import { PregenPicker } from "@/app/campaigns/[campaignId]/PregenPicker";
 
 type LibraryCharacter = {
   id: string;
@@ -65,6 +66,8 @@ function CampaignCharacterPageInner({ campaignId }: { campaignId: string }) {
   const [libraryLevel, setLibraryLevel] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // The ready-made heroes, opened from above the builder.
+  const [quick, setQuick] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -226,32 +229,52 @@ function CampaignCharacterPageInner({ campaignId }: { campaignId: string }) {
                   </p>
                   {character.level !== level ? (
                     <p className="reveal mt-1 text-xs text-amber-200">
-                      Will be adapted to level {level}
+                      {character.level < level
+                        ? `Levelled up to ${level} for this table. Your library copy stays level ${character.level} until the campaign ends and brings its progress home.`
+                        : `Plays at level ${level} here. Your library copy keeps level ${character.level}; gear, gold and notes still come home with it.`}
                     </p>
                   ) : null}
                 </button>
               </li>
             ))}
           </ul>
+          {flow === "join" ? (
+            <PregenPicker campaignId={campaignId} onSeated={() => navigateTo(`/campaigns/${campaignId}`)} />
+          ) : null}
           <button
             type="button"
             onClick={() => setMode("create")}
             className={cn(ui.btnSecondary, "w-full border-dashed")}
           >
-            <Plus className="size-4" /> Create a new character instead
+            <Plus className="size-4" /> Build a new character instead
           </button>
           {error ? <p className="motion-shake whitespace-pre-line text-sm text-red-400" role="alert">{error}</p> : null}
         </section>
       ) : (
         <>
-          {library.length ? (
-            <button
-              type="button"
-              onClick={() => setMode("choose")}
-              className={cn(ui.btnSmall, "mb-4")}
-            >
-              <ChevronLeft className="size-3.5" /> Or pick one from your library
-            </button>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            {library.length ? (
+              <button type="button" onClick={() => setMode("choose")} className={ui.btnSmall}>
+                <ChevronLeft className="size-3.5" /> Or pick one from your library
+              </button>
+            ) : null}
+            {/* Building is the long way to a seat: the short one stays a tap
+                away for someone who came here by default. */}
+            {flow === "join" ? (
+              <button
+                type="button"
+                onClick={() => setQuick(!quick)}
+                aria-expanded={quick}
+                className={ui.btnSmall}
+              >
+                <GameIcon icon={{ kind: "glyph", key: "ui-quickstart" }} size="size-5" /> In a hurry? Take a ready-made hero
+              </button>
+            ) : null}
+          </div>
+          {flow === "join" && quick ? (
+            <div key="quick" className="reveal-height mb-4">
+              <PregenPicker campaignId={campaignId} heading={null} onSeated={() => navigateTo(`/campaigns/${campaignId}`)} />
+            </div>
           ) : null}
           <CharacterBuilder
             campaignId={campaignId}

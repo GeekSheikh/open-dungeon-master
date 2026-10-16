@@ -9,6 +9,18 @@ import { GameIcon } from "@/components/ui/GameIcon";
 // has no story model: a solo table is nothing without the AI storyteller,
 // and a dead line explains nothing. The tour anchors are the ones the
 // shells' own home tiles carry, so a guide can point at either.
+//
+// The four ways into a game say in a few words where each leads, so the
+// difference between Quick start and New campaign is not something to find
+// out by trying both; someone with no table yet sees Quick start marked as
+// the place to begin. The apps' home says the same words (STARTING_ROUTES).
+export const STARTING_ROUTES = {
+  starter: "A prepared one-evening adventure with ready-made heroes",
+  new: "Your own table: its world, its rules, your friends",
+  solo: "A custom adventure for you alone",
+  join: "Sit at a friend's table with their invite",
+} as const;
+
 export function HomeMenu({
   onNewCampaign,
   onStarter,
@@ -16,6 +28,7 @@ export function HomeMenu({
   onSolo,
   showSolo,
   onJoin,
+  firstTime = false,
 }: {
   onNewCampaign: () => void;
   // The quick start: a one-evening adventure with ready-made heroes.
@@ -26,15 +39,20 @@ export function HomeMenu({
   onSolo: () => void;
   showSolo: boolean;
   onJoin: () => void;
+  // No table yet: Quick start is marked as the place to begin.
+  firstTime?: boolean;
 }) {
-  const items: Array<{ id: string; label: string; glyph: string; href?: string; onClick?: () => void; tour: string }> = [
-    ...(showNew && showSolo ? [{ id: "starter", label: "Quick start", glyph: "ui-quickstart", onClick: onStarter, tour: "tile-quick-start" }] : []),
-    ...(showNew ? [{ id: "new", label: "New campaign", glyph: "ui-new", onClick: onNewCampaign, tour: "tile-new-campaign" }] : []),
-    ...(showSolo ? [{ id: "solo", label: "Solo adventure", glyph: "ui-solo", onClick: onSolo, tour: "tile-solo" }] : []),
+  type Item = { id: string; label: string; glyph: string; href?: string; onClick?: () => void; tour: string; sub?: string; tag?: string };
+  const items: Item[] = [
+    ...(showNew && showSolo
+      ? [{ id: "starter", label: "Quick start", glyph: "ui-quickstart", onClick: onStarter, tour: "tile-quick-start", sub: STARTING_ROUTES.starter, tag: firstTime ? "Start here" : undefined }]
+      : []),
+    ...(showNew ? [{ id: "new", label: "New campaign", glyph: "ui-new", onClick: onNewCampaign, tour: "tile-new-campaign", sub: STARTING_ROUTES.new }] : []),
+    ...(showSolo ? [{ id: "solo", label: "Solo adventure", glyph: "ui-solo", onClick: onSolo, tour: "tile-solo", sub: STARTING_ROUTES.solo }] : []),
     { id: "characters", label: "Characters", glyph: "tab-characters", href: "/characters", tour: "tile-characters" },
     { id: "workshop", label: "Workshop", glyph: "system-homebrew", href: "/workshop", tour: "tile-workshop" },
     { id: "rulebook", label: "Rulebook", glyph: "system-rules", href: "/rulebook", tour: "tile-rulebook" },
-    { id: "join", label: "Join with a code", glyph: "ui-join", onClick: onJoin, tour: "tile-join" },
+    { id: "join", label: "Join with a code", glyph: "ui-join", onClick: onJoin, tour: "tile-join", sub: STARTING_ROUTES.join },
   ];
   return (
     <nav className="ts-menu" aria-label="Main menu">
@@ -42,7 +60,13 @@ export function HomeMenu({
         const body = (
           <>
             <span className="ts-menu-diamond" aria-hidden="true" />
-            <span className="ts-menu-label">{item.label}</span>
+            <span className="ts-menu-text">
+              <span className="ts-menu-label">
+                {item.label}
+                {item.tag ? <span className="ts-menu-tag">{item.tag}</span> : null}
+              </span>
+              {item.sub ? <span className="ts-menu-sub">{item.sub}</span> : null}
+            </span>
             <span className="ts-menu-glyph" aria-hidden="true">
               <GameIcon icon={{ kind: "glyph", key: item.glyph }} size="size-9" />
             </span>

@@ -255,6 +255,7 @@ export function Dashboard({ user, onLogout }: { user: SessionUser; onLogout: () 
               onSolo={() => setSoloOpen(true)}
               showSolo={offersStoryModel(capabilities)}
               onJoin={focusJoin}
+              firstTime={!loading && !loadFailed && campaigns.length === 0}
             />
             <DmStatusLine capabilities={capabilities} />
           </div>
