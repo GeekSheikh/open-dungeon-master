@@ -260,6 +260,8 @@ function WorkshopPageInner({ workshopId }: { workshopId: string }) {
   // the page or tool that makes the thing, with that tool's own editor
   // asked to open once the author has left any unsaved one behind.
   const [chooserOpen, setChooserOpen] = useState(false);
+  // The hub task the chooser opens on, or null for everything.
+  const [chooserAt, setChooserAt] = useState<string | null>(null);
   async function createFrom(step: CreateStep) {
     if (step.href) {
       await go(step.href);
@@ -323,7 +325,16 @@ function WorkshopPageInner({ workshopId }: { workshopId: string }) {
           }
         />
       )}
-      <CreateChooser open={chooserOpen} onOpenChange={setChooserOpen} onGo={(step) => void createFrom(step)} />
+      <CreateChooser
+        key={chooserAt ?? "all"}
+        open={chooserOpen}
+        onOpenChange={(next) => {
+          setChooserOpen(next);
+          if (!next) setChooserAt(null);
+        }}
+        onGo={(step) => void createFrom(step)}
+        startAt={chooserAt}
+      />
       <Suspense fallback={null}>
         {helpMounted ? (
           <WorkshopHelpDialog
@@ -406,6 +417,10 @@ function WorkshopPageInner({ workshopId }: { workshopId: string }) {
           plugin={plugin}
           world={world}
           onOpen={openSystem}
+          onTask={(choiceId) => {
+            setChooserAt(choiceId);
+            setChooserOpen(true);
+          }}
         />
       )}
     </main>

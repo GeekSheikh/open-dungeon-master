@@ -31,16 +31,28 @@ export function CreateButton({ onClick, className }: { onClick: () => void; clas
   );
 }
 
+// The hub's task row asks for one thing straight away ("Prepare a fight"):
+// the chooser opens on that choice, with the way back to everything else.
+export const HUB_TASKS: ReadonlyArray<{ id: string; label: string; glyph: string }> = [
+  { id: "encounter", label: "Prepare a fight", glyph: "system-encounters" },
+  { id: "map", label: "Make a map", glyph: "system-maps" },
+  { id: "npc", label: "Create an NPC", glyph: "system-cast" },
+  { id: "outline", label: "Build a world", glyph: "system-world" },
+];
+
 export function CreateChooser({
   open,
   onOpenChange,
   onGo,
+  startAt = null,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onGo: (step: CreateStep) => void;
+  // A choice to open on (HUB_TASKS); the chooser is keyed on it.
+  startAt?: string | null;
 }) {
-  const [picked, setPicked] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(startAt);
   const capabilities = useCapabilities();
   const models = { story: offersStoryModel(capabilities), images: offersImages(capabilities) };
   const choice = CREATE_CHOICES.find((entry) => entry.id === picked) ?? null;
