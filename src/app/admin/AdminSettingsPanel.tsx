@@ -37,6 +37,7 @@ import {
   SelectField,
   type EnvDefaults,
   type MaskedConfig,
+  inheritedHint,
 } from "@/app/admin/AdminSettingsFields";
 
 // The sticky contents rail: one stop per section, left out where a device
@@ -162,16 +163,22 @@ export function AdminSettingsPanel() {
     setError("");
   }
 
-  // What the rail says beside the AI sections: working, saved but not
-  // answering, or off. Read from the live capabilities, so it reflects what
-  // is saved rather than what is typed.
-  const lampFor = (id: string): Tone | null => {
-    if (!capabilities) return null;
-    const of = (part: { configured: boolean; reachable: boolean }): Tone => (part.configured ? (part.reachable ? "ok" : "warn") : "off");
-    if (id === "admin-text") return of(capabilities.story);
-    if (id === "admin-images") return of(capabilities.images);
-    if (id === "admin-speech") return of(capabilities.tts);
-    return null;
+  // What the rail says beside the AI sections, in four states a person can
+  // tell apart: working, set up but not answering, not set up yet, switched
+  // off on purpose; and "checking" until the server has said. Read from the
+  // live capabilities and the saved settings, so it reflects what is saved
+  // rather than what is typed.
+  const lampFor = (id: string): { tone: Tone; words: string } | null => {
+    const part = id === "admin-text" ? "story" : id === "admin-images" ? "images" : id === "admin-speech" ? "tts" : null;
+    if (!part) return null;
+    if (!capabilities) return { tone: "wait", words: "Checking" };
+    const switchedOff =
+      (part === "story" && savedConfig?.text.provider === "none") ||
+      (part === "tts" && (savedConfig?.speech.ttsProvider === "off" || capabilities.tts?.provider === "off"));
+    if (switchedOff) return { tone: "off", words: "Switched off" };
+    const state = capabilities[part];
+    if (!state.configured) return { tone: "warn", words: "Not set up yet" };
+    return state.reachable ? { tone: "ok", words: "Working" } : { tone: "bad", words: "Set up, but not answering" };
   };
 
   async function save() {
@@ -269,8 +276,9 @@ export function AdminSettingsPanel() {
             <button key={stop.id} type="button" onClick={() => jumpTo(stop.id)} className="motion-press">
               <GameIcon icon={{ kind: "glyph", key: stop.glyph }} size="size-7" /> {stop.label}
               {lamp ? (
-                <span title={lamp === "ok" ? "Working" : lamp === "warn" ? "Saved, but not answering" : "Off"}>
-                  <Lamp tone={lamp} className="ml-0.5" />
+                <span title={lamp.words}>
+                  <Lamp tone={lamp.tone} className="ml-0.5" />
+                  <span className="sr-only">: {lamp.words}</span>
                 </span>
               ) : null}
             </button>
@@ -280,6 +288,25 @@ export function AdminSettingsPanel() {
       <p className="text-xs text-stone-500">
         Changes on this page wait for <span className="text-stone-300">Save settings</span>, which follows you down the
         page. Invites, backups, storage and player agents act at once.
+      </p>
+      {/* The lamps in words, so the four states are read rather than told
+          apart by colour alone. */}
+      <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-400" data-admin-status>
+        {(
+          [
+            ["admin-text", "Text model"],
+            ["admin-images", "Images"],
+            ["admin-speech", "Speech"],
+          ] as const
+        ).map(([id, label]) => {
+          const lamp = lampFor(id);
+          return lamp ? (
+            <span key={`${id}-${lamp.words}`} className="reveal inline-flex items-center gap-1.5">
+              <Lamp tone={lamp.tone} />
+              {label}: {lamp.words.toLowerCase()}
+            </span>
+          ) : null;
+        })}
       </p>
       {deviceWorld ? (
         <p className="reveal text-xs text-stone-500">
@@ -309,7 +336,7 @@ export function AdminSettingsPanel() {
             label="Public URL"
             hint={
               env.publicUrl
-                ? `Env: ${env.publicUrl}`
+                ? inheritedHint(config.publicUrl, env.publicUrl)
                 : "The address players actually use (needed for Discord sign-in behind a reverse proxy). Blank = auto-detect."
             }
           >
@@ -454,7 +481,7 @@ export function AdminSettingsPanel() {
               blankLabel={env.localTextModel ? fromEnv(env.localTextModel, "LOCAL_TEXT_MODEL") : BLANK.story}
             />
           )}
-          <Field label="Backend base URL" hint={env.customBaseUrl ? `Env: ${env.customBaseUrl}` : undefined}>
+          <Field label="Backend base URL" hint={inheritedHint(config.text.customBaseUrl, env.customBaseUrl)}>
             <input
               className={ui.input}
               value={config.text.customBaseUrl}

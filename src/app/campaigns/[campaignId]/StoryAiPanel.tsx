@@ -65,6 +65,8 @@ export function StoryAiPanel({
   // Its backend is there but has no model picked, so it paints nothing
   // (src/lib/db/settings.ts); the server's own ComfyUI said the same.
   const [imagesNeedModel, setImagesNeedModel] = useState(false);
+  // The model a blank campaign model falls back to: the server's storyteller.
+  const [serverModel, setServerModel] = useState("");
   const [serverImagesNeedModel, setServerImagesNeedModel] = useState(false);
   // A world an app hosts: the backend is chosen once for the device and every
   // campaign follows it, so this panel shows it instead of editing it. null
@@ -118,10 +120,13 @@ export function StoryAiPanel({
       });
     void fetch("/api/capabilities")
       .then((response) => (response.ok ? response.json() : null))
-      .then((data: { images?: { configured?: boolean; needsModel?: boolean } } | null) => {
+      .then((data: { images?: { configured?: boolean; needsModel?: boolean }; story?: { model?: string } } | null) => {
         if (!cancelled && data?.images) {
           setImagesConfigured(data.images.configured !== false);
           setServerImagesNeedModel(data.images.needsModel === true);
+        }
+        if (!cancelled && data?.story?.model) {
+          setServerModel(data.story.model);
         }
       })
       .catch(() => undefined);
@@ -187,9 +192,12 @@ export function StoryAiPanel({
   const harnessName = harness?.label
     ? `The server's ${harness.label}${harness.model ? ` (${harness.model})` : ""}`
     : PROVIDER_LABELS.harness;
+  // A blank model is the server's, said with its name and where it comes
+  // from rather than left for the reader to infer.
+  const inheritedModel = serverModel ? `${serverModel} · the server's model` : "the server's model";
   const storytellerSummary =
     settings.textProvider === "custom"
-      ? settings.customModel || "custom backend"
+      ? settings.customModel || inheritedModel
       : settings.textProvider === "harness"
         ? harnessName
         : PROVIDER_LABELS[settings.textProvider];
@@ -254,7 +262,7 @@ export function StoryAiPanel({
     <section className="rounded-lg border border-stone-800 bg-stone-950/60 p-4">
       <h2 className="mb-1 text-sm font-medium text-stone-300">Story AI</h2>
       <p className="mb-3 text-xs text-stone-500">
-        Which AI services this campaign uses: who narrates, the helper model, and pictures. It changes this campaign
+        Which AI services this campaign uses: who tells the story, the helper model, and pictures. It changes this campaign
         only, as soon as you pick; {deviceManaged ? "the device's own choice is set from the app's home screen." : "the server's defaults live in the admin panel."}
       </p>
       {error ? <p className="motion-shake mb-2 text-xs text-red-400">{error}</p> : null}
@@ -324,7 +332,10 @@ export function StoryAiPanel({
                 </div>
                 <ModelNote role="story" baseUrl="" model={settings.customModel} />
                 <p className="text-stone-500">
-                  Runs on this server&apos;s backend. Only an admin can change where it points.
+                  {settings.customModel
+                    ? "Runs on this server's backend. Clear the model to use the server's own again."
+                    : `In use: ${inheritedModel}. Type a model name to choose another for this campaign.`}{" "}
+                  Only an admin can change where it points.
                 </p>
               </>
             ) : settings.textProvider === "custom" ? (
