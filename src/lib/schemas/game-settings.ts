@@ -386,7 +386,7 @@ export type LastingCompanionBlock = {
   remedy: string;
 };
 
-const ALLIES_ROW = "Setup tab, Game settings, Allies";
+const ALLIES_ROW = "Settings tab, Table settings, Allies";
 export const MAX_COMPANIONS_CAP = 4;
 
 export function lastingCompanionBlock(

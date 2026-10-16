@@ -115,6 +115,18 @@ export const PLAYER_TOUR: TourStep[] = [
     prepare: "open-chat",
   },
   {
+    id: "settings",
+    title: "How this table is set up",
+    body: "Settings holds the table's settings in the same named groups the campaign creator used, each saying what is set inside before you open it. Whoever steers the story changes them there and the change reaches everyone at once; everyone else can read them.",
+    anchors: ["tab-settings"],
+  },
+  {
+    id: "more",
+    title: "Every other tab",
+    body: "On a phone the bar keeps the table and the tabs you use most. More lists the rest, the map, notes and settings among them, and lights up when one of them is waiting on you.",
+    anchors: ["tab-more"],
+  },
+  {
     id: "dice",
     title: "Dice",
     body: "Every roll is made by the server, never invented, and the latest one flashes up over the story with its total. This menu turns the tumbling 3D dice on or off, opens the editor for your own dice colours, and on a phone lets you shake to roll.",
@@ -234,6 +246,18 @@ export const DM_TOUR: TourStep[] = [
     body: "Private lines to and from each player: a secret only one of them learns, or a question they did not want to ask aloud.",
     anchors: ["tab-chat"],
     prepare: "open-chat",
+  },
+  {
+    id: "settings",
+    title: "The table's settings",
+    body: "Settings holds everything this table can switch, in the campaign creator's named groups, beside the campaign's details and the Story AI. A change applies to everyone the moment you make it; the search finds a setting by its name.",
+    anchors: ["tab-settings"],
+  },
+  {
+    id: "more",
+    title: "Every other tab",
+    body: "On a phone the bar keeps your console and the tabs you use most. More lists the rest, the map, notes and settings among them, and lights up when one of them is waiting on you.",
+    anchors: ["tab-more"],
   },
   {
     id: "help",

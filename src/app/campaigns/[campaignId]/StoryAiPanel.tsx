@@ -37,7 +37,7 @@ const BACKEND_LABELS: Record<ImageBackend, string> = {
   harness: "The server's agent",
 };
 
-// Per-campaign AI settings for the Setup tab. The values render from the
+// Per-campaign AI settings for the Settings tab. The values render from the
 // campaign snapshot (kept live by campaign_updated over SSE); only the
 // key-existence booleans come from the story-settings GET, because the
 // snapshot is scrubbed of keys for everyone.
@@ -200,7 +200,8 @@ export function StoryAiPanel({
   if (!steersStory) {
     return (
       <section className="rounded-lg border border-stone-800 bg-stone-950/60 p-4">
-        <h2 className="mb-2 text-sm font-medium text-stone-300">Story AI</h2>
+        <h2 className="mb-1 text-sm font-medium text-stone-300">Story AI</h2>
+        <p className="mb-2 text-xs text-stone-500">The AI services this campaign plays with, chosen by whoever runs the story.</p>
         <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-stone-400">
           <span className="flex items-center gap-1.5">
             <Bot className="size-3.5 text-amber-200" />
@@ -251,7 +252,11 @@ export function StoryAiPanel({
 
   return (
     <section className="rounded-lg border border-stone-800 bg-stone-950/60 p-4">
-      <h2 className="mb-3 text-sm font-medium text-stone-300">Story AI</h2>
+      <h2 className="mb-1 text-sm font-medium text-stone-300">Story AI</h2>
+      <p className="mb-3 text-xs text-stone-500">
+        Which AI services this campaign uses: who narrates, the helper model, and pictures. It changes this campaign
+        only, as soon as you pick; {deviceManaged ? "the device's own choice is set from the app's home screen." : "the server's defaults live in the admin panel."}
+      </p>
       {error ? <p className="motion-shake mb-2 text-xs text-red-400">{error}</p> : null}
       <div className={cn("space-y-3 text-xs", busy && "opacity-70")}>
         {deviceManaged === null ? null : deviceManaged ? (

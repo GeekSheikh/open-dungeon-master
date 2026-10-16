@@ -70,7 +70,7 @@ test("every step points at a known anchor or none", () => {
   const known = new Set([
     "composer-modes", "composer-input", "composer-talk", "battle-hand", "ask-dm",
     "party-rail", "initiative-ribbon", "quest-glance",
-    "tab-party", "tab-story", "tab-map", "tab-battle", "tab-chat", "tab-dm",
+    "tab-party", "tab-story", "tab-map", "tab-battle", "tab-chat", "tab-dm", "tab-settings", "tab-more",
     "header-dice", "header-voice", "header-help", "header-stage", "header-layout",
     "dm-floor", "dm-beats", "dm-delegation", "dm-queue", "dm-console-tabs",
   ]);

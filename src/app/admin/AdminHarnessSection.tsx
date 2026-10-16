@@ -412,7 +412,7 @@ export function AdminHarnessSection({
               <span>
                 Narrate new campaigns with it
                 <span className="block text-xs text-stone-500">
-                  Existing campaigns keep their storyteller; switch one in its Setup tab.
+                  Existing campaigns keep their storyteller; switch one in its Settings tab, under Story AI.
                 </span>
               </span>
             </label>
