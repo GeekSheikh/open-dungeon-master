@@ -6,6 +6,7 @@ import { instancesOf, removeConditions, type ConditionMetaMap } from "@/lib/dm/c
 import { rollCharacterCheck } from "@/lib/dm/contest-roll";
 import { trapAt } from "@/lib/srd/table-hazards";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 // A trap's hold on a character (a falling net's restraint): a condition the
 // trap lays on everyone it catches (conditionsAlways in
@@ -42,10 +43,10 @@ export function characterTrapEscape(
   turn: DmTurn,
   sheet: CharacterSheet,
   spend: () => void,
-): Record<string, unknown> {
+): ToolResult {
   const hold = trapHoldOn(campaign, sheet);
   if (!hold) {
-    return { error: `${sheet.name} is held by nothing they can break free of.` };
+    return { error: `${sheet.name} is held by nothing they can break free of.`, refused: "rules" };
   }
   spend();
   const check = rollCharacterCheck(

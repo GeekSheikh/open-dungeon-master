@@ -48,7 +48,7 @@ import { canonicalCondition, handleSetCondition } from "@/lib/dm/set-condition";
 import { exhaustionPatch, namesExhaustion, PRONE, SUFFOCATING } from "@/lib/dm/vitals-logic";
 import { castMarkCharge, prepareResourceCharge } from "@/lib/dm/resource-turn";
 import { planCounterReaction } from "@/lib/dm/reaction-counters";
-import { channelOptionsHeld, optionCost } from "@/lib/dm/option-costs";
+import { channelOptions, channelOptionsHeld, optionCost } from "@/lib/dm/option-costs";
 import { BONUS_ATTACK_COUNTERS } from "@/lib/dm/feature-bonus-attacks";
 import { matchResource } from "@/lib/srd/class-resources";
 import { prepareUseItem } from "@/lib/dm/object-actions";
@@ -60,6 +60,10 @@ import { ZONE_ARGS, zoneArgsSchema, zonePlacement } from "@/lib/dm/zone-args";
 import { castHealingSpell } from "@/lib/dm/heal-spell";
 import { advanceClock, recordShapeEnd } from "@/lib/db/clock";
 import { getActiveEncounter } from "@/lib/db/encounters";
+import { canAct } from "@/lib/dm/can-act";
+import { spendAction } from "@/lib/dm/action-budget";
+import { attacksAllowedFor, budgetFor, storeBudget } from "@/lib/dm/turn-budget";
+import { conditionExtraActions } from "@/lib/srd/condition-effects";
 import { payToStand } from "@/lib/dm/stand-up";
 import { copyCost, learnProblem } from "@/lib/dm/learn-rules";
 import { getAuditPreImage, listAuditForTurn, listAuditSince } from "@/lib/db/sheet-audit";
@@ -75,6 +79,7 @@ import {
   computePurchase,
   computeUseItem,
   computeUseResource,
+  payForUse,
   parseFontOfMagic,
   rollHealing,
 } from "@/lib/dm/resource-tools";
@@ -90,6 +95,10 @@ import { checklistClassSpell, isCantripName, spellsAgainstLimit } from "@/lib/sr
 import { casterViewsOf, spellbookOf, withCasterViews } from "@/lib/srd/spell-prep";
 import { subclassSpellsFor } from "@/lib/srd/features";
 import { waypointProperty } from "@/lib/dm/waypoint-logic";
+import { toolError, type ToolError, type ToolResult } from "@/lib/dm/tool-errors";
+import { notCarried } from "@/lib/dm/item-logic";
+import { isTableGearName } from "@/lib/db/homebrew";
+import { freeSlotsLine, spentSlotRefusal } from "@/lib/dm/cast-rules";
 
 // DM stat authority: the model changes sheets ONLY through these tools.
 // Every mutation is server-clamped, audit-logged, and published live.
@@ -471,6 +480,7 @@ const argsSchema = z.object({
 });
 
 export const MUTATION_CAP_PER_TURN = 10;
+export const MUTATION_CAP_REFUSAL: ToolError = { error: "Mutation limit reached for this turn.", refused: "limit" };
 
 // How far back update_sheet looks for its own earlier edits of a sheet when
 // it judges the ceiling on direct edits.
@@ -479,7 +489,7 @@ const UPDATE_SHEET_WINDOW_MS = 10 * 60 * 1000;
 // Re-exported for the callers that have always found it here.
 export { canonicalCondition };
 
-type MutationOutcome = { result: Record<string, unknown> };
+type MutationOutcome = { result: ToolResult };
 
 // `sheet` is the freshly resolved pre-mutation state; it doubles as the
 // undo pre-image. `patch` is exactly what patchSheet was given.
@@ -514,6 +524,22 @@ function publishSheet(campaign: Campaign, sheetId: string) {
   return updated;
 }
 
+// The cast guard asked without spending (src/lib/dm/cast-guard.ts): the
+// refusal the cast would meet, or null. A spell tool asks it before its own
+// questions and options, so nobody is asked which beast, which targets or
+// whether to drop Overchannel for a cast the caster, the turn or the slots
+// bar.
+export function castBarred(
+  campaign: Campaign,
+  turnId: string,
+  cast: { characterId: string; spell: string; level?: number; via: string; units?: number },
+  sheets: CharacterSheet[],
+  sheetsById: Map<string, CharacterSheet>,
+): ToolError | null {
+  const check = applyDmMutation(campaign, turnId, "use_spell_slot", JSON.stringify({ ...cast, dryRun: true }), sheets, sheetsById).result;
+  return typeof check.error === "string" ? toolError(check) : null;
+}
+
 // Applies one mutation tool call. Returns the compact tool result the model
 // narrates from. Never throws: errors come back as {error} results.
 export function applyDmMutation(
@@ -528,7 +554,7 @@ export function applyDmMutation(
   try {
     args = argsSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { result: { error: "Invalid arguments." } };
+    return { result: { error: "Invalid arguments.", retry: true } };
   }
   const reason = (args.reason ?? "").slice(0, 200);
 
@@ -555,7 +581,7 @@ export function applyDmMutation(
       .map(resolve)
       .filter((entry): entry is CharacterSheet => entry !== null);
     if (!targets.length) {
-      return { result: { error: "No valid characterIds from GAME STATE." } };
+      return { result: { error: "No valid characterIds from GAME STATE.", retry: true } };
     }
     // Every part is judged before any part is handed out, so a refused
     // purse does not leave the experience behind it awarded.
@@ -563,7 +589,7 @@ export function applyDmMutation(
       goldProblem(args.delta ?? 0, "party_award") ??
       ((args.name ?? "").trim() ? quantityProblem(args.qty, "party_award") : null);
     if (bounds) {
-      return { result: { error: bounds } };
+      return { result: bounds };
     }
     const awarded: string[] = [];
     const xp = args.amount ?? 0;
@@ -618,7 +644,7 @@ export function applyDmMutation(
       awarded.push(`${item} to ${targets[0].name}`);
     }
     if (!awarded.length) {
-      return { result: { error: "party_award needs XP, gold or an item to hand out." } };
+      return { result: { error: "party_award needs XP, gold or an item to hand out.", retry: true } };
     }
     return { result: { ok: true, awarded: awarded.join("; ") } };
   }
@@ -626,7 +652,7 @@ export function applyDmMutation(
   if (toolName === "award_xp") {
     const amount = args.amount ?? 0;
     if (amount < 1) {
-      return { result: { error: "award_xp needs a positive amount." } };
+      return { result: { error: "award_xp needs a positive amount.", retry: true } };
     }
     // Ceiling so a whispered or in-chat "give me a million XP" cannot vault a
     // character up the track in one call; realistic events award far less, and
@@ -636,6 +662,7 @@ export function applyDmMutation(
       return {
         result: {
           error: `That is more experience than any single event grants; award a realistic amount (up to ${MAX_XP_PER_AWARD}).`,
+          retry: true,
         },
       };
     }
@@ -643,7 +670,7 @@ export function applyDmMutation(
       .map(resolve)
       .filter((sheet): sheet is CharacterSheet => sheet !== null);
     if (!named.length) {
-      return { result: { error: "No valid characterIds from GAME STATE." } };
+      return { result: { error: "No valid characterIds from GAME STATE.", retry: true } };
     }
     // The dead take no part in the game, its experience included.
     const targets = named.filter((sheet) => !sheet.deathSaves?.dead);
@@ -652,6 +679,7 @@ export function applyDmMutation(
       return {
         result: {
           error: `${dead.join(", ")} ${dead.length === 1 ? "is" : "are"} dead and earn no experience. Award it to the living.`,
+          retry: true,
         },
       };
     }
@@ -702,14 +730,14 @@ export function applyDmMutation(
 
   const sheet = resolve(args.characterId);
   if (!sheet) {
-    return { result: { error: "Unknown characterId; use one from GAME STATE." } };
+    return { result: { error: "Unknown characterId; use one from GAME STATE.", retry: true } };
   }
 
   switch (toolName) {
     case "apply_damage": {
       const amount = args.amount ?? 0;
       if (amount < 1) {
-        return { result: { error: "apply_damage needs a positive amount." } };
+        return { result: { error: "apply_damage needs a positive amount.", retry: true } };
       }
       // The 200 is the rail on what a caller may SEND. The engine's own
       // dice (a fall, a creature out of air) go to applyPcDamage directly.
@@ -728,7 +756,7 @@ export function applyDmMutation(
     case "heal": {
       const unasked = characterCallUnasked(campaign.id, getDmTurn(turnId), rawArguments, "casterId");
       if (unasked) {
-        return { result: { error: unasked } };
+        return { result: unasked };
       }
       // A named healing spell is rolled by the server from the content
       // pack's own dice, exactly as a healing potion is, so the model never
@@ -750,7 +778,7 @@ export function applyDmMutation(
             applyDmMutation(campaign, turnId, "use_spell_slot", JSON.stringify(castArgs), sheets, sheetsById).result,
         );
         if (outcome && "error" in outcome) {
-          return { result: { error: outcome.error } };
+          return { result: toolError(outcome) };
         }
         if (outcome && "done" in outcome) {
           return { result: outcome.done };
@@ -764,6 +792,7 @@ export function applyDmMutation(
         return {
           result: {
             error: "heal needs a positive amount, or a spell name to roll.",
+            retry: true,
           },
         };
       }
@@ -771,6 +800,7 @@ export function applyDmMutation(
         return {
           result: {
             error: `${sheet.name} is DEAD. Healing cannot help; only the party lead can reverse a death.`,
+            refused: "rules",
           },
         };
       }
@@ -782,6 +812,7 @@ export function applyDmMutation(
         return {
           result: {
             error: `${sheet.name} is still without air and cannot regain hit points until they can breathe. Get them to air, clear the suffocating condition, then heal them.`,
+            refused: "rules",
           },
         };
       }
@@ -853,7 +884,7 @@ export function applyDmMutation(
     case "stabilize": {
       const unasked = characterCallUnasked(campaign.id, getDmTurn(turnId), rawArguments, "healerId");
       if (unasked) {
-        return { result: { error: unasked } };
+        return { result: unasked };
       }
       return {
         result: handleStabilize(campaign, turnId, sheet, resolve(args.healerId), {
@@ -870,17 +901,18 @@ export function applyDmMutation(
       const coinDelta =
         parsedCoins === null ? null : (delta < 0 ? -parsedCoins : parsedCoins);
       if (!delta && coinDelta === null) {
-        return { result: { error: "modify_gold needs a nonzero delta, or coins like \"340 silver\"." } };
+        return { result: { error: "modify_gold needs a nonzero delta, or coins like \"340 silver\".", retry: true } };
       }
       const moved = coinDelta ?? delta * COPPER_PER_GOLD;
       const tooMuch = goldProblem(moved / COPPER_PER_GOLD, "modify_gold");
       if (tooMuch) {
-        return { result: { error: tooMuch } };
+        return { result: tooMuch };
       }
       if (sheet.gold * COPPER_PER_GOLD + sheet.copper + moved > COPPER_PURSE_MAX) {
         return {
           result: {
             error: `${sheet.name}'s purse holds at most ${COPPER_PURSE_MAX / COPPER_PER_GOLD} gp; this would pass it. Nothing changed.`,
+            retry: true,
           },
         };
       }
@@ -911,17 +943,17 @@ export function applyDmMutation(
     case "grant_item": {
       const name = (args.name ?? "").trim().slice(0, 80);
       if (!name) {
-        return { result: { error: "grant_item needs an item name." } };
+        return { result: { error: "grant_item needs an item name.", retry: true } };
       }
       const known = args.unidentified !== true;
       const badQty = quantityProblem(args.qty, "grant_item");
       if (badQty) {
-        return { result: { error: badQty } };
+        return { result: badQty };
       }
       const math = grantItemMath(sheet.equipment, name, args.qty ?? 1, { identified: known });
       const noRoom = grantProblem(sheet.name, sheet.equipment, math.equipment, name) ?? capacityProblem(sheet, math.equipment, name);
       if (noRoom) {
-        return { result: { error: noRoom } };
+        return { result: noRoom };
       }
       patchSheet(sheet.id, { equipment: math.equipment });
       audit(campaign, turnId, sheet, "grant_item", { name, qty: args.qty ?? 1 }, reason, {
@@ -941,13 +973,14 @@ export function applyDmMutation(
     case "reveal_item": {
       const name = (args.name ?? "").trim();
       if (!name) {
-        return { result: { error: "reveal_item needs the description the sheet carries now." } };
+        return { result: { error: "reveal_item needs the description the sheet carries now.", retry: true } };
       }
       const math = revealItemMath(sheet.equipment, name, args.revealedName);
       if (!math) {
         return {
           result: {
             error: `${sheet.name} is not carrying an unidentified "${name}". Only an item granted unidentified can be revealed.`,
+            retry: true,
           },
         };
       }
@@ -973,11 +1006,11 @@ export function applyDmMutation(
       const name = (args.name ?? "").trim();
       const badQty = quantityProblem(args.qty, "remove_item");
       if (badQty) {
-        return { result: { error: badQty } };
+        return { result: badQty };
       }
       const math = removeItemMath(sheet.equipment, name, args.qty ?? 1);
       if (!math) {
-        return { result: { error: `${sheet.name} does not carry "${name}".` } };
+        return { result: notCarried(sheet.name, sheet.equipment.map((item) => item.name), name, isTableGearName(campaign.id, name)) };
       }
       patchSheet(sheet.id, { equipment: math.equipment });
       audit(campaign, turnId, sheet, "remove_item", { name, removed: math.removed }, reason, {
@@ -989,15 +1022,15 @@ export function applyDmMutation(
     case "use_item": {
       const unasked = characterCallUnasked(campaign.id, getDmTurn(turnId), rawArguments, "characterId");
       if (unasked) {
-        return { result: { error: unasked } };
+        return { result: unasked };
       }
       const itemName = (args.item ?? args.name ?? "").trim();
       if (!itemName) {
-        return { result: { error: "use_item needs an item name." } };
+        return { result: { error: "use_item needs an item name.", retry: true } };
       }
       const target = args.targetCharacterId ? resolve(args.targetCharacterId) : sheet;
       if (!target) {
-        return { result: { error: "Unknown targetCharacterId; use one from GAME STATE." } };
+        return { result: { error: "Unknown targetCharacterId; use one from GAME STATE.", retry: true } };
       }
       // A Healer's kit use heals (src/lib/dm/stabilize.ts); null otherwise.
       const kitHeal = healerKitUse(campaign, turnId, sheet, target, itemName);
@@ -1030,7 +1063,7 @@ export function applyDmMutation(
       // A scroll off the reader's class list stays unread (consumables.ts).
       const unreadable = consumableRefusal(sheet, itemName);
       if (unreadable) {
-        return { result: { error: unreadable } };
+        return { result: unreadable };
       }
       const outcome = computeUseItem(campaign, sheet, target, itemName);
       if ("error" in outcome) {
@@ -1065,11 +1098,11 @@ export function applyDmMutation(
       const itemName = (args.item ?? args.name ?? "").trim();
       const action = args.action === "sell" ? "sell" : args.action === "buy" ? "buy" : null;
       if (!itemName || args.price === undefined || !action) {
-        return { result: { error: "purchase needs item, price, and action buy|sell." } };
+        return { result: { error: "purchase needs item, price, and action buy|sell.", retry: true } };
       }
       const badQty = quantityProblem(args.qty, "purchase");
       if (badQty) {
-        return { result: { error: badQty } };
+        return { result: badQty };
       }
       const outcome = computePurchase(sheet, {
         item: itemName,
@@ -1084,7 +1117,7 @@ export function applyDmMutation(
         ? grantProblem(sheet.name, sheet.equipment, outcome.patch.equipment, itemName) ?? capacityProblem(sheet, outcome.patch.equipment, itemName, outcome.patch.gold)
         : null;
       if (noRoom) {
-        return { result: { error: noRoom } };
+        return { result: noRoom };
       }
       patchSheet(sheet.id, outcome.patch);
       audit(
@@ -1112,21 +1145,22 @@ export function applyDmMutation(
     case "use_resource": {
       const unasked = characterCallUnasked(campaign.id, getDmTurn(turnId), rawArguments, "characterId");
       if (unasked) {
-        return { result: { error: unasked } };
+        return { result: unasked };
       }
       const resourceName = (args.resource ?? args.name ?? "").trim();
       if (!resourceName) {
-        return { result: { error: "use_resource needs a resource name." } };
+        return { result: { error: "use_resource needs a resource name.", retry: true } };
       }
       const target = args.targetCharacterId ? resolve(args.targetCharacterId) : sheet;
       if (!target) {
-        return { result: { error: "Unknown targetCharacterId; use one from GAME STATE." } };
+        return { result: { error: "Unknown targetCharacterId; use one from GAME STATE.", retry: true } };
       }
       // An amount is a whole number of at least one; none at all means one.
       if (args.amount !== undefined && args.amount < 1) {
         return {
           result: {
             error: `use_resource spends a whole number of uses or points, 1 or more; ${args.amount} is not a spend. Nothing was spent.`,
+            retry: true,
           },
         };
       }
@@ -1177,18 +1211,33 @@ export function applyDmMutation(
         return {
           result: {
             error: `${counter.displayName} is spent by its bonus-action attack: pc_attack with bonusAttack "feature"${counter.id === "race_hungry_jaws" ? ' and weapon "bite"' : ""}. Nothing was spent.`,
+            retry: true,
           },
         };
       }
       const option = optionCost(counter?.id, `${args.variant ?? ""} ${resourceName}`, fighting);
       if (option && "refused" in option) {
-        return { result: { error: option.refused } };
+        return { result: option.refused };
       }
-      if (!option && counter?.id === "channel_divinity" && fighting) {
+      const pool = counter ? sheet.resources[counter.id] : undefined;
+      if (!option && counter?.id === "channel_divinity" && fighting && pool) {
+        // The uses and the turn before the option: which one is moot when
+        // none can be paid for. The turn is held to the cheapest option.
+        const payment = payForUse(sheet, counter, pool, 1);
+        if ("error" in payment) {
+          return { result: payment };
+        }
+        const costs = channelOptions(sheet).map((entry) => entry.cost);
+        const cheapest = (["none", "bonus", "reaction", "action"] as const).find((cost) => costs.includes(cost)) ?? "action";
+        const turnGate = prepareResourceCharge(campaign, sheet, resourceName, cheapest);
+        if ("error" in turnGate) {
+          return { result: turnGate };
+        }
         const held = channelOptionsHeld(sheet);
         return {
           result: {
-            error: `Channel Divinity in a fight is one of its options, each with its own cost: name it in variant${held.length ? ` (${sheet.name} has ${held.join(", ")})` : ""}. Nothing was spent.`,
+            error: `Channel Divinity in a fight is one of its options, each with its own cost: name it in variant${held.length ? ` (${sheet.name} has ${held.join(", ")})` : ""}. Ask the player which, unless they named one. Nothing was spent.`,
+            retry: true,
           },
         };
       }
@@ -1294,13 +1343,13 @@ export function applyDmMutation(
         const ended = breakConcentration(campaign, turnId, sheet.id, "ended voluntarily");
         return ended
           ? { result: { ok: true, cleared: `concentration (${ended})` } }
-          : { result: { error: `${sheet.name} is not concentrating on anything.` } };
+          : { result: { error: `${sheet.name} is not concentrating on anything.`, retry: true } };
       }
       // Exhaustion clears one level at a time (greater restoration, a long
       // rest); level 0 is fully recovered.
       if (namesExhaustion(rawCondition)) {
         if (sheet.exhaustion <= 0 && !sheet.conditions.some((entry) => entry.startsWith("exhaustion"))) {
-          return { result: { error: `${sheet.name} has no exhaustion.` } };
+          return { result: { error: `${sheet.name} has no exhaustion.`, retry: true } };
         }
         const nextLevel = exhaustionPatch(sheet, sheet.exhaustion - 1).exhaustion;
         // Legacy string entries clear alongside the leveled field.
@@ -1330,6 +1379,7 @@ export function applyDmMutation(
         return {
           result: {
             error: `${sheet.name} is not ${wanted || "under that condition"}.`,
+            retry: true,
             currentConditions: sheet.conditions,
           },
         };
@@ -1339,7 +1389,7 @@ export function applyDmMutation(
       if (removed.some((entry) => canonicalCondition(entry) === PRONE) && getDmTurn(turnId)?.actor !== "human_dm") {
         const refusal = payToStand(campaign.id, sheet);
         if (refusal) {
-          return { result: { error: refusal } };
+          return { result: refusal };
         }
       }
       const withoutCondition = sheet.conditions.filter((entry) => !matches(entry));
@@ -1355,7 +1405,7 @@ export function applyDmMutation(
     case "use_spell_slot": {
       const unasked = characterCallUnasked(campaign.id, getDmTurn(turnId), rawArguments, "characterId");
       if (unasked) {
-        return { result: { error: unasked } };
+        return { result: unasked };
       }
       const level = args.level ?? 0;
       // A missing spell is tolerated (weak tool calling must not break
@@ -1371,22 +1421,41 @@ export function applyDmMutation(
           feature.name.toLowerCase().includes("combat wild shape"),
         );
         if (!hasFeature) {
-          return { result: { error: `${sheet.name} has no Combat Wild Shape.` } };
+          return { result: { error: `${sheet.name} has no Combat Wild Shape.`, refused: "rules" } };
         }
         if (!sheet.wildShape) {
           return {
             result: {
               error: `${sheet.name} is not wild shaped; the bonus-action healing works only while transformed.`,
+              refused: "rules",
             },
           };
         }
+        // A bonus action (SRD 5.1, Circle of the Moon): the turn before which
+        // slot to burn.
+        const encounter = getActiveEncounter(campaign.id);
+        const fighting = encounter && (encounter.kind ?? "fight") === "fight" ? encounter : null;
+        const able = fighting ? canAct({ sheet, encounter: fighting, kind: "bonus" }) : null;
+        if (able && !able.ok) {
+          return { result: toolError(able) };
+        }
+        const budget = fighting ? budgetFor(fighting, sheet.id, attacksAllowedFor(sheet), conditionExtraActions(sheet.conditions)) : null;
+        const bonus = budget ? spendAction(budget, "bonus", "Combat Wild Shape", sheet.name) : null;
+        if (bonus && !bonus.ok) {
+          return { result: toolError(bonus) };
+        }
         if (level < 1) {
-          return { result: { error: "Combat Wild Shape healing needs the slot level to burn." } };
+          return {
+            result: {
+              error: `Combat Wild Shape healing needs the slot level to burn. ${freeSlotsLine(sheet.spellcasting, 1, false)} Ask the player which, unless they named one.`,
+              retry: true,
+            },
+          };
         }
         const slot = sheet.spellcasting?.slots[String(level)];
         const math = slot ? spendSlotMath(slot) : null;
         if (!math) {
-          return { result: { error: `${sheet.name} has no free level ${level} spell slot.` } };
+          return { result: spentSlotRefusal(sheet.name, sheet.spellcasting, { level, lowest: 1, what: "Combat Wild Shape", withPact: false }) };
         }
         const healed = rollHealing(campaign, sheet, "Combat Wild Shape", `${level}d8`);
         const beastHp = Math.min(
@@ -1400,6 +1469,9 @@ export function applyDmMutation(
           wildShape: { ...sheet.wildShape, beastHp },
         };
         patchSheet(sheet.id, patch);
+        if (fighting && bonus?.ok) {
+          storeBudget(fighting, bonus.budget);
+        }
         audit(
           campaign,
           turnId,
@@ -1452,11 +1524,11 @@ export function applyDmMutation(
       const spell = (args.spell ?? args.name ?? "").trim().slice(0, 80);
       const action = args.action ?? (spell ? "add" : undefined);
       if (!spell || (action !== "add" && action !== "remove")) {
-        return { result: { error: "learn_spell needs a spell name and action add|remove." } };
+        return { result: { error: "learn_spell needs a spell name and action add|remove.", retry: true } };
       }
       if (!sheet.spellcasting) {
         return {
-          result: { error: `${sheet.name} has no spellcasting; they cannot learn spells.` },
+          result: { error: `${sheet.name} has no spellcasting; they cannot learn spells.`, refused: "rules" },
         };
       }
       const known = sheet.spellcasting.known;
@@ -1475,13 +1547,13 @@ export function applyDmMutation(
         const facts = spellFactsFor(spell, spellAuthorsFor(campaign));
         const unlearnable = learnProblem(sheet, spell, facts, subclassExtrasForTable(campaign.id, sheet.userId));
         if (unlearnable) {
-          return { result: { error: unlearnable } };
+          return { result: unlearnable };
         }
         // Known-casters track spells in `known`; prepared casters keep the
         // whole list in `prepared` (known stays empty by convention).
         const intoKnown = known.length > 0;
         if ((intoKnown ? known.length >= 80 : prepared.length >= 60)) {
-          return { result: { error: `${sheet.name}'s spell list is full.` } };
+          return { result: { error: `${sheet.name}'s spell list is full. They must give one up first: ask the player which, then call learn_spell with action=remove for it.`, retry: true } };
         }
         // The class's real 5e ceiling. Cantrips do not count against it, and
         // an unknown class (custom catalog) has no table to enforce.
@@ -1496,7 +1568,7 @@ export function applyDmMutation(
         // Cantrips have their own list and never touch the spell allowance.
         if (spellLevel === 0 || (spellLevel === undefined && isCantripName(spell))) {
           if (cantrips.length >= 40) {
-            return { result: { error: `${sheet.name}'s cantrip list is full.` } };
+            return { result: { error: `${sheet.name}'s cantrip list is full. They must give one up first: ask the player which, then call learn_spell with action=remove for it.`, retry: true } };
           }
           const nextSpellcasting = {
             ...sheet.spellcasting,
@@ -1544,6 +1616,7 @@ export function applyDmMutation(
             return {
               result: {
                 error: `Copying ${spell} into the spellbook takes ${cost.hours} hours; it cannot be done in the middle of a fight.`,
+                refused: "rules",
               },
             };
           }
@@ -1552,6 +1625,7 @@ export function applyDmMutation(
             return {
               result: {
                 error: `Copying ${spell} into the spellbook costs ${cost.gold} gp in inks and materials, and ${sheet.name} has ${formatPurse({ gold: sheet.gold ?? 0, copper: sheet.copper ?? 0 })}. Nothing was written.`,
+                refused: "rules",
               },
             };
           }
@@ -1616,7 +1690,8 @@ export function applyDmMutation(
           if (!targetCaster) {
             return {
               result: {
-                error: `${sheet.name}'s caster classes are all at their spells-held ceiling. They must give one up first: call learn_spell with action=remove for the spell they drop.`,
+                error: `${sheet.name}'s caster classes are all at their spells-held ceiling. They must give one up first: ask the player which, then call learn_spell with action=remove for the spell they drop.`,
+                retry: true,
               },
             };
           }
@@ -1633,7 +1708,8 @@ export function applyDmMutation(
           if (ceiling && current >= ceiling.count) {
             return {
               result: {
-                error: `${sheet.name} already has ${current} ${ceiling.label}, the most a level ${sheet.level} ${sheet.class} may hold. They must give one up first: call learn_spell with action=remove for the spell they drop.`,
+                error: `${sheet.name} already has ${current} ${ceiling.label}, the most a level ${sheet.level} ${sheet.class} may hold. They must give one up first: ask the player which, then call learn_spell with action=remove for the spell they drop.`,
+                retry: true,
               },
             };
           }
@@ -1670,7 +1746,17 @@ export function applyDmMutation(
         return { result: { ok: true, learned: spell } };
       }
       if (!known.some(matches) && !prepared.some(matches) && !cantrips.some(matches) && !book.some(matches) && !pending.some(matches)) {
-        return { result: { error: `${sheet.name} does not know "${spell}".` } };
+        // A spell the rules know is one they lack; a name nobody knows is the
+        // call's to fix, from the spells they hold.
+        const held = [...new Set([...cantrips, ...known, ...prepared, ...book, ...pending])];
+        return {
+          result: spellFactsFor(spell, spellAuthorsFor(campaign))
+            ? { error: `${sheet.name} does not know "${spell}".`, refused: "rules" }
+            : {
+                error: `No spell called "${spell}" is known. ${sheet.name} holds ${held.join(", ") || "no spells"}: send the one meant, by the name on the sheet.`,
+                retry: true,
+              },
+        };
       }
       const nextSpellcasting = {
         ...sheet.spellcasting,
@@ -1706,21 +1792,21 @@ export function applyDmMutation(
       try {
         rawArgs = JSON.parse(rawArguments || "{}") as Record<string, unknown>;
       } catch {
-        return { result: { error: "Invalid arguments." } };
+        return { result: { error: "Invalid arguments.", retry: true } };
       }
       delete rawArgs.characterId;
       delete rawArgs.reason;
       // The console's form names one field and what it becomes.
       const folded = foldFieldValue(rawArgs, sheet.abilities);
       if ("error" in folded) {
-        return { result: { error: folded.error } };
+        return { result: toolError(folded) };
       }
       rawArgs = folded.args;
       const parsedPatch = updateSheetPatchSchema.safeParse(rawArgs);
       if (!parsedPatch.success) {
         const issue = parsedPatch.error.issues[0];
         return {
-          result: { error: `Invalid update_sheet field ${issue?.path.join(".")}: ${issue?.message}` },
+          result: { error: `Invalid update_sheet field ${issue?.path.join(".")}: ${issue?.message}`, retry: true },
         };
       }
       const patch: typeof parsedPatch.data & {
@@ -1736,7 +1822,7 @@ export function applyDmMutation(
       );
       if (!changed.length) {
         return {
-          result: { error: "update_sheet changed nothing; include at least one field." },
+          result: { error: "update_sheet changed nothing; include at least one field.", retry: true },
         };
       }
       // From the model this is a story tool, not a correction: the fields
@@ -1745,7 +1831,7 @@ export function applyDmMutation(
       if (getDmTurn(turnId)?.actor !== "human_dm") {
         const refusal = aiSheetFieldRefusal(changed);
         if (refusal) {
-          return { result: { error: refusal } };
+          return { result: refusal };
         }
       }
       // The ceiling is on what one story moment gives, however the edit is
@@ -1773,7 +1859,7 @@ export function applyDmMutation(
         typeof patch.xp === "number" ? levelForXp(patch.xp) : undefined,
       );
       if (buffError) {
-        return { result: { error: buffError } };
+        return { result: buffError };
       }
       patchSheet(sheet.id, patch);
       audit(
@@ -1789,6 +1875,6 @@ export function applyDmMutation(
       return { result: { ok: true, changed } };
     }
     default:
-      return { result: { error: `Unknown mutation tool ${toolName}.` } };
+      return { result: { error: `Unknown mutation tool ${toolName}.`, retry: true } };
   }
 }

@@ -14,6 +14,7 @@ import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { subclassSpellsFor } from "@/lib/srd/features";
 import type { SpellFacts } from "@/lib/srd/spell-facts";
 import { cantripCapOf, casterViewsOf, maxSpellLevelOf, type CasterView } from "@/lib/srd/spell-prep";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 type Learner = Pick<CharacterSheet, "name" | "class" | "level" | "subclass" | "classes" | "abilities" | "spellcasting">;
 
@@ -30,14 +31,14 @@ export function viewsWithSpell(sheet: Learner, facts: SpellFacts, extras?: Subcl
   );
 }
 
-export function learnProblem(sheet: Learner, spell: string, facts: SpellFacts | null, extras?: SubclassExtras): string | null {
+export function learnProblem(sheet: Learner, spell: string, facts: SpellFacts | null, extras?: SubclassExtras): ToolError | null {
   if (!facts) {
-    return `"${spell}" is not a spell this table knows (published, or written by whoever runs the table), so it cannot be learned. Check the name.`;
+    return { error: `"${spell}" is not a spell this table knows (published, or written by whoever runs the table), so it cannot be learned. Check the name.`, retry: true };
   }
   const views = viewsWithSpell(sheet, facts, extras);
   if (!views.length) {
     const classes = casterViewsOf(sheet).map((view) => view.classId).join(" or ") || sheet.class;
-    return `${facts.name} is not on the ${classes} spell list, so ${sheet.name} cannot learn it.`;
+    return { error: `${facts.name} is not on the ${classes} spell list, so ${sheet.name} cannot learn it.`, refused: "rules" };
   }
   if (facts.level === 0) {
     const room = views.some((view) => {
@@ -45,13 +46,13 @@ export function learnProblem(sheet: Learner, spell: string, facts: SpellFacts | 
       return cap !== null && view.cantrips.length < cap;
     });
     if (!room) {
-      return `${sheet.name} already knows as many cantrips as their class allows at this level; ${facts.name} cannot be added until the Cantrips Known column grows.`;
+      return { error: `${sheet.name} already knows as many cantrips as their class allows at this level; ${facts.name} cannot be added until the Cantrips Known column grows.`, refused: "rules" };
     }
     return null;
   }
   const top = Math.max(0, ...views.map((view) => maxSpellLevelOf(view)));
   if (facts.level > top) {
-    return `${facts.name} is a level ${facts.level} spell and ${sheet.name} has slots up to level ${top}; it can be learned once they can cast spells of that level.`;
+    return { error: `${facts.name} is a level ${facts.level} spell and ${sheet.name} has slots up to level ${top}; it can be learned once they can cast spells of that level.`, refused: "rules" };
   }
   return null;
 }

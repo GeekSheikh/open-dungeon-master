@@ -8,6 +8,7 @@ import type { EnemyStats } from "@/lib/bestiary/statblock";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import type { SheetSummon, SummonAttack } from "@/lib/schemas/summon";
 import type { SummonForm } from "@/lib/srd/summon-forms";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 export const SUMMONED = "summoned";
 
@@ -31,14 +32,14 @@ function pickAttack(summon: SheetSummon, weapon: string | undefined): SummonAtta
 export function summonAttackProfile(
   sheet: Pick<CharacterSheet, "name" | "summon">,
   weapon: string | undefined,
-): AttackProfile | { error: string } | null {
+): AttackProfile | ToolError | null {
   const summon = sheet.summon;
   if (!summon) {
     return null;
   }
   const attack = pickAttack(summon, weapon);
   if (!attack) {
-    return { error: `${sheet.name} (${summon.form}) has no attack; it cannot fight.` };
+    return { error: `${sheet.name} (${summon.form}) has no attack; it cannot fight.`, refused: "rules" };
   }
   const ranged = Boolean(attack.range);
   const riders = attack.riders ?? [];

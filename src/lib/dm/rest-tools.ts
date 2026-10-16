@@ -35,6 +35,7 @@ import {
 import type { CharacterSheet, FullPatchSheetInput } from "@/lib/schemas/sheet";
 import { authoredRestTempHp } from "@/lib/dm/authored-turns";
 import { tranquilityAfterLongRest } from "@/lib/dm/srd-defenses";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 // The rest engine: short rests spend hit dice with real server rolls, long
 // rests restore HP, slots, and half the hit dice. Every sheet write is
@@ -172,15 +173,16 @@ export function handleTakeRest(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   if (getActiveEncounter(campaign.id)) {
-    return { error: "The party cannot rest during combat. End the encounter first." };
+    return { error: "The party cannot rest during combat. End the encounter first.", refused: "rules" };
   }
   const args = parseRestArgs(rawArguments);
   if (!args) {
     return {
       error:
         'Invalid take_rest arguments. Send {"kind":"short"} or {"kind":"long"}; a spend list is [{"characterId": "...", "dice": 1}] with whole dice of 1 or more. Nobody rested and no time passed.',
+      retry: true,
     };
   }
   const reason = (args.reason ?? `${args.kind} rest`).slice(0, 200);

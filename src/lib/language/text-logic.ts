@@ -22,6 +22,25 @@ export function foldName(name: string): string {
   return name.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+// A record by the name a caller gives (a creature, a battle-map token): the
+// name itself, an article or a trailing "form" aside ("a wolf", "brown bear
+// form"), or a part of one name only ("rex"). Anything else is none, never
+// the record whose name sits inside it: a giant elk is no Elk, a werewolf no
+// Wolf. Words are read as words() reads them, so an accented name matches.
+export function findNamed<T>(list: readonly T[], term: string, nameOf: (entry: T) => string): T | null {
+  const key = (text: string) => words(foldName(text)).join(" ");
+  const wanted = key(term).replace(/^(an?|the) /, "").replace(/ (form|shape)$/, "");
+  if (!wanted) {
+    return null;
+  }
+  const exact = list.find((entry) => key(nameOf(entry)) === wanted);
+  if (exact) {
+    return exact;
+  }
+  const parts = list.filter((entry) => ` ${key(nameOf(entry))} `.includes(` ${wanted} `));
+  return parts.length === 1 ? parts[0] : null;
+}
+
 // The order names are listed in, the same on every server and at every
 // table: Unicode's collation ("en" is CLDR's root order, which English does
 // not tailor; a bare locale would follow the host's), case and accents set

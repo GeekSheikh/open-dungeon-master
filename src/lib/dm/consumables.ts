@@ -33,6 +33,7 @@ import { recordItemCast } from "@/lib/srd/item-cast-credit";
 import { afflictCondition, afflictionConditionsFor } from "@/lib/dm/afflictions";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { rollCard } from "@/lib/dm/roll-card";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 const GIANTS: Record<string, number> = { hill: 21, frost: 23, stone: 23, fire: 25, cloud: 27, storm: 29 };
 const DAMAGE_TYPES = ["acid", "cold", "fire", "force", "lightning", "necrotic", "poison", "psychic", "radiant", "thunder"];
@@ -118,7 +119,7 @@ function highestSlotLevel(sheet: CharacterSheet): number {
 
 // A refusal that must come before the item is spent: a scroll whose spell
 // is not on the reader's class list cannot be read, and stays in the pack.
-export function consumableRefusal(sheet: CharacterSheet, itemName: string): string | null {
+export function consumableRefusal(sheet: CharacterSheet, itemName: string): ToolError | null {
   // A vial of basic poison needs a weapon to coat (src/lib/dm/attack-onhit.ts).
   const coat = poisonCoatRefusal(sheet, itemName);
   if (coat) {
@@ -133,7 +134,7 @@ export function consumableRefusal(sheet: CharacterSheet, itemName: string): stri
     return null;
   }
   if (!sheet.spellcasting || !known.classes.some((slug) => classSlugs(sheet).includes(slug))) {
-    return `${known.name} is not on ${sheet.name}'s class spell list, so the scroll is unintelligible to them; it stays in the pack for someone who can read it.`;
+    return { error: `${known.name} is not on ${sheet.name}'s class spell list, so the scroll is unintelligible to them; it stays in the pack for someone who can read it.`, refused: "rules" };
   }
   // A scroll above what they can cast needs a spellcasting ability check.
   // One that cannot be made at all (no spellcasting ability on the sheet)
@@ -144,7 +145,7 @@ export function consumableRefusal(sheet: CharacterSheet, itemName: string): stri
       sheet,
     );
     if ("error" in resolved) {
-      return `${sheet.name} cannot make the spellcasting ability check a scroll of ${known.name} needs (${resolved.error}); the scroll stays in the pack.`;
+      return { error: `${sheet.name} cannot make the spellcasting ability check a scroll of ${known.name} needs (${resolved.error}); the scroll stays in the pack.`, refused: "rules" };
     }
   }
   return null;

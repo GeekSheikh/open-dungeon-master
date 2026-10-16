@@ -26,6 +26,7 @@ import { spellKeyOf } from "@/lib/dm/cast-rules";
 import { breakConcentration, setConcentration } from "@/lib/dm/concentration";
 import { removeConditions, type ConditionMetaMap } from "@/lib/dm/condition-logic";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import { toolError, type ToolResult } from "@/lib/dm/tool-errors";
 
 const READIED = "readied";
 
@@ -46,19 +47,20 @@ export function readySpell(
   turn: DmTurn,
   sheet: CharacterSheet,
   input: { spell: string; level?: number; trigger: string | undefined; inFight: boolean },
-  castSlot: (args: Record<string, unknown>) => Record<string, unknown>,
-): Record<string, unknown> {
+  castSlot: (args: Record<string, unknown>) => ToolResult,
+): ToolResult {
   const trigger = (input.trigger ?? "").trim();
   if (!input.inFight) {
-    return { error: "Ready is an action in a fight, where turns are taken in order; there is no active fight." };
+    return { error: "Ready is an action in a fight, where turns are taken in order; there is no active fight.", refused: "rules" };
   }
   if (!trigger) {
-    return { error: "Ready needs the trigger it waits for, e.g. trigger: 'when the goblin steps through the door'. Nothing was spent." };
+    return { error: "Ready needs the trigger it waits for, e.g. trigger: 'when the goblin steps through the door'. Nothing was spent.", retry: true };
   }
   const facts = spellFactsFor(input.spell, sheetSpellAuthors(sheet));
   if (facts && facts.castingTime !== "action") {
     return {
       error: `${facts.name} cannot be readied: only a spell with a casting time of one action can be (SRD 5.1, Ready). Nothing was spent.`,
+      refused: "rules",
     };
   }
   const cast = castSlot({
@@ -67,8 +69,8 @@ export function readySpell(
     ...(input.level ? { level: input.level } : {}),
     reason: `readied: ${trigger}`,
   });
-  if ("error" in cast) {
-    return { error: String(cast.error) };
+  if (typeof cast.error === "string") {
+    return toolError(cast);
   }
   const name = String(cast.spell ?? facts?.name ?? input.spell);
   const slotLevel = typeof cast.slotLevel === "number" ? cast.slotLevel : null;
@@ -115,19 +117,19 @@ export function releaseReadied(
   encounter: Encounter,
   held: Held,
   dryRun: boolean,
-): Record<string, unknown> {
+): ToolResult {
   const able = canAct({ sheet, encounter, kind: "reaction" });
   if (!able.ok) {
-    return { error: able.error };
+    return toolError(able);
   }
   if (encounter.reactionsUsed.includes(sheet.id)) {
-    return { error: `${sheet.name} has already used their reaction, so the readied ${held.spell} cannot be released; it is lost when their turn starts.` };
+    return { error: `${sheet.name} has already used their reaction, so the readied ${held.spell} cannot be released; it is lost when their turn starts.`, refused: "rules" };
   }
   if (spellKeyOf(sheet.concentratingOn ?? "") !== spellKeyOf(held.spell)) {
     if (!dryRun) {
       dropReadied(campaign, sheet.id);
     }
-    return { error: `${sheet.name}'s concentration on the readied ${held.spell} was broken, so it dissipated without taking effect. Nothing is cast.` };
+    return { error: `${sheet.name}'s concentration on the readied ${held.spell} was broken, so it dissipated without taking effect. Nothing is cast.`, refused: "rules" };
   }
   if (dryRun) {
     return { ok: true, dryRun: true, spell: held.spell, slotLevel: held.slotLevel, released: true };

@@ -65,7 +65,7 @@ import { withoutAsides, type PartRead } from "@/lib/dm/claims-logic";
 import { readAsides, readReply, registeringNames } from "@/lib/dm/claims";
 import { modelTextLines } from "@/lib/dm/speech-lines";
 import type { SpokenLine } from "@/lib/dm/speech";
-import { markToolError } from "@/lib/dm/tool-errors";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 import { dispatchAdjudication } from "@/lib/dm/invoke-dispatch";
 import { gateAiCall } from "@/lib/dm/ai-gate";
 import { characterAwaitingPlayer } from "@/lib/dm/player-word";
@@ -140,6 +140,7 @@ import { createDeltaBatcher } from "@/lib/dm/delta-buffer";
 import {
   applyDmMutation,
   MUTATION_CAP_PER_TURN,
+  MUTATION_CAP_REFUSAL,
   MUTATION_TOOL_NAMES,
   mutationTools,
 } from "@/lib/dm/mutations";
@@ -152,6 +153,7 @@ import {
   turnHolder,
   applyEncounterCall,
   ENCOUNTER_CAP_PER_TURN,
+  ENCOUNTER_CAP_REFUSAL,
   ENCOUNTER_TOOL_NAMES,
   encounterTools,
   ensureInitiativeProgress,
@@ -1191,11 +1193,11 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
     }
     // Notes deliver as pending suggestions immediately (like whispers); the
     // lead approves them in the notes panel.
-    const noteResults = new Map<string, Record<string, unknown>>();
+    const noteResults = new Map<string, ToolResult>();
     for (const noteCall of noteCalls) {
-      let result: Record<string, unknown>;
+      let result: ToolResult;
       if (noteCount >= 1) {
-        result = { error: "Note limit reached for this turn." };
+        result = { error: "Note limit reached for this turn.", refused: "limit" };
       } else {
         result = handleWriteCampaignNote(campaign, noteCall.rawArguments);
         if (!("error" in result)) {
@@ -1236,11 +1238,11 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
     }
     // Whispers deliver immediately (like events); recipients are notified
     // via a contentless ephemeral, so narration never carries the secret.
-    const whisperResults = new Map<string, Record<string, unknown>>();
+    const whisperResults = new Map<string, ToolResult>();
     for (const whisperCall of whisperCalls) {
-      let result: Record<string, unknown>;
+      let result: ToolResult;
       if (whisperCount >= WHISPER_CAP_PER_TURN) {
-        result = { error: "Whisper limit reached for this turn." };
+        result = { error: "Whisper limit reached for this turn.", refused: "limit" };
       } else {
         result = handleSendWhisper(campaign, turn.id, whisperCall.rawArguments, sheets, sheetsById);
         if (!("error" in result)) {
@@ -1288,7 +1290,7 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
       toolCall: { id?: string; name: string },
       inFight: boolean,
       narrateNow: boolean,
-    ): Record<string, unknown> | null => {
+    ): ToolResult | null => {
       switch (toolCall.name) {
         case "request_player_input":
           return playerInputResult(spotlightSet, inFight, narrateNow);
@@ -1325,12 +1327,10 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
           role: "tool",
           ...(toolCall.id ? { tool_call_id: toolCall.id } : {}),
           content: JSON.stringify(
-            markToolError(
-              ranAbove(toolCall, inFight, narrateNow) ??
-                (offersTool(tools, toolCall.name)
-                  ? { ok: true }
-                  : { error: `The engine has no action called "${toolCall.name}".` }),
-            ),
+            ranAbove(toolCall, inFight, narrateNow) ??
+              (offersTool(tools, toolCall.name)
+                ? { ok: true }
+                : { error: `The engine has no action called "${toolCall.name}".`, retry: true }),
           ),
         });
       }
@@ -1493,8 +1493,8 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
 
     // The calls resolve in the order the model sent them: a Rage, a Bless or
     // a Hunter's Mark called before the attack in the same reply is on the
-    // sheet when the attack reads it. Each result is marked as an argument
-    // fault or a rules refusal when it is an error (src/lib/dm/tool-errors.ts).
+    // sheet when the attack reads it. An error goes back with the kind its
+    // handler stated (src/lib/dm/tool-errors.ts).
     // A pc_attack or roll for a physical-dice player parks instead: its
     // result arrives when the turn resumes with the adjudicated roll.
     const inputInFight = !spotlightSet && fightOwnsFloor(campaignId);
@@ -1505,7 +1505,7 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
         ranAbove(toolCall, inputInFight, false) ??
         (offersTool(catalogue, toolCall.name)
           ? await resolveModelCall(context, turn, toolCall)
-          : { error: `The engine has no action called "${toolCall.name}".` });
+          : { error: `The engine has no action called "${toolCall.name}".`, retry: true });
       // A combatant who left the fight during the call takes no turn with them.
       settleTurn(context.campaign, holder);
       if (outcome[PARKED]) {
@@ -1518,7 +1518,7 @@ async function runAdvance(context: TurnContext, turn: DmTurn) {
       turn.conversation.push({
         role: "tool",
         ...(toolCall.id ? { tool_call_id: toolCall.id } : {}),
-        content: JSON.stringify(markToolError(outcome)),
+        content: JSON.stringify(outcome),
       });
     }
 
@@ -1585,7 +1585,7 @@ async function resolveModelCall(
   context: TurnContext,
   turn: DmTurn,
   toolCall: { id?: string; name: string; rawArguments: string },
-): Promise<Record<string, unknown>> {
+): Promise<ToolResult> {
   const { campaign, sheets, sheetsById, realDiceUserIds } = context;
   const { name } = toolCall;
   // "false" sent as a string is false (src/lib/dm/arg-coerce.ts).
@@ -1598,7 +1598,7 @@ async function resolveModelCall(
   const gate = () => gateAiCall(name, rawArguments, { campaign, turn, sheetsById });
   if (ENCOUNTER_NAMES.has(name)) {
     if (turn.encounterCount >= ENCOUNTER_CAP_PER_TURN) {
-      return { error: "Encounter action limit reached for this turn." };
+      return ENCOUNTER_CAP_REFUSAL;
     }
     const gated = gate();
     if ("result" in gated) {
@@ -1635,7 +1635,7 @@ async function resolveModelCall(
   // offers the owning player answers.
   if (MUTATION_NAMES.has(name)) {
     if (turn.mutationCount >= MUTATION_CAP_PER_TURN) {
-      return { error: "Mutation limit reached for this turn." };
+      return MUTATION_CAP_REFUSAL;
     }
     const gated = gate();
     if ("result" in gated) {
@@ -1901,15 +1901,15 @@ export function handleRequestPlayerInput(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   // Initiative owns the floor while a fight runs, exactly as the floor route
   // refuses there. Handing it to someone out of turn would break the order.
   if (fightOwnsFloor(campaign.id)) {
-    return { error: "The initiative order has the floor while the fight runs." };
+    return { error: "The initiative order has the floor while the fight runs.", retry: true };
   }
   const parsed = parseSpotlightUserIds(rawArguments, sheets, sheetsById);
   if (!parsed) {
-    return { error: "Name at least one player character to give the floor to." };
+    return { error: "Name at least one player character to give the floor to.", retry: true };
   }
   const floor = {
     mode: "spotlight" as const,
@@ -1931,12 +1931,12 @@ export function handleRecordEvent(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   let args: { characterId?: unknown; kind?: unknown; summary?: unknown };
   try {
     args = JSON.parse(rawArguments || "{}");
   } catch {
-    return { error: "Invalid arguments." };
+    return { error: "Invalid arguments.", retry: true };
   }
   const sheet = resolveSheetRef(
     typeof args.characterId === "string" ? args.characterId : undefined,
@@ -1944,14 +1944,14 @@ export function handleRecordEvent(
     sheetsById,
   );
   if (!sheet) {
-    return { error: "Unknown characterId; use one from GAME STATE." };
+    return { error: "Unknown characterId; use one from GAME STATE.", retry: true };
   }
   // Unknown kinds fall back to "story" instead of erroring: a milestone is
   // always worth recording under some kind.
   const kind = normalizeEventKind(args.kind, CHARACTER_EVENT_KINDS) as CharacterEventKind;
   const summary = String(args.summary ?? "").trim().slice(0, 300);
   if (!summary) {
-    return { error: "record_event needs a one-sentence summary." };
+    return { error: "record_event needs a one-sentence summary.", retry: true };
   }
   if (hasRecentIdenticalEvent(sheet.id, summary)) {
     return { ok: true, note: "Already recorded." };
@@ -1981,7 +1981,7 @@ export function handleLocationCall(
   toolName: string,
   rawArguments: string,
   picturesAvailable: boolean,
-): Record<string, unknown> {
+): ToolResult {
   let args: {
     name?: unknown;
     layoutDescription?: unknown;
@@ -1992,11 +1992,11 @@ export function handleLocationCall(
   try {
     args = JSON.parse(rawArguments || "{}");
   } catch {
-    return { error: "Invalid arguments." };
+    return { error: "Invalid arguments.", retry: true };
   }
   const beds = sceneIds();
   if (args.scene !== undefined && !beds.includes(String(args.scene))) {
-    return { error: `Unknown scene "${String(args.scene)}"; use one of: ${beds.join(", ")}.` };
+    return { error: `Unknown scene "${String(args.scene)}"; use one of: ${beds.join(", ")}.`, retry: true };
   }
   const scene = args.scene === undefined ? undefined : String(args.scene);
   const layoutDescription =
@@ -2018,7 +2018,7 @@ export function handleLocationCall(
   if (toolName === "move_party") {
     const name = typeof args.name === "string" ? args.name.trim() : "";
     if (!name) {
-      return { error: "move_party needs a location name." };
+      return { error: "move_party needs a location name.", retry: true };
     }
     const previous = getCurrentLocation(campaign.id);
     const onRecord = getLocationByName(campaign.id, name);
@@ -2054,7 +2054,7 @@ export function handleLocationCall(
     previousLayout = getCurrentLocation(campaign.id)?.layoutDescription ?? "";
     location = updateCurrentLocationDetails(campaign.id, { layoutDescription, connections });
     if (!location) {
-      return { error: "No current location; call move_party first." };
+      return { error: "No current location; call move_party first.", retry: true };
     }
   }
 
@@ -2178,7 +2178,7 @@ function emptyTurnPlayer(context: TurnContext): EmptyTurnPlayer | null {
       : [],
     levelOf: (spell) =>
       spellLevelOf(spell) ?? findSpellByName(spell, spellAuthorsFor(context.campaign))?.level ?? null,
-    notReady: (spell) => notReadyReason(casting, spell),
+    notReady: (spell) => notReadyReason(casting, spell)?.error ?? null,
   };
 }
 

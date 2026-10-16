@@ -34,6 +34,7 @@ import type { Campaign } from "@/lib/db/campaigns";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
 import { moteAfterRoll, moteOf } from "@/lib/dm/authored-mote";
 import { applyRollGates } from "@/lib/dm/roll-gates";
+import { toolError, type ToolResult } from "@/lib/dm/tool-errors";
 
 export function handleRequestRoll(
   campaign: Campaign,
@@ -46,7 +47,7 @@ export function handleRequestRoll(
   realDiceUserIds: Set<string>,
   // Set by the AI's turn loop: the tool call a parked roll answers.
   model?: { toolCallId: string | null },
-): Record<string, unknown> {
+): ToolResult {
   const campaignId = campaign.id;
   let args: RollArgs;
   try {
@@ -61,6 +62,7 @@ export function handleRequestRoll(
       error: model
         ? "Invalid request_roll arguments. Send JSON with kind, and skill/ability/dc or expression as documented."
         : "Pick a roll kind, and a skill, ability or DC to go with it.",
+      retry: true,
     };
   }
 
@@ -77,6 +79,7 @@ export function handleRequestRoll(
     if (fresh.deathSaves?.dead) {
       return {
         error: `${fresh.name} is dead and makes no rolls. Only magic that raises the dead brings them back.`,
+        refused: "rules",
       };
     }
   }
@@ -84,7 +87,7 @@ export function handleRequestRoll(
   // creature's own check for the DC (src/lib/dm/roll-gates.ts).
   const gated = applyRollGates(campaign, turn, args);
   if ("error" in gated) {
-    return { error: gated.error };
+    return toolError(gated);
   }
   args = gated.args;
   // In combat a character's attack belongs to the attack engine, which
@@ -94,6 +97,7 @@ export function handleRequestRoll(
       error: model
         ? "Character attacks in combat go through pc_attack: call it with characterId, targetEnemyId, and the weapon (or an attack-roll spell by name). The server rolls to-hit from their sheet, adjudicates against the enemy's AC, and applies damage itself."
         : "Use Player attacks for a swing in combat: it rolls to hit from their sheet, compares it to the enemy's AC and applies the damage.",
+      retry: true,
     };
   }
   // The same holds for the damage: a party character's damage on an enemy
@@ -105,6 +109,7 @@ export function handleRequestRoll(
       error: model
         ? `${sheet.name}'s damage on an enemy comes from pc_attack (or the spell tools), which roll the hit first and apply the damage themselves; request_roll does not apply a party character's damage to an enemy.`
         : `${sheet.name}'s damage on an enemy comes from Player attacks or a cast form, which roll the hit first; a bare damage roll does not land on an enemy.`,
+      retry: true,
     };
   }
 
@@ -116,7 +121,7 @@ export function handleRequestRoll(
       : { encumbrance: campaign.gameSettings.variantRules.encumbrance },
   );
   if ("error" in resolved) {
-    return { error: resolved.error };
+    return toolError(resolved);
   }
   if ("autoFail" in resolved) {
     return {
@@ -219,6 +224,6 @@ export function handleRequestRoll(
       ...(applied ? { applied } : {}),
     };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "Invalid dice expression." };
+    return { error: error instanceof Error ? error.message : "Invalid dice expression.", retry: true };
   }
 }

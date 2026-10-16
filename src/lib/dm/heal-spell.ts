@@ -31,22 +31,23 @@ import { authoredSpellDice } from "@/lib/srd/authored-effects-more";
 import { publishPersisted, publishWithSeq } from "@/lib/events";
 import { computeSheetDerived, spellSaveDcFor } from "@/lib/srd";
 import { spellDamageFor, spellFactsFor, spellMechanicsFor } from "@/lib/content";
-import { spellReachProblem } from "@/lib/dm/cast-reach";
+import { castToNoEffect, spellReachProblem, spellWardOn } from "@/lib/dm/cast-reach";
 import { spellAuthorsFor } from "@/lib/dm/spell-authors";
 import { handleStabilize } from "@/lib/dm/stabilize";
 import { effectiveMaxHp } from "@/lib/dm/condition-logic";
 import { wakeConditions } from "@/lib/dm/vitals-logic";
 import { describeMinutes, minutesSinceDeath } from "@/lib/dm/revival";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import { toolError, type ToolError, type ToolResult } from "@/lib/dm/tool-errors";
 
-type Cast = (args: Record<string, unknown>) => Record<string, unknown>;
+type Cast = (args: Record<string, unknown>) => ToolResult;
 
 export type HealSpellOutcome =
   // Heal this much; the cast is paid.
   | { amount: number; note: string }
   // The spell did its own thing (a revival, a stabilize): return this.
   | { done: Record<string, unknown> }
-  | { error: string };
+  | ToolError;
 
 const hasFeature = (sheet: CharacterSheet, name: string) =>
   sheet.features.some((feature) => feature.name.trim().toLowerCase().startsWith(name));
@@ -95,18 +96,14 @@ export function castHealingSpell(
 
   // Reach first: nothing is spent on a creature the spell cannot reach.
   const encounter = getActiveEncounter(campaign.id);
+  let ward: string | null = null;
   if (encounter && target.id !== caster.id) {
-    const reach = spellReachProblem({
-      encounterId: encounter.id,
-      casterId: caster.id,
-      casterName: caster.name,
-      targetId: target.id,
-      targetName: target.name,
-      facts,
-    });
+    const near = { encounterId: encounter.id, casterId: caster.id, targetId: target.id, targetName: target.name, facts };
+    const reach = spellReachProblem({ ...near, casterName: caster.name });
     if (reach) {
-      return { error: reach };
+      return reach;
     }
+    ward = spellWardOn(near);
   }
 
   if (mech?.revive) {
@@ -115,6 +112,7 @@ export function castHealingSpell(
   if (target.deathSaves?.dead) {
     return {
       error: `${target.name} is DEAD. Healing cannot help: only a spell that returns the dead (Revivify within a minute, Raise Dead within ten days) or the party lead can reverse a death.`,
+      refused: "rules",
     };
   }
 
@@ -125,12 +123,13 @@ export function castHealingSpell(
     ? null
     : spellDamageFor({ spell: input.spell, userIds: authors, casterLevel: caster.level, slotLevel: plannedSlot });
   if (mech?.healPool && !(input.amount && input.amount > 0)) {
-    return { error: `${name} divides ${mech.healPool} hit points among its targets: send heal with the amount this creature takes. Nothing was spent.` };
+    return { error: `${name} divides ${mech.healPool} hit points among its targets: send heal with the amount this creature takes. Nothing was spent.`, retry: true };
   }
   const readable = Boolean(mech?.healing || mech?.healPool || dice);
   if (!readable && !(input.amount && input.amount > 0)) {
     return {
-      error: `${name} is not a healing spell the server can roll, so nothing was cast and no slot was spent. Cast it with its own tool, or send heal with an amount for healing that is not a spell.`,
+      error: `${name} is not a healing spell the server can roll, so it was not cast. Nothing was spent. Cast it with its own tool, or send heal with an amount for healing that is not a spell.`,
+      retry: true,
     };
   }
 
@@ -142,8 +141,13 @@ export function castHealingSpell(
     ...(mech?.healPool ? { uses: input.amount } : {}),
     reason: input.reason || `${input.spell} on ${target.name}`,
   });
-  if ("error" in paid) {
-    return { error: String(paid.error) };
+  if (typeof paid.error === "string") {
+    return toolError(paid);
+  }
+  // A ward around the target: the spell is cast, and spent, and heals
+  // nothing.
+  if (ward) {
+    return { done: { ok: true, spell: name, target: target.name, healed: 0, ...(paid.slot ? { slot: paid.slot } : {}), ...castToNoEffect(ward) } };
   }
   const slotLevel = typeof paid.slotLevel === "number" ? paid.slotLevel : facts.level;
   if (mech?.healPool) {
@@ -260,12 +264,14 @@ function revive(
   if (!target.deathSaves?.dead) {
     return {
       error: `${target.name} is not dead; ${name} returns the dead to life. Heal them with a healing spell instead. Nothing was spent.`,
+      refused: "rules",
     };
   }
   const since = minutesSinceDeath(campaign.id, target.id);
   if (since !== null && since > rule.withinMinutes) {
     return {
-      error: `${target.name} died ${describeMinutes(since)} ago, longer than ${name} reaches back (${describeMinutes(rule.withinMinutes)}). The spell would fail, so nothing was cast and nothing was spent.`,
+      error: `${target.name} died ${describeMinutes(since)} ago, longer than ${name} reaches back (${describeMinutes(rule.withinMinutes)}). The spell would fail, so it was not cast. Nothing was spent.`,
+      refused: "rules",
     };
   }
   const paid = cast({
@@ -275,8 +281,8 @@ function revive(
     via: "heal",
     reason: input.reason || `${name} on ${target.name}`,
   });
-  if ("error" in paid) {
-    return { error: String(paid.error) };
+  if (typeof paid.error === "string") {
+    return toolError(paid);
   }
   const fresh = getSheetById(target.id) ?? target;
   const woke = wakeConditions(fresh);

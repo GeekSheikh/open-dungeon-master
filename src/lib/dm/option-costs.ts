@@ -14,6 +14,7 @@
 //
 // Pure: no imports beyond types.
 import type { ResourceAction } from "@/lib/srd/class-resources";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 type Cost = ResourceAction | "ritual" | "use_reaction" | "on_swing";
 
@@ -105,7 +106,7 @@ export function optionCost(
   defId: string | undefined,
   named: string,
   inFight: boolean,
-): { option: string; cost: ResourceAction } | { refused: string } | null {
+): { option: string; cost: ResourceAction } | { refused: ToolError } | null {
   const table = defId ? TABLES[defId] : undefined;
   const text = plain(named);
   const found = table?.find(([option]) => text.includes(option));
@@ -117,12 +118,12 @@ export function optionCost(
   switch (cost) {
     case "ritual":
       return inFight
-        ? { refused: `${shown} is an hour-long ritual, not something done in a fight. Nothing was spent.` }
+        ? { refused: { error: `${shown} is an hour-long ritual, not something done in a fight. Nothing was spent.`, refused: "rules" } }
         : { option, cost: "none" };
     case "use_reaction":
-      return { refused: `${shown} is a reaction: use_reaction with feature "${shown}" when its trigger comes. Nothing was spent.` };
+      return { refused: { error: `${shown} is a reaction: use_reaction with feature "${shown}" when its trigger comes. Nothing was spent.`, retry: true } };
     case "on_swing":
-      return { refused: `${shown} rides the weapon attack: name it in pc_attack's maneuver. Nothing was spent.` };
+      return { refused: { error: `${shown} rides the weapon attack: name it in pc_attack's maneuver. Nothing was spent.`, retry: true } };
     default:
       return { option, cost };
   }

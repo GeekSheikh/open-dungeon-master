@@ -22,6 +22,7 @@ import type { SpellZone } from "@/lib/battlemap/zones";
 import { zoneKey, zoneOwnKey, zoneRowFor } from "@/lib/battlemap/zones-spells";
 import { parseSectionName, sectionCells, sectionOf } from "@/lib/battlemap/zones-walls";
 import { liveZones, publishZones, saveZones } from "@/lib/dm/zone-store";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 export type WallSection = {
   zoneId: string;
@@ -35,7 +36,7 @@ export type WallSection = {
 // The standing wall section a damage_object name points at, a refusal for
 // a sectioned wall named without a standing section, or null for any other
 // object.
-export function wallSectionFor(campaignId: string, name: string): WallSection | { error: string } | null {
+export function wallSectionFor(campaignId: string, name: string): WallSection | ToolError | null {
   const encounter = getActiveBoard(campaignId);
   const map = encounter ? getBattleMapForEncounter(encounter.id) : null;
   const standingWalls = map ? liveZones(map, encounter).filter((zone) => zoneRowFor(zone)?.sections) : [];
@@ -55,6 +56,7 @@ export function wallSectionFor(campaignId: string, name: string): WallSection | 
     const listed = walls.flatMap((zone) => standing(zone)).sort((a, b) => a - b);
     return {
       error: `Name the section of the ${walls[0].spell} to strike, "${walls[0].spell} section N" (sections are 10 feet, numbered from the end it was laid from; standing now: ${listed.join(", ") || "none"}). Nothing was rolled.`,
+      retry: true,
     };
   }
   return { zoneId: wall.id, spell: wall.spell, section: named.section, ac: sections.ac, hp: sections.hp, vulnerable: sections.vulnerable };

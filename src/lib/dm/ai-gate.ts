@@ -28,6 +28,7 @@ import { instancesOf, type ConditionMetaMap } from "@/lib/dm/condition-logic";
 import { AI_BIND_REFUSAL, AI_CLEAR_REFUSAL, AI_NUMBER_REFUSAL, bindsCreature, engineKept } from "@/lib/dm/ai-boundary";
 import type { SaveAbility } from "@/lib/bestiary/statblock";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 export type GateContext = {
   campaign: Campaign;
@@ -37,7 +38,7 @@ export type GateContext = {
 
 // The call to run (its arguments, perhaps with the server's own roll in
 // them), or the answer that stands in for it.
-export type GateOutcome = { args: string } | { result: Record<string, unknown> };
+export type GateOutcome = { args: string } | { result: ToolResult };
 
 const SAVE_ABILITIES = new Set(["str", "dex", "con", "int", "wis", "cha"]);
 
@@ -94,7 +95,7 @@ function number(ctx: GateContext, args: Record<string, unknown>, what: "damage" 
   if (dice) {
     // Dice, not a number dressed as them: at least one die to roll.
     if (!isValidExpression(dice) || !/\d*d\d+/i.test(dice)) {
-      return { result: { error: `"${dice}" is not dice the server can roll; send it like "2d6+3".` } };
+      return { result: { error: `"${dice}" is not dice the server can roll; send it like "2d6+3".`, retry: true } };
     }
     const sheet = ctx.sheetsById.get(targetId);
     const label = rollAgainst(String(args.reason ?? (what === "damage" ? "Damage" : "Healing")).slice(0, 60), sheet?.name ?? "the target");
@@ -112,7 +113,7 @@ function number(ctx: GateContext, args: Record<string, unknown>, what: "damage" 
     .map((rollId) => getRoll(rollId))
     .find((roll) => roll && kinds.includes(roll.kind) && !roll.applied && roll.total === amount);
   if (!rolled) {
-    return { result: { error: AI_NUMBER_REFUSAL(what) } };
+    return { result: AI_NUMBER_REFUSAL(what) };
   }
   markRollApplied(rolled.id, targetId || "split");
   return { args: JSON.stringify(args) };
@@ -130,7 +131,7 @@ function bind(ctx: GateContext, args: Record<string, unknown>): GateOutcome {
   const ability = String(args.saveAbility ?? "").slice(0, 3).toLowerCase();
   const dc = Number(args.saveDc);
   if (!SAVE_ABILITIES.has(ability) || !(dc >= 1)) {
-    return { result: { error: AI_BIND_REFUSAL(sheet.name, wanted) } };
+    return { result: AI_BIND_REFUSAL(sheet.name, wanted) };
   }
   const save = rollCharacterSave(ctx.campaign, ctx.turn, sheet, ability as SaveAbility, dc, `${ability.toUpperCase()} save against being ${wanted}`, wanted);
   if (save.success) {
@@ -153,7 +154,7 @@ function lift(ctx: GateContext, args: Record<string, unknown>, rawArguments: str
   if (kept && escapeRolled(ctx, sheet, wanted)) {
     return { args: rawArguments };
   }
-  return kept ? { result: { error: AI_CLEAR_REFUSAL(sheet.name, wanted) } } : { args: rawArguments };
+  return kept ? { result: AI_CLEAR_REFUSAL(sheet.name, wanted) } : { args: rawArguments };
 }
 
 // A trap's hold (a falling net) the server has already seen broken: this

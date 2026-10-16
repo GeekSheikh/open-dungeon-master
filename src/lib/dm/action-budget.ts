@@ -8,6 +8,8 @@
 // table stores one of these at a time (turn_budget_json), reset whenever the
 // initiative pointer lands on a new combatant.
 
+import type { ToolError } from "@/lib/dm/tool-errors";
+
 export type ActionKind = "action" | "bonus" | "reaction";
 
 export type TurnBudget = {
@@ -90,7 +92,7 @@ export function budgetApplies(
 
 export type SpendResult =
   | { ok: true; budget: TurnBudget; note?: string }
-  | { ok: false; error: string };
+  | ({ ok: false } & ToolError);
 
 // What Haste's extra action may be spent on (SRD 5.1, Haste): one weapon
 // attack, Dash, Disengage, Hide, or Use an Object.
@@ -155,18 +157,21 @@ export function spendAction(
           ? " The extra action from Haste is only for one weapon attack, Dash, Disengage, Hide or Use an Object."
           : ""
       } They can still move${budget.bonusUsed ? "" : " or take a bonus action"}, or end their turn.`,
+      refused: "rules",
     };
   }
   if (kind === "bonus" && budget.bonusUsed) {
     return {
       ok: false,
       error: `${who} has already used their bonus action this turn; ${what} needs one.`,
+      refused: "rules",
     };
   }
   if (kind === "reaction" && budget.reactionUsed) {
     return {
       ok: false,
       error: `${who} has already used their reaction; it comes back at the start of their next turn. ${what} does not happen.`,
+      refused: "rules",
     };
   }
   return {
@@ -238,6 +243,7 @@ export function spendAttack(
     return {
       ok: false,
       error: `${who} spent this turn's action casting a spell, so they cannot also take the Attack action. Extra Attack belongs to the Attack action.`,
+      refused: "rules",
     };
   }
   if (budget.attacksMade >= budget.attacksAllowed) {
@@ -247,12 +253,14 @@ export function spendAttack(
       error: `${who} has already made all ${budget.attacksAllowed} of their attack${
         budget.attacksAllowed === 1 ? "" : "s"
       } this turn. They cannot attack again; move, take a bonus action, or end their turn.`,
+      refused: "rules",
     };
   }
   if (budget.attacksMade === 0 && budget.actionUsed) {
     return {
       ok: false,
       error: `${who} has already used their action this turn, so they cannot take the Attack action.`,
+      refused: "rules",
     };
   }
   return {
@@ -283,6 +291,7 @@ export function spendCastAttack(budget: TurnBudget, spell: string, who: string):
     return {
       ok: false,
       error: `${who} has already used their action this turn; casting ${spell} needs one. Extra Attack gives more weapon attacks, not a second casting.`,
+      refused: "rules",
     };
   }
   return { ok: true, budget: { ...budget, actionUsed: true, castThisAction: true } };

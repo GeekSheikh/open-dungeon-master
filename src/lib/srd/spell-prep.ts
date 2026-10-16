@@ -9,6 +9,7 @@ import {
   thirdCasterCantrips,
   thirdCasterSpellsKnown,
 } from "@/lib/srd/third-caster";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 // How a caster's spell list works, and the 5e (SRD 5.1) timing for changing
 // it. Pure and database-free, shared by the sheet, the builder, the server
@@ -343,7 +344,7 @@ export function settlePreparation(
 export function notReadyReason(
   casting: CharacterSheet["spellcasting"],
   spell: string,
-): string | null {
+): ToolError | null {
   if (!casting) {
     return null;
   }
@@ -355,10 +356,10 @@ export function notReadyReason(
     return null;
   }
   if (inList((entry) => entry.pending)) {
-    return `${spell} is chosen but not prepared yet: it becomes ready after the next long rest.`;
+    return { error: `${spell} is chosen but not prepared yet: it becomes ready after the next long rest.`, refused: "rules" };
   }
   if (inList((entry) => entry.spellbook)) {
-    return `${spell} is in the spellbook but not prepared, so it cannot be cast. Prepare it from the sheet; it is ready after the next long rest.`;
+    return { error: `${spell} is in the spellbook but not prepared, so it cannot be cast. Prepare it from the sheet; it is ready after the next long rest.`, refused: "rules" };
   }
   return null;
 }

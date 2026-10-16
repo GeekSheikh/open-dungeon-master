@@ -18,6 +18,7 @@ import { applyEnemyDamage, resolveEnemyRef } from "@/lib/dm/enemy-damage";
 import type { Campaign } from "@/lib/db/campaigns";
 import type { DmTurn } from "@/lib/db/dm-turns";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 export const SPLIT_DAMAGE_TOOL_NAMES = ["split_damage"] as const;
 
@@ -88,12 +89,12 @@ export function handleSplitDamage(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   let args: z.infer<typeof splitSchema>;
   try {
     args = splitSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "split_damage needs an amount and at least one target." };
+    return { error: "split_damage needs an amount and at least one target.", retry: true };
   }
 
   const encounter = getActiveEncounter(campaign.id);
@@ -171,7 +172,7 @@ export function handleSplitDamage(
   }
 
   if (!applied.length && !skipped.length) {
-    return { error: "None of those targets could be found." };
+    return { error: "None of those targets could be found.", retry: true };
   }
   return {
     ok: true,

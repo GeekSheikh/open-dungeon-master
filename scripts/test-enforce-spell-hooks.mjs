@@ -338,18 +338,22 @@ await test("Heroes' Feast raises each diner's hit point maximum by 2d10 and make
 
 // ---- spells the audit left narrated that carry a state the engine holds ----
 
-await test("Lesser Restoration ends a blinded, deafened, paralyzed or poisoned condition on its target, and with none to end it is refused before the slot.", async () => {
+await test("Lesser Restoration ends a blinded, deafened, paralyzed or poisoned condition on its target, and with none to end it is cast all the same: the slot is spent and nothing ends.", async () => {
   const { world, sheets: [cleric, fighter] } = await table([caster("cleric", "wis", ["Lesser Restoration"]), FIGHTER]);
+  const before = world.sheet(fighter.id).conditions;
   const idle = await world.invoke("cast_buff", { characterId: cleric.id, spell: "Lesser Restoration", targetCharacterIds: [fighter.id], level: 2 });
-  assert.equal(idle.ok, false);
-  assert.equal(world.sheet(cleric.id).spellcasting.slots["2"].used, 0);
+  assert.equal(idle.ok, true, idle.error);
+  assert.deepEqual(idle.result.ended, []);
+  assert.match(idle.result.note, /nothing the server tracks ended/);
+  assert.equal(world.sheet(cleric.id).spellcasting.slots["2"].used, 1);
+  assert.deepEqual(world.sheet(fighter.id).conditions, before);
   await world.invoke("set_condition", { characterId: fighter.id, condition: "poisoned", rounds: 10 });
   const { freshTurn } = await import("./lib/enforce-spells.mjs");
   await freshTurn(world);
   const out = await world.invoke("cast_buff", { characterId: cleric.id, spell: "Lesser Restoration", targetCharacterIds: [fighter.id], level: 2 });
   assert.equal(out.ok, true, out.error);
   assert.ok(!world.sheet(fighter.id).conditions.includes("poisoned"));
-  assert.equal(world.sheet(cleric.id).spellcasting.slots["2"].used, 1);
+  assert.equal(world.sheet(cleric.id).spellcasting.slots["2"].used, 2);
 });
 
 await test("Greater Restoration takes away one level of exhaustion (or one charm, petrification or curse).", async () => {

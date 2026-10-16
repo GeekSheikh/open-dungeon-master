@@ -4,6 +4,7 @@ import { repairedWeight } from "@/lib/content/item-weights";
 import { gearFromHomebrewData } from "@/lib/homebrew/gear";
 import { SRD_ARMOR } from "@/lib/srd/armor";
 import { matchMagicItem } from "@/lib/srd/magic-items";
+import { matchGear } from "@/lib/srd/adventuring-gear";
 import { SRD_WEAPONS } from "@/lib/srd/weapons";
 import type { CreateHomebrewInput, HomebrewKind } from "@/lib/schemas/homebrew";
 import type { EquipmentItem } from "@/lib/schemas/sheet";
@@ -228,6 +229,18 @@ export function isPublishedGearName(name: string): boolean {
     SRD_ARMOR.some((armor) => nameKey(armor.name) === key) ||
     matchMagicItem(name) !== null ||
     publishedPackNames().has(key)
+  );
+}
+
+// Whether the rules at this table know an item by that name: published gear,
+// the SRD's adventuring gear, or an item in the workshop of whoever runs it.
+// A name they know that a character lacks is the game saying no; one nobody
+// knows is a call to fix.
+export function isTableGearName(campaignId: string, name: string): boolean {
+  return (
+    isPublishedGearName(name) ||
+    matchGear(name) !== null ||
+    findHomebrewBySlug(tableAuthors(campaignId), "item", slugify(name)) !== null
   );
 }
 

@@ -24,6 +24,7 @@ import {
 import type { BuiltAttack } from "@/lib/dm/pc-attack-profile";
 import { hunterMultiattack } from "@/lib/dm/srd-attacks";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import { toolError, type ToolError } from "@/lib/dm/tool-errors";
 
 export function spendAttackEconomy(input: {
   sheet: CharacterSheet;
@@ -43,7 +44,7 @@ export function spendAttackEconomy(input: {
   enemyId: string;
 }):
   | { budget: TurnBudget | null; spendNote: string | undefined; notes: string[] }
-  | { refused: string } {
+  | { refused: ToolError } {
   const { sheet, args, profile, kind, atRange, weaponAttack, options, grantedBonusAction, bonusSwing, encounterId, enemyId } = input;
   // Once a turn, and only when the activation spent the bonus action.
   const ridesActivation = (budget: TurnBudget) =>
@@ -114,7 +115,7 @@ export function spendAttackEconomy(input: {
             { ok: true as const, budget }
           : spendAttack(budget, sheet.name, { unarmed: profile.weapon === "Unarmed strike" });
     if (!spend.ok) {
-      return { refused: spend.error };
+      return { refused: toolError(spend) };
     }
     flurryStrike = (spend.budget.flurryStrikes ?? 0) < flurryBefore;
     budget = spend.budget;

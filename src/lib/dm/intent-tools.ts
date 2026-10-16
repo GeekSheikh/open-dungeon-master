@@ -7,6 +7,7 @@ import { declaredVerbKind, expectedDamage } from "@/lib/dm/intent";
 import { publishBattleMapUpdate } from "@/lib/dm/map-tools";
 import { resolveSheetRef } from "@/lib/dm/rolls";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 // declare_intent (docs/visual-overhaul-plan.md 5.6): the DM, model or person,
 // says what an enemy is about to do, and the board telegraphs it for the
@@ -51,28 +52,28 @@ export function handleDeclareIntent(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter." };
+    return { error: "No active encounter: declare_intent works only in a fight.", retry: true };
   }
   let args: z.infer<typeof declareIntentArgsSchema>;
   try {
     args = declareIntentArgsSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: declare_intent needs actor and verb." };
+    return { error: "Invalid arguments: declare_intent needs actor and verb.", retry: true };
   }
   const enemy = resolveEnemyRef(encounter.id, args.actor);
   if (!enemy) {
-    return { error: "Unknown actor; use an enemyId from GAME STATE." };
+    return { error: "Unknown actor; use an enemyId from GAME STATE.", retry: true };
   }
   if (enemy.status !== "alive") {
-    return { error: `${enemy.displayName} is already ${enemy.status}.` };
+    return { error: `${enemy.displayName} is already ${enemy.status}.`, retry: true };
   }
   const wantsTarget = Boolean(args.target?.trim());
   const target = wantsTarget ? resolveSheetRef(args.target, sheets, sheetsById) : null;
   if (wantsTarget && !target) {
-    return { error: "Unknown target; use a characterId from GAME STATE, or omit target." };
+    return { error: "Unknown target; use a characterId from GAME STATE, or omit target.", retry: true };
   }
   // A number is only ever the DM's own or the named attack's average: a verb
   // the stat block does not list gets none rather than a guess.

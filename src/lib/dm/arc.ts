@@ -60,6 +60,7 @@ import { stripReasoningArtifacts } from "@/lib/story-prompt";
 import { setDmStatus } from "@/lib/dm/status";
 import { renderWorldArcsForPrompt } from "@/lib/dm/world-arc-logic";
 import { ensureWorldArcs } from "@/lib/dm/world-arc";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 // Story-arc generation and upkeep. The arc is the DM's secret spine: a saga
 // sized by the lead's campaign-length setting is generated once at campaign
@@ -315,14 +316,14 @@ export function handleCompleteBeat(
   campaignId: string,
   rawArguments: string,
   alreadyCompleted: boolean,
-): { result: Record<string, unknown>; completed: boolean; gated: boolean } {
+): { result: ToolResult; completed: boolean; gated: boolean } {
   const campaign = getCampaignById(campaignId);
   if (!campaign?.storyArc) {
-    return { result: { error: "This campaign has no story arc yet." }, completed: false, gated: false };
+    return { result: { error: "This campaign has no story arc yet.", retry: true }, completed: false, gated: false };
   }
   if (alreadyCompleted) {
     return {
-      result: { error: "A beat was already completed this turn; let the story breathe." },
+      result: { error: "A beat was already completed this turn; let the story breathe.", retry: true },
       completed: false,
       gated: false,
     };
@@ -331,7 +332,7 @@ export function handleCompleteBeat(
   try {
     args = JSON.parse(rawArguments || "{}");
   } catch {
-    return { result: { error: "Invalid arguments." }, completed: false, gated: false };
+    return { result: { error: "Invalid arguments.", retry: true }, completed: false, gated: false };
   }
   const arc = campaign.storyArc;
   const active = activeBeatNumber(arc);
@@ -341,7 +342,7 @@ export function handleCompleteBeat(
   const beatNumber = Number.isInteger(requested) && requested >= 1 ? requested : active;
   if (beatNumber === null) {
     return {
-      result: { error: "Every beat of the arc is already finished." },
+      result: { error: "Every beat of the arc is already finished.", retry: true },
       completed: false,
       gated: false,
     };
@@ -356,6 +357,7 @@ export function handleCompleteBeat(
         error: `Beat ${beatNumber} still has open waypoints: ${openWaypoints(target)
           .map((waypoint) => waypoint.text)
           .join("; ")}. Steer the party through them first. They tick from your own tool calls (move_party, set_npc, grant_item, tick_objective, end_encounter) or from the server's check of play, and the beat completes once every one is done.`,
+        retry: true,
         openWaypoints: openWaypoints(target).map((waypoint) => waypoint.text),
       },
       completed: false,
@@ -367,6 +369,7 @@ export function handleCompleteBeat(
     return {
       result: {
         error: `Beat ${beatNumber} is not an open beat.`,
+        retry: true,
         ...(active === null ? {} : { activeBeat: active }),
       },
       completed: false,

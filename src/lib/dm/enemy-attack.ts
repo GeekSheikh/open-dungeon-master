@@ -52,6 +52,7 @@ import { conditionRollRiders } from "@/lib/srd/condition-effects";
 import { isImmersed, underwaterSwing } from "@/lib/dm/underwater";
 import { swimsFrom } from "@/lib/battlemap/types";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import { toolError, type ToolResult } from "@/lib/dm/tool-errors";
 
 const attackArgsSchema = z.object({
   enemyId: z.string(),
@@ -95,26 +96,26 @@ export function handleEnemyAttack(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   const encounter = getActiveEncounter(campaign.id);
   if (!encounter) {
-    return { error: "No active encounter." };
+    return { error: "No active encounter: enemy_attack works only in a fight. Call start_encounter first.", retry: true };
   }
   let args: z.infer<typeof attackArgsSchema>;
   try {
     args = attackArgsSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: enemy_attack needs enemyId and targetCharacterId." };
+    return { error: "Invalid arguments: enemy_attack needs enemyId and targetCharacterId.", retry: true };
   }
   const found = resolveEnemyRef(encounter.id, args.enemyId);
   if (!found) {
-    return { error: "Unknown enemyId; use one from GAME STATE." };
+    return { error: "Unknown enemyId; use one from GAME STATE.", retry: true };
   }
   // One guard for the enemy side (src/lib/dm/can-act.ts): the dead, the
   // incapacitated and the surprised do nothing, and an action is one a round.
   const allowed = canEnemyAct({ enemy: found, encounter, kind: "action" });
   if (!allowed.ok) {
-    return { error: allowed.error };
+    return toolError(allowed);
   }
   const staleTarget =
     sheetsById.get(args.targetCharacterId.trim()) ??
@@ -123,33 +124,34 @@ export function handleEnemyAttack(
     );
   const target = staleTarget ? getSheetById(staleTarget.id) : null;
   if (!target) {
-    return { error: "Unknown targetCharacterId; use one from GAME STATE." };
+    return { error: "Unknown targetCharacterId; use one from GAME STATE.", retry: true };
   }
   // SRD 5.1, Charmed: a charmed creature cannot attack its charmer.
   if (charmedBy(found.conditions, found.conditionMeta, target.id)) {
     return {
       error: `${found.displayName} is charmed by ${target.name} and cannot attack them. It may attack someone else or take another action.`,
+      retry: true,
     };
   }
   // Calm Emotions, Fear's flight; a target Blink or Etherealness took away (spell-planes.ts).
   const spellHeld = spellAttackHold({ name: found.displayName, conditions: found.conditions }, target);
   if (spellHeld) {
-    return { error: spellHeld };
+    return spellHeld;
   }
   // Sanctuary turns the attacker away on a failed WIS save (spell-defenses.ts),
   // and a failure holds for the rest of its turn (enemy-conditions.ts).
   const sanctuary = sanctuaryWard(campaign.id, found, target, sanctuaryRefusal);
   if (sanctuary) {
-    return { error: sanctuary };
+    return sanctuary;
   }
   // Nature's Sanctuary turns a beast or plant away the same way (srd-defenses.ts).
   const natures = sanctuaryWard(campaign.id, found, target, naturesSanctuaryRefusal);
   if (natures) {
-    return { error: natures };
+    return natures;
   }
   const attacks = found.stats.attacks.length ? found.stats.attacks : synthesizeStats(found.cr).attacks;
   if (!attacks.length) {
-    return { error: `${found.displayName} has no usable attacks; narrate a different action.` };
+    return { error: `${found.displayName} has no usable attacks; narrate a different action.`, retry: true };
   }
   const single = takeLegendaryStrike(campaign.id, found.id);
   const planned = plannedSwings(found.stats, attacks, args.attack, { single });
@@ -157,7 +159,7 @@ export function handleEnemyAttack(
   // Antilife Shell: no melee reaches through it (zone-rules.ts).
   const shell = leadProfile(profiles).melee ? reachThroughProblem(encounter.id, found.id, target.id, found.stats.type, found.displayName) : null;
   if (shell) {
-    return { error: shell };
+    return shell;
   }
 
   // A prone creature stands before it acts, for half its speed (SRD 5.1,
@@ -266,6 +268,12 @@ export function handleEnemyAttack(
       : null;
     if (underwater?.misses) {
       swings.push({ attack: attack.name, skipped: underwater.note });
+      return;
+    }
+    // Arrows and bolts into a Wind Wall are deflected and miss (SRD 5.1); a
+    // spell attack is no projectile.
+    if (ranged && !attack.spellAttack && spatial.deflected) {
+      swings.push({ attack: attack.name, hit: false, missed: spatial.deflected });
       return;
     }
     lastSwing = { attack, ranged };

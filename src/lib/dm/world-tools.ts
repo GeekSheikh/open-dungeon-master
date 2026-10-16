@@ -27,6 +27,7 @@ import type { Weather } from "@/lib/scene/state";
 import { ADVANCE_UNITS, describeDuration, describeInstant } from "@/lib/dm/calendar";
 import { insertCampaignMessage } from "@/lib/db/messages";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 // The remaining DM-utility engines: CR-scaled treasure the server actually
 // moves into purses, object durability read from the DMG table, and forced-
@@ -250,12 +251,12 @@ const weatherSchema = z.object({
   reason: z.string().optional(),
 });
 
-export function handleSetWeather(campaign: Campaign, rawArguments: string): Record<string, unknown> {
+export function handleSetWeather(campaign: Campaign, rawArguments: string): ToolResult {
   let args: z.infer<typeof weatherSchema>;
   try {
     args = weatherSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: set_weather needs a sky." };
+    return { error: "Invalid arguments: set_weather needs a sky.", retry: true };
   }
   const current = getClock(campaign.id).weather;
   const precipitation =
@@ -284,12 +285,12 @@ const titleSchema = z.object({
   tone: z.enum(["gold", "ember", "dawn", "plain"]).optional(),
 });
 
-export function handleShowTitle(campaign: Campaign, rawArguments: string): Record<string, unknown> {
+export function handleShowTitle(campaign: Campaign, rawArguments: string): ToolResult {
   let args: z.infer<typeof titleSchema>;
   try {
     args = titleSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: show_title needs a title." };
+    return { error: "Invalid arguments: show_title needs a title.", retry: true };
   }
   publishTitleCard(campaign.id, {
     title: args.title,
@@ -334,16 +335,16 @@ export function handleRollTreasure(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   let args: z.infer<typeof treasureSchema>;
   try {
     args = treasureSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: roll_treasure needs a cr." };
+    return { error: "Invalid arguments: roll_treasure needs a cr.", retry: true };
   }
   const recipients = resolveTargets(args.characterIds, sheets, sheetsById);
   if (!recipients.length) {
-    return { error: "No characters to receive treasure; use characterIds from GAME STATE." };
+    return { error: "No characters to receive treasure; use characterIds from GAME STATE.", retry: true };
   }
   const tier = treasureTierForCr(args.cr);
   const { dice, mult } = hoardGoldDice(tier);
@@ -439,12 +440,12 @@ const passTimeSchema = z.object({
 export function handlePassTime(
   campaign: Campaign,
   rawArguments: string,
-): Record<string, unknown> {
+): ToolResult {
   let args: z.infer<typeof passTimeSchema>;
   try {
     args = passTimeSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: pass_time needs an amount and a unit." };
+    return { error: "Invalid arguments: pass_time needs an amount and a unit.", retry: true };
   }
   if (args.water) {
     setWaterRation(campaign.id, args.water);
@@ -489,12 +490,12 @@ export function handleTravel(
   rawArguments: string,
   sheets: CharacterSheet[],
   sheetsById: Map<string, CharacterSheet>,
-): Record<string, unknown> {
+): ToolResult {
   let args: z.infer<typeof travelSchema>;
   try {
     args = travelSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments: travel needs hours or miles." };
+    return { error: "Invalid arguments: travel needs hours or miles.", retry: true };
   }
   if (args.water) {
     setWaterRation(campaign.id, args.water);
@@ -599,7 +600,7 @@ export function handleTravel(
   const dc = forcedMarchSaveDc(extra);
   const targets = resolveTargets(args.characterIds, sheets, sheetsById);
   if (!targets.length) {
-    return { error: "No travellers; use characterIds from GAME STATE." };
+    return { error: "No travellers; use characterIds from GAME STATE.", retry: true };
   }
   const hours = Array.from({ length: extra }, (_, index) => ({
     hour: index + 1,

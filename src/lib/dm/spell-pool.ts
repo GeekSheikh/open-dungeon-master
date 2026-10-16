@@ -18,6 +18,7 @@ import { spellKeyOf } from "@/lib/dm/cast-rules";
 import { publishEncounter } from "@/lib/dm/enemy-damage";
 import { laySpellConditionsOnEnemy, spellConditionMeta } from "@/lib/dm/spell-effects";
 import type { AoeSpellPlan } from "@/lib/dm/aoe-spell";
+import type { ToolResult } from "@/lib/dm/tool-errors";
 
 // Sleep and Color Spray roll one pool of hit points for the casting; what a
 // creature's hit points took out of it is gone for the next one. Kept on
@@ -133,10 +134,10 @@ export function aoePool(
   plan: AoeSpellPlan,
   enemies: EncounterEnemy[],
   corrections: string[],
-): Record<string, unknown> {
+): ToolResult {
   const pool = plan.mech?.hitPointPool;
   if (!pool) {
-    return { error: `${plan.spell} rolls no pool of hit points.` };
+    return { error: `${plan.spell} rolls no pool of hit points.`, retry: true };
   }
   const ordered = [...enemies].sort((a, b) => a.currentHp - b.currentHp);
   const results: Array<Record<string, unknown>> = [];

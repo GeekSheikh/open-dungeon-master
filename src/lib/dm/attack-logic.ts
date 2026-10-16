@@ -414,6 +414,8 @@ export function weaponAttackProfile(
 // Attack-roll spells (Fire Bolt, Guiding Bolt...): to-hit is the sheet's
 // spell attack bonus; the damage dice come from the model (validated by the
 // caller) because spell payloads live in the content pack's prose.
+export function spellAttackProfile(derived: { spellAttack: number }, spellName: string, damageExpression: string, damageType: string): AttackProfile;
+export function spellAttackProfile(derived: Pick<SheetDerived, "spellAttack">, spellName: string, damageExpression: string, damageType: string): AttackProfile | null;
 export function spellAttackProfile(
   derived: Pick<SheetDerived, "spellAttack">,
   spellName: string,

@@ -7,6 +7,9 @@ import type { Outcome } from "@/lib/dm/resource-tools";
 import { keepsFullValue, listPriceCp, saleValueCp } from "@/lib/dm/trade-value";
 import { addCopper, formatCopper, purseCopper } from "@/lib/srd/currency";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+import type { ToolError } from "@/lib/dm/tool-errors";
+import { notCarried } from "@/lib/dm/item-logic";
+import { isTableGearName } from "@/lib/db/homebrew";
 
 // A purchase or a sale outside a shop. The table prices it, not the model:
 // the content pack's list price (or the value a treasure's name carries) is
@@ -16,7 +19,7 @@ import type { CharacterSheet } from "@/lib/schemas/sheet";
 export function computePurchase(
   sheet: CharacterSheet,
   args: { item: string; price: number; qty: number; action: "buy" | "sell" },
-): Outcome | { error: string } {
+): Outcome | ToolError {
   const listCp = listPriceCp(args.item);
   const eachCp =
     listCp === null
@@ -31,6 +34,7 @@ export function computePurchase(
     if (purseCopper(purse) < totalCp) {
       return {
         error: `${sheet.name} has ${formatCopper(purseCopper(purse))}; ${args.qty > 1 ? `${args.qty}x ` : ""}${args.item} costs ${formatCopper(totalCp)}. They cannot afford it.`,
+        refused: "rules",
       };
     }
     const paid = addCopper(purse, -totalCp).purse;
@@ -50,12 +54,13 @@ export function computePurchase(
   }
   const removal = removeItemMath(sheet.equipment, args.item, args.qty);
   if (!removal) {
-    return { error: `${sheet.name} does not carry "${args.item}" to sell.` };
+    return notCarried(sheet.name, sheet.equipment.map((item) => item.name), args.item, isTableGearName(sheet.campaignId, args.item));
   }
   // A sale pays for what changes hands, so more than is held is no sale.
   if (removal.removed < args.qty) {
     return {
       error: `${sheet.name} carries ${removal.removed} of ${args.item} and cannot sell ${args.qty}; sell ${removal.removed} or fewer.`,
+      retry: true,
     };
   }
   const totalCp = eachCp * removal.removed;

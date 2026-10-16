@@ -10,6 +10,8 @@
 // Pure by design: no "@/" imports and no I/O, so
 // scripts/test-ammunition.mjs can import it directly.
 
+import type { ToolError } from "../dm/tool-errors.ts";
+
 export type AmmoKind = "arrows" | "bolts" | "bullets" | "needles";
 
 // What each ammunition weapon fires. Matched against the SRD weapon name,
@@ -115,7 +117,7 @@ export function findAmmo(
 
 export type AmmoSpend =
   | { ok: true; index: number; name: string; remaining: number; kind: AmmoKind }
-  | { ok: false; error: string; kind: AmmoKind };
+  | ({ ok: false; kind: AmmoKind } & ToolError);
 
 // Spends one round. Returns the new count rather than mutating, so the
 // caller decides how to persist it.
@@ -135,6 +137,7 @@ export function spendAmmo(
       ok: false,
       kind,
       error: `${characterName} is out of ${AMMO_LABELS[kind]} and cannot fire the ${weaponName}.`,
+      refused: "rules",
     };
   }
   return {

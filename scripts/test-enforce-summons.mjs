@@ -102,6 +102,15 @@ await test("Conjure Animals refuses, before the slot, a beast above challenge ra
   const skeleton = await world.invoke("cast_buff", { characterId: druid.id, spell: "Conjure Animals", level: 3, variant: "skeleton" });
   assert.equal(skeleton.ok, false);
   assert.match(skeleton.error, /beast/i);
+  // No creature named, or one with no stat block: the question names what
+  // the casting can call, with its challenge rating; a giant elk is no Elk.
+  const unnamed = await world.invoke("cast_buff", { characterId: druid.id, spell: "Conjure Animals", level: 3 });
+  assert.equal(unnamed.ok, false);
+  assert.match(unnamed.error, /needs the creature in variant: .*Wolf \(CR 1\/4\).*Brown Bear \(CR 1\).*Ask the player which/);
+  assert.doesNotMatch(unnamed.error, /Giant Ape|Skeleton/);
+  const elk = await world.invoke("cast_buff", { characterId: druid.id, spell: "Conjure Animals", level: 3, variant: "giant elk" });
+  assert.equal(elk.ok, false);
+  assert.match(elk.error, /no stat block here for "giant elk"; it calls: .*Wolf/);
   assert.equal(slotsLeft(world, druid.id, 3), 2, "no slot spent");
   assert.equal(summonsOf(world).length, 0);
 });

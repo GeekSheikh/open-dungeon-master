@@ -1,6 +1,7 @@
 import { groupTraits } from "@/lib/bestiary/block-sections";
 import type { EnemyStats } from "@/lib/bestiary/statblock";
 import { normalizeAbilityLedgers, type AbilityLedger } from "@/lib/dm/monster-abilities";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 // Legendary and lair actions and legendary resistance (docs/vtt-parity-
 // implementation-plan.md 4.1): what a stat block says a creature may do
@@ -200,7 +201,7 @@ export function refillActions(pool: LegendaryPool | undefined, profile: Legendar
   return { actions: profile.actionsPerRound, resistances: pool ? pool.resistances : profile.resistances };
 }
 
-export type SpendOutcome = { ok: true; pool: LegendaryPool; action: LegendaryAction } | { ok: false; error: string };
+export type SpendOutcome = { ok: true; pool: LegendaryPool; action: LegendaryAction } | ({ ok: false } & ToolError);
 
 export function spendLegendaryAction(
   pool: LegendaryPool,
@@ -212,10 +213,10 @@ export function spendLegendaryAction(
     profile.actions.find((entry) => entry.name.toLowerCase() === wanted) ??
     profile.actions.find((entry) => entry.name.toLowerCase().startsWith(wanted) || wanted.startsWith(entry.name.toLowerCase()));
   if (!action) {
-    return { ok: false, error: `No legendary action called "${actionName}". It has: ${profile.actions.map((entry) => entry.name).join(", ")}.` };
+    return { ok: false, error: `No legendary action called "${actionName}". It has: ${profile.actions.map((entry) => entry.name).join(", ")}.`, retry: true };
   }
   if (pool.actions < action.cost) {
-    return { ok: false, error: `${action.name} costs ${action.cost}; only ${pool.actions} legendary action${pool.actions === 1 ? "" : "s"} left this round.` };
+    return { ok: false, error: `${action.name} costs ${action.cost}; only ${pool.actions} legendary action${pool.actions === 1 ? "" : "s"} left this round. Pick a cheaper one, or wait for the next round.`, retry: true };
   }
   return { ok: true, pool: { ...pool, actions: pool.actions - action.cost }, action };
 }

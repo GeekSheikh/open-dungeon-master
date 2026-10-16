@@ -10,7 +10,9 @@
 // speed, a capacity and a crew requirement. Nothing simulates a ship's
 // helm.
 //
-// Pure by design: no imports at all, so scripts/test-mounts.mjs can load it.
+// Pure by design: no imports beyond types, so scripts/test-mounts.mjs can load it.
+
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 export type MountProfile = {
   slug: string;
@@ -136,7 +138,7 @@ export type MountState = {
   size: MountSize;
 };
 
-export type MountCheck = { ok: true; state: MountState } | { error: string };
+export type MountCheck = { ok: true; state: MountState } | ToolError;
 
 // Mounting. The rules it enforces are the ones the PHB actually states, and
 // the errors say which rule refused, because "you cannot do that" teaches a
@@ -154,6 +156,7 @@ export function checkMount(input: {
     if (!canCarry(input.custom.size, riderSize)) {
       return {
         error: `A mount has to be at least one size larger than its rider; a ${input.custom.size} mount cannot carry a ${riderSize} rider.`,
+        refused: "rules",
       };
     }
     return {
@@ -169,11 +172,12 @@ export function checkMount(input: {
   }
   const profile = mountProfile(input.ref);
   if (!profile) {
-    return { error: `No mount called "${input.ref}". Describe one instead and the DM can write it in.` };
+    return { error: `No mount called "${input.ref}". Describe one instead and the DM can write it in.`, retry: true };
   }
   if (!canCarry(profile.size, riderSize)) {
     return {
       error: `A ${riderSize} rider cannot ride a ${profile.size} ${profile.name}; a mount has to be one size larger.`,
+      refused: "rules",
     };
   }
   return {

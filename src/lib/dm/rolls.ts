@@ -27,6 +27,7 @@ import type { CharacterSheet } from "@/lib/schemas/sheet";
 import type { StreamedToolCall } from "@/lib/model-client";
 import { senseCheckFailure } from "@/lib/srd/sense-checks";
 import { sightRotPenalty } from "@/lib/srd/afflictions";
+import type { ToolError } from "@/lib/dm/tool-errors";
 
 export { rollArgsSchema, rollDcFor, type RollArgs } from "@/lib/dm/roll-args";
 
@@ -322,7 +323,7 @@ export function resolveRollExpression(
       spendInspiration?: string;
     }
   | { autoFail: true; detail: string; notes: string[] }
-  | { error: string } {
+  | ToolError {
   const derivationKind =
     args.kind === "skill_check" ||
     args.kind === "ability_check" ||
@@ -476,13 +477,13 @@ export function resolveRollExpression(
 
   if (args.kind === "skill_check") {
     if (!sheet) {
-      return { error: "skill_check needs a valid characterId from GAME STATE." };
+      return { error: "skill_check needs a valid characterId from GAME STATE.", retry: true };
     }
     // Models often send display names ("Sleight of Hand"); normalize to ids.
     const normalizedSkill = (args.skill ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
     const skill = normalizedSkill ? findSkill(normalizedSkill) : null;
     if (!skill) {
-      return { error: `Unknown skill "${args.skill ?? ""}". Use a 5e skill id like "stealth".` };
+      return { error: `Unknown skill "${args.skill ?? ""}". Use a 5e skill id like "stealth".`, retry: true };
     }
     const derived = computeSheetDerived(sheet);
     // Reliable Talent: a proficient check treats a d20 face of 9 or lower
@@ -565,7 +566,7 @@ export function resolveRollExpression(
 
   if (args.kind === "saving_throw" && extras?.death) {
     if (!sheet) {
-      return { error: "A death save needs a character." };
+      return { error: "A death save needs a character.", retry: true };
     }
     // What rides every saving throw whatever its ability: a paladin's own
     // aura (the "features" part) and a Ring or Cloak of Protection.
@@ -592,10 +593,10 @@ export function resolveRollExpression(
 
   if (args.kind === "saving_throw" || args.kind === "ability_check") {
     if (!sheet) {
-      return { error: `${args.kind} needs a valid characterId from GAME STATE.` };
+      return { error: `${args.kind} needs a valid characterId from GAME STATE.`, retry: true };
     }
     if (!args.ability) {
-      return { error: `${args.kind} needs an ability (str, dex, con, int, wis, cha).` };
+      return { error: `${args.kind} needs an ability (str, dex, con, int, wis, cha).`, retry: true };
     }
     const derived = computeSheetDerived(sheet);
     // Jack of All Trades / Remarkable Athlete: raw ability checks never
@@ -652,7 +653,7 @@ export function resolveRollExpression(
 
   if (args.kind === "initiative") {
     if (!sheet) {
-      return { error: "initiative needs a valid characterId from GAME STATE." };
+      return { error: "initiative needs a valid characterId from GAME STATE.", retry: true };
     }
     const derived = computeSheetDerived(sheet);
     // A lasting effect on initiative (Gift of Alacrity) adds to the roll.
@@ -676,7 +677,7 @@ export function resolveRollExpression(
   // attack / damage / custom: the model supplies the expression (NPC stat
   // blocks live in its narration for now); the dice library enforces sanity.
   if (!args.expression) {
-    return { error: `${args.kind} needs a dice expression like "1d20+4" or "2d6+2".` };
+    return { error: `${args.kind} needs a dice expression like "1d20+4" or "2d6+2".`, retry: true };
   }
   return { expression: args.expression, detail: args.reason?.slice(0, 60) ?? "" };
 }

@@ -23,6 +23,7 @@ import { critDamageExpression } from "@/lib/dm/encounter-logic";
 import { buildAttackProfile } from "@/lib/dm/pc-attack-profile";
 import { objectProfile, type ObjectMaterial, type ObjectSize } from "@/lib/srd/objects";
 import { breakWallSection, sectionHit, wallSectionFor } from "@/lib/dm/zone-walls";
+import { toolError, type ToolResult } from "@/lib/dm/tool-errors";
 
 export const OBJECT_MATERIALS: ObjectMaterial[] = [
   "cloth", "paper", "rope", "crystal", "glass", "ice", "wood", "bone", "stone", "iron", "steel", "mithral", "adamantine",
@@ -75,12 +76,12 @@ export function damageObject(
   campaign: Campaign | null,
   turn: DmTurn | null,
   rawArguments: string,
-): Record<string, unknown> {
+): ToolResult {
   let args: z.infer<typeof objectSchema>;
   try {
     args = objectSchema.parse(JSON.parse(rawArguments || "{}"));
   } catch {
-    return { error: "Invalid arguments for damage_object." };
+    return { error: "Invalid arguments for damage_object.", retry: true };
   }
   // A section of a Wall of Ice has its own numbers (src/lib/dm/zone-walls.ts).
   const section = campaign && args.name ? wallSectionFor(campaign.id, args.name) : null;
@@ -97,14 +98,14 @@ export function damageObject(
   const notes: string[] = [];
   const sheet = args.characterId ? getSheetById(args.characterId) : null;
   if (args.characterId && (!sheet || (campaign && sheet.campaignId !== campaign.id))) {
-    return { error: "Unknown characterId; use one from GAME STATE." };
+    return { error: "Unknown characterId; use one from GAME STATE.", retry: true };
   }
   if (sheet && campaign) {
     // The character's own attack, from their sheet: the roll has to beat the
     // object's AC before any damage lands.
     const built = buildAttackProfile(campaign.id, sheet, { weapon: args.weapon });
     if ("error" in built) {
-      return { error: built.error };
+      return toolError(built);
     }
     const attack = rollExpression(`1d20${built.profile.toHit >= 0 ? "+" : ""}${built.profile.toHit}`);
     const striker: RollAttacker = { kind: "sheet", id: sheet.id, name: sheet.name };
@@ -138,7 +139,7 @@ export function damageObject(
       }
       dealt = rolled.total;
     } else {
-      return { error: `Invalid damage "${args.damage}".` };
+      return { error: `Invalid damage "${args.damage}".`, retry: true };
     }
   }
   if (dealt !== null && /^(poison|psychic)$/.test(type)) {

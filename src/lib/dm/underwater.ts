@@ -74,9 +74,10 @@ export function resistLineFor(campaignId: string, enemy: { id: string; stats: { 
 }
 
 // A character's ranged weapon attack from under the water at a target past
-// its normal range: it would miss, so it is refused before anything is
-// spent. Null when the rule does not apply.
-export function underwaterRangeProblem(
+// its normal range "automatically misses" (SRD 5.1, Underwater Combat): the
+// attack is made, and spent, and misses. The reason, or null when the rule
+// does not apply.
+export function underwaterRangeMiss(
   campaignId: string,
   encounterId: string,
   attackerId: string,
@@ -91,5 +92,5 @@ export function underwaterRangeProblem(
   if (!ranged || apart <= profile.rangeTiles) {
     return null;
   }
-  return `Underwater, a ranged weapon attack past the weapon's normal range misses: ${target.displayName} is ${apart * 5} ft away and the ${profile.weapon}'s normal range is ${profile.rangeTiles * 5} ft. Nothing was spent; close the distance or use a melee weapon.`;
+  return `Underwater, a ranged weapon attack past the weapon's normal range misses: ${target.displayName} is ${apart * 5} ft away and the ${profile.weapon}'s normal range is ${profile.rangeTiles * 5} ft.`;
 }
