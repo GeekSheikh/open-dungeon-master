@@ -6,6 +6,8 @@ import { InfoButton, type ContentRef } from "@/components/ui/InfoDialog";
 import { Ribbon } from "@/components/ui/Ribbon";
 import { cn } from "@/lib/cn";
 import { ui } from "@/lib/ui";
+import { owedHeadline, type OwedPick } from "../owed";
+import type { BlockerTarget } from "../submit";
 
 // What a ⓘ next to a name needs: text to show, or a pack row to read it from.
 export type InfoSource = { text?: string | null; reference?: ContentRef; meta?: string };
@@ -13,6 +15,38 @@ export type InfoSource = { text?: string | null; reference?: ContentRef; meta?: 
 // Field styling shared by every wizard step and the sub-editors that take an
 // inputClass prop (RacialChoicesSection, EquipmentSection).
 export const inputClass = ui.input;
+
+// "Two choices left on this step: Class skills · Fighting style", each name
+// a way to its block. The footer's blocker says the first; this says how
+// many there are and reaches each. Nothing shows once the step is done.
+export function OwedLine({ picks, onShow }: { picks: OwedPick[]; onShow: (target: BlockerTarget) => void }) {
+  const headline = owedHeadline(picks.length);
+  if (!headline) {
+    return null;
+  }
+  return (
+    <p key={picks.length} className="reveal flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-stone-400" data-owed={picks.length}>
+      <span className="text-amber-200/90">{headline}:</span>
+      {picks.map((pick, index) => (
+        <span key={pick.target} className="inline-flex items-center">
+          {index ? (
+            <span aria-hidden="true" className="mr-1.5 text-stone-600">
+              ·
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => onShow(pick.target)}
+            title={pick.message}
+            className="underline decoration-amber-500/40 underline-offset-2 transition-colors hover:text-amber-100"
+          >
+            {pick.label}
+          </button>
+        </span>
+      ))}
+    </p>
+  );
+}
 
 // One titled block inside a step: a Ribbon rule, an optional line of help,
 // then the fields. Ornate gets the corner flourishes of the panel recipe,

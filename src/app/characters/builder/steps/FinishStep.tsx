@@ -1,6 +1,7 @@
 "use client";
 
 import { Camera, UserRound } from "lucide-react";
+import { InfoButton } from "@/components/ui/InfoDialog";
 import { cn } from "@/lib/cn";
 import { contentSlug } from "@/lib/help";
 import type { CreateSheetInput } from "@/lib/schemas/sheet";
@@ -8,6 +9,7 @@ import { formatModifier, proficiencyBonus } from "@/lib/srd";
 import { racialFeatCount } from "@/lib/srd/race-id";
 import { ui } from "@/lib/ui";
 import { HpExplainerButton } from "../AbilityExplainers";
+import OptionPicker, { type PickerGroup } from "../OptionPicker";
 import { armorClassLine, hitPointsLine, purseViewFor } from "../derivedReasons";
 import type { BackgroundOption, ClassOption, RaceOption } from "../useBuilderOptions";
 import type { TableRulesState } from "../useTableRules";
@@ -17,8 +19,9 @@ import { hpExplainerInput } from "./AbilitiesStep";
 import { Chip, Field, StepPanel, inputClass } from "./shared";
 
 // Step 6: the hero at a glance with a way back to each choice, the numbers
-// the sheet will open with, then the portrait, how they look, their story
-// and extra feats. The save button is the wizard footer.
+// the sheet will open with, then their alignment, the portrait, how they
+// look, their story and extra feats. The save button is
+// the wizard footer.
 export type FinishEditStep = "identity" | "ancestry" | "calling" | "abilities" | "spells-gear";
 export function FinishStep({
   state,
@@ -32,6 +35,8 @@ export function FinishStep({
   onUploadPortrait,
   error,
   onEdit,
+  alignmentGroups,
+  alignmentInfo,
 }: {
   state: BuilderState;
   derived: BuilderDerived;
@@ -48,6 +53,8 @@ export function FinishStep({
   error: string;
   // Back to the step that holds a choice ("identity", "calling"...).
   onEdit?: (step: FinishEditStep) => void;
+  alignmentGroups: PickerGroup[];
+  alignmentInfo: string;
 }) {
   const { portrait, setPortrait } = state;
   const { preview, acInfo, ac, effectiveLevel } = derived;
@@ -155,6 +162,20 @@ export function FinishStep({
         </StepPanel>
       ) : null}
 
+
+      <StepPanel
+        title={
+          <span className="inline-flex items-center gap-1">
+            Alignment
+            <InfoButton label="Alignment" text={alignmentInfo} />
+          </span>
+        }
+        help="How they tend to act. It changes no number on the sheet."
+      >
+        <div className="sm:max-w-sm">
+          <OptionPicker value={state.alignment} groups={alignmentGroups} className={inputClass} onChange={state.setAlignment} />
+        </div>
+      </StepPanel>
 
       <StepPanel title="Portrait (optional)" ornate>
         <div className="flex items-center gap-3">

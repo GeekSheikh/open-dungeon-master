@@ -20,6 +20,7 @@ import type { BuilderActions, BuilderDerived } from "../useBuilderDerived";
 import type { BuilderState } from "../useBuilderState";
 import { ClassChoices } from "./ClassChoices";
 import { PlaystylePicker } from "../PlaystylePicker";
+import { EASY_CLASSES, fillClassSkills, type PlaystyleId } from "../playstyles";
 import FeatChoicesFields, { knownTraining } from "../FeatChoicesFields";
 import { Field, PickPill, StepPanel, inputClass } from "./shared";
 
@@ -42,6 +43,7 @@ export function CallingStep({
   offersSubclass,
   subclassLockedAt,
   chosenArchetype,
+  playstyle,
 }: {
   state: BuilderState;
   derived: BuilderDerived;
@@ -57,11 +59,15 @@ export function CallingStep({
   // The level the class picks a subclass at, while this level is below it.
   subclassLockedAt: number | null;
   chosenArchetype: ArchetypeOption | null;
+  // The answer given on the first step, so the picker opens on it.
+  playstyle?: { value: PlaystyleId | null; onChange: (style: PlaystyleId | null) => void };
 }) {
   const { subclass } = state;
   const { effectiveLevel, grantedFeatures } = derived;
   const { gender } = state;
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
+  // What "Suggest the rest" picked, said until the player changes a pick.
+  const [suggested, setSuggested] = useState<string[] | null>(null);
   // The skills already the character's from race or background, and the
   // source each came from: the same map the toggle refuses by, so every
   // greyed pill says why (issue #109).
@@ -127,7 +133,13 @@ export function CallingStep({
             ]
               .filter(Boolean)
               .join(" · "),
-            chips: [...(reading?.roles ?? []), ...(entry ? [`d${entry.hitDie}`] : [])],
+            // "Easy to learn" leads where it applies: about play, where the
+            // setting's seal on the plate is about the world.
+            chips: [
+              ...(EASY_CLASSES.has(option.id) ? ["Easy to learn"] : []),
+              ...(reading?.roles ?? []),
+              ...(entry ? [`d${entry.hitDie}`] : []),
+            ],
             icon: { kind: "family" as const, key: `class-${option.id}` },
           };
         }),
@@ -196,6 +208,8 @@ export function CallingStep({
           )}
           chosen={klass?.id ?? ""}
           onChoose={state.changeClass}
+          style={playstyle?.value}
+          onStyle={playstyle?.onChange}
         />
         <Field label="Class" className="mt-4">
           {klass ? (
@@ -349,6 +363,30 @@ export function CallingStep({
               {klass.skillChoices.count - state.chosenSkills.length > 0 ? (
                 <span className="text-amber-300">
                   {klass.skillChoices.count - state.chosenSkills.length} still to choose.{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const filled = fillClassSkills({
+                        classId: klass.id,
+                        from: klass.skillChoices.from,
+                        count: klass.skillChoices.count,
+                        chosen: state.chosenSkills,
+                        granted: new Set(skillSources.keys()),
+                      });
+                      setSuggested(filled.filter((id) => !state.chosenSkills.includes(id)));
+                      state.setChosenSkills(filled);
+                    }}
+                    className="underline-offset-2 hover:underline"
+                    data-suggest-skills
+                  >
+                    Suggest the rest
+                  </button>{" "}
+                </span>
+              ) : suggested?.length && suggested.every((id) => state.chosenSkills.includes(id)) ? (
+                <span key={suggested.join()} className="reveal block text-amber-200/90">
+                  Suggested for a {klass.name.toLowerCase()}:{" "}
+                  {suggested.map((id) => SRD_SKILLS.find((entry) => entry.id === id)?.name ?? id).join(", ")}. Tap any to
+                  change it.{" "}
                 </span>
               ) : null}
               A <GameTerm id="skill">skill</GameTerm> you are proficient in adds your{" "}

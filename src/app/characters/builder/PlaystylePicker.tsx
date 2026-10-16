@@ -5,23 +5,32 @@ import { GameIcon } from "@/components/ui/GameIcon";
 import { cn } from "@/lib/cn";
 import { EASY_CLASSES, PLAYSTYLES, playstyleSuggestions, type PlaystyleId } from "./playstyles";
 
-// The class step's way in for a new player: pick how you want to play, see
-// the classes that suit it with the easy ones marked, and choose one or
-// keep browsing the full grid below. Nothing is chosen for the player.
+// A new player's way in: pick how you want to play, see the classes that
+// suit it with the easy ones marked, and choose one or keep browsing the
+// full grid. Nothing is chosen for the player. The first step asks it
+// first; the class step opens on the same answer (`style` is the builder's).
 export function PlaystylePicker({
   offered,
   chosen,
   onChoose,
+  style: heldStyle,
+  onStyle,
+  intro = "Not sure which class? Start from how you want to play.",
 }: {
   offered: Array<{ id: string; name: string; roles: string[]; playsLike: string }>;
   chosen: string;
   onChoose: (classId: string) => void;
+  style?: PlaystyleId | null;
+  onStyle?: (style: PlaystyleId | null) => void;
+  intro?: string;
 }) {
-  const [style, setStyle] = useState<PlaystyleId | null>(null);
+  const [ownStyle, setOwnStyle] = useState<PlaystyleId | null>(null);
+  const style = onStyle ? (heldStyle ?? null) : ownStyle;
+  const setStyle = onStyle ?? setOwnStyle;
   const suggestions = style ? playstyleSuggestions(style, offered) : [];
   return (
     <div className="space-y-2.5" data-playstyle>
-      <p className="text-xs text-stone-400">Not sure which class? Start from how you want to play.</p>
+      <p className="text-xs text-stone-400">{intro}</p>
       <div data-pill-group="" className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="How do you want to play?">
         {PLAYSTYLES.map((entry) => (
           <button

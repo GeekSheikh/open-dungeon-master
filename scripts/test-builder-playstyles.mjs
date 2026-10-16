@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { register } from "node:module";
 
 register("./lib/register-alias.mjs", import.meta.url);
-const { PLAYSTYLES, EASY_CLASSES, playstyleSuggestions } = await import("../src/app/characters/builder/playstyles.ts");
+const { PLAYSTYLES, EASY_CLASSES, fillClassSkills, playstyleBackgrounds, playstyleSuggestions } = await import("../src/app/characters/builder/playstyles.ts");
 const { classRoles } = await import("../src/lib/srd/class-roles.ts");
 
 const core = ["barbarian", "bard", "cleric", "druid", "fighter", "monk", "paladin", "ranger", "rogue", "sorcerer", "warlock", "wizard"].map((id) => ({
@@ -26,4 +26,17 @@ assert.ok(EASY_CLASSES.has("fighter") && !EASY_CLASSES.has("wizard"));
 const world = [{ id: "marshal", roles: ["Tank", "Support"] }, { id: "hexblade", roles: ["DPS"] }];
 assert.deepEqual(playstyleSuggestions("front", world), ["marshal"]);
 assert.deepEqual(playstyleSuggestions("magic", world), [], "nothing offered fits: the grid stays the answer");
+// The first step's background hints: the SRD's ids, or a pack's by name.
+const srd = ["acolyte", "criminal", "folk_hero", "sage", "soldier", "urchin"].map((id) => ({ id, name: id }));
+assert.deepEqual(playstyleBackgrounds("front", srd).map((entry) => entry.id), ["soldier", "folk_hero"]);
+assert.deepEqual(playstyleBackgrounds("help", [{ id: "folk-hero", name: "Folk Hero" }]).map((entry) => entry.id), ["folk-hero"]);
+assert.deepEqual(playstyleBackgrounds("magic", [{ id: "noble", name: "Noble" }]), [], "none offered: no hint");
+for (const style of PLAYSTYLES) assert.ok(style.backgrounds.length > 0, `${style.id} names its backgrounds`);
+// "Suggest the rest" keeps a deliberate pick, skips a granted skill, and
+// fills only what is left.
+const fighterFrom = ["acrobatics", "animal_handling", "athletics", "history", "insight", "intimidation", "perception", "survival"];
+assert.deepEqual(fillClassSkills({ classId: "fighter", from: fighterFrom, count: 2, chosen: [], granted: new Set() }), ["athletics", "perception"]);
+assert.deepEqual(fillClassSkills({ classId: "fighter", from: fighterFrom, count: 2, chosen: ["history"], granted: new Set() }), ["history", "athletics"]);
+assert.deepEqual(fillClassSkills({ classId: "fighter", from: fighterFrom, count: 2, chosen: [], granted: new Set(["athletics"]) }), ["perception", "intimidation"]);
+assert.deepEqual(fillClassSkills({ classId: "marshal", from: ["history", "insight"], count: 1, chosen: [], granted: new Set() }), ["history"], "a world's class takes its list's order");
 console.log("test-builder-playstyles: ok");

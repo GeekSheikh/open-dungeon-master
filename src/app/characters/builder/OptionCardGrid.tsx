@@ -206,7 +206,7 @@ export function OptionCardGrid({
                       type="button"
                       onClick={() => onChoose(option.id)}
                       aria-pressed={chosen}
-                      aria-label={`${option.name}${group.recommended ? ", recommended for this setting" : ""}`}
+                      aria-label={`${option.name}${group.recommended ? ", fits this setting" : ""}`}
                       aria-describedby={
                         [option.tagline ? `${descId}-tag` : "", option.chips.length ? `${descId}-chips` : ""]
                           .filter(Boolean)
@@ -239,9 +239,11 @@ export function OptionCardGrid({
                       </span>
                     </button>
                     {group.recommended ? (
+                      // About the world, not about ease: "Easy to learn" is
+                      // said on the card itself where it applies.
                       <span className="creator-recommended">
                         <Star className="size-2.5 fill-current" aria-hidden="true" />
-                        Recommended
+                        Fits setting
                       </span>
                     ) : null}
                     <button
