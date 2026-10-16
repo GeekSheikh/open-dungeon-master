@@ -23,15 +23,19 @@ export default function ContentPicker({
   placeholder,
   onPick,
   renderMeta,
+  hide,
 }: {
   kind: "spells" | "items" | "feats";
   extraParams?: Record<string, string>;
   placeholder: string;
   onPick: (entry: PickerEntry) => void;
   renderMeta?: (entry: PickerEntry) => string;
+  // Rows the caller does not offer here, left out of the list.
+  hide?: (entry: PickerEntry) => boolean;
 }) {
-  const { query, setQuery, results, setResults, open, setOpen, loading, unavailable, unadmitted } =
+  const { query, setQuery, results: found, setResults, open, setOpen, loading, unavailable, unadmitted } =
     useContentSearch(kind, extraParams);
+  const results = hide ? found.filter((entry) => !hide(entry)) : found;
   const container = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

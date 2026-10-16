@@ -24,8 +24,10 @@ import { spellStyleFor, spellbookAllowance, type SpellStyle } from "@/lib/srd/sp
 import {
   chooseKitOption as withKitOption,
   classKitFor,
+  kitLineOfSlot,
   kitNames,
   pickKitSlot as withKitPick,
+  removedAfterKitChange,
   resolveKit,
   startingKitFor,
   type KitTraining,
@@ -769,22 +771,27 @@ export function builderActions(
       }
     },
     // An either-or line of the class's starting equipment, and the weapon
-    // named for an "any simple weapon" slot. Kit items the player removed
-    // come back with a new choice, since the choice is about them.
+    // named for an "any simple weapon" slot. The items of that line the
+    // player removed come back with a new choice, since the choice is about
+    // them; a removal from any other line stands.
     chooseKitOption(line: number, option: number) {
       const kit = klass ? classKitFor(klass.id) : null;
       if (kit) {
-        state.setKitChoices((current) => withKitOption(kit, current, line, option));
-        state.setRemovedAutoNames([]);
+        const before = state.kitChoices;
+        const after = withKitOption(kit, before, line, option);
+        state.setKitChoices(after);
+        state.setRemovedAutoNames((removed) => removedAfterKitChange(kit, before, after, line, removed));
       }
     },
     pickKitSlot(index: number, name: string) {
       const kit = klass ? classKitFor(klass.id) : null;
       if (kit) {
-        state.setKitChoices((current) =>
-          withKitPick(resolveKit(kit, current, { armor: [], weapons: [] }).choices, index, name),
+        const before = state.kitChoices;
+        const after = withKitPick(resolveKit(kit, before, { armor: [], weapons: [] }).choices, index, name);
+        state.setKitChoices(after);
+        state.setRemovedAutoNames((removed) =>
+          removedAfterKitChange(kit, before, after, kitLineOfSlot(kit, before, index), removed),
         );
-        state.setRemovedAutoNames([]);
       }
     },
     // One either-or line of the background's kit answered, by the words of
