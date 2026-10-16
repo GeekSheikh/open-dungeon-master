@@ -141,8 +141,48 @@ export const PLAYER_TOUR: TourStep[] = [
   {
     id: "help",
     title: "Help, settings and the way home",
-    body: "Help explains every button. The account menu beside it holds your characters, settings, log out, and, inside the app, the way back to its home screen.",
-    anchors: ["header-help"],
+    body: "Help explains every button. On a phone it shares the table menu with narration, sound and the rulebook, each row saying what it does. The account menu beside it holds your characters, settings, log out, and, inside the app, the way back to its home screen.",
+    anchors: ["header-help", "header-menu"],
+  },
+];
+
+// What a player meets the first time they sit at a table: how to take a
+// turn, how to ask a question, where their character and Help are. It
+// replaces the full tour as the one that opens by itself (no more
+// interruptions than before, and fewer steps); finishing it counts as the
+// player tour seen, and Help's "Tour the table" plays every step.
+export const FIRST_TURN_TOUR: TourStep[] = [
+  {
+    id: "first-welcome",
+    title: "Your first turn",
+    body: "Three things are all a first turn needs: saying what you do, asking when you are unsure, and finding your character. Everything else waits until you want it.",
+    anchors: [],
+  },
+  {
+    id: "first-act",
+    title: "Say what you do",
+    body: "Pick Do for an action or Say to speak in character, write it here and press Enter. The Dungeon Master answers the whole table at once, so agree on a plan before you send.",
+    anchors: ["composer-input", "composer-modes"],
+    prepare: "show-chat",
+  },
+  {
+    id: "first-ask",
+    title: "Ask when unsure",
+    body: "A question about the story, the rules or your sheet goes here. Asking never moves the story on.",
+    anchors: ["ask-dm"],
+    prepare: "show-chat",
+  },
+  {
+    id: "first-hero",
+    title: "Your character",
+    body: "Your hit points, spells and gear are in Party. Select your card to open the full sheet.",
+    anchors: ["party-rail", "tab-party"],
+  },
+  {
+    id: "first-help",
+    title: "Everything else",
+    body: "Help explains every button and holds the full tour of the table: maps, chat, settings, dice and voice.",
+    anchors: ["header-help", "header-menu"],
   },
 ];
 
@@ -262,7 +302,7 @@ export const DM_TOUR: TourStep[] = [
   {
     id: "help",
     title: "Help and the way home",
-    body: "Help explains every button and replays this tour. The account menu beside it holds settings, log out and, inside the app, the way back to its home screen.",
-    anchors: ["header-help"],
+    body: "Help explains every button and replays this tour. On a phone it shares the table menu with narration, sound and the rulebook. The account menu beside it holds settings, log out and, inside the app, the way back to its home screen.",
+    anchors: ["header-help", "header-menu"],
   },
 ];

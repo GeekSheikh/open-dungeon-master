@@ -2,14 +2,15 @@
 // the lobby's table settings in the campaign creator's named groups with a
 // search that opens what it finds, the line that says what happens next, the
 // three ways to a hero, the phone's More sheet reaching every tab, the
-// Settings tab's contents row, and Help finding "volume" in its own words.
+// Settings tab's contents row, the phone header's table menu, Help finding
+// "volume" in its own words, and the home's menu inside its frame.
 import { check, eventually, openPanelTab, sleep } from "../lib.mjs";
 
 export default {
   name: "usability",
   viewports: ["desktop", "phone"],
   async run(t) {
-    const { page, root, ids, viewport } = t;
+    const { page, root, ids, viewport, api, base } = t;
 
     // ---- the lobby ----
     await t.open(`/campaigns/${ids.lobbyId}`);
@@ -72,10 +73,28 @@ export default {
     }
     await t.shot("settings-tab");
 
+    // A phone's header keeps room for the title: narration, sound, the
+    // rulebook and help share one table menu, each row saying what it does.
+    const title = await page.locator(`${root}.session-title`).locator("visible=true").first().boundingBox();
+    check(title && title.width >= 100, `the campaign title keeps its room in the header (${Math.round(title?.width ?? 0)}px)`);
+    if (viewport === "phone") {
+      check((await page.locator(`${root}[data-tour="header-help"]`).locator("visible=true").count()) === 0, "a phone's Help sits in the table menu");
+      await t.tap(page.locator(`${root}[data-tour="header-menu"]`).locator("visible=true").first());
+      const menu = page.getByRole("menu");
+      await eventually(() => menu.count(), { label: "the table menu" });
+      for (const words of ["Every rule, spell and monster", "How everything works"]) {
+        check((await menu.getByText(words).count()) === 1, `the table menu says "${words}"`);
+      }
+      await sleep(400);
+      await t.shot("table-menu");
+      await t.tap(menu.getByRole("menuitem", { name: /^Help/ }));
+    } else {
+      const help = page.locator(`${root}[data-tour="header-help"]`).locator("visible=true").first();
+      await eventually(() => help.count(), { label: "the Help button" });
+      await t.tap(help);
+    }
+
     // Help finds "volume" in its sections' own words.
-    const help = page.locator(`${root}[data-tour="header-help"]`).locator("visible=true").first();
-    await eventually(() => help.count(), { label: "the Help button" });
-    await t.tap(help);
     const dialog = page.getByRole("dialog");
     await eventually(() => dialog.count(), { label: "the Help dialog" });
     const search = dialog.getByRole("textbox", { name: "Find a help topic" });
@@ -88,5 +107,54 @@ export default {
     await eventually(async () => /Nothing in Help mentions that/.test(await dialog.innerText()), { label: "an unknown word says so" });
     await t.shot("help-search");
     await page.keyboard.press("Escape");
+
+    // The character builder: how you want to play comes first, with the
+    // backgrounds that suit it, and a line counts the choices left.
+    await t.open("/characters/new");
+    const playstyle = page.getByRole("radiogroup", { name: "How do you want to play?" }).locator("visible=true").first();
+    await eventually(() => playstyle.count(), { timeoutMs: 30_000, label: "the playstyle question on step 1" });
+    // The builder keeps every step mounted; the active one's line is the one read.
+    const owed = page.locator(`${root}[data-active] [data-owed]`).first();
+    await eventually(() => owed.count(), { label: "the choices-left line" });
+    check(/choice.? left on this step/.test(await owed.innerText()) && /Name/.test(await owed.innerText()), `the line names what is owed ("${await owed.innerText()}")`);
+    await t.tap(playstyle.getByRole("radio", { name: "Stand in front" }));
+    const hints = page.locator(`${root}[data-background-hints]`).locator("visible=true").first();
+    await eventually(() => hints.count(), { label: "backgrounds that suit the playstyle" });
+    await page.getByRole("textbox", { name: "Name" }).locator("visible=true").first().fill("Wren Ashdown");
+    await eventually(async () => (await page.locator(`${root}[data-active] [data-owed]`).count()) === 0, { label: "the line goes once nothing is owed" });
+    await t.shot("builder-playstyle");
+
+    // The workshop hub starts with four tasks; each opens Create on it.
+    const made = await api.post(`${base}/api/workshops`, { data: { title: "Usability tasks", description: "" } });
+    check(made.ok(), "a workshop for the hub");
+    const workshopId = (await made.json()).workshop.id;
+    await api.post(`${base}/api/profile/tours`, { data: { finished: [{ id: "workshop-hub", version: 1, how: "ended" }] } });
+    await t.open(`/workshop/${workshopId}`);
+    const tasks = page.locator(`${root}[data-hub-tasks]`).locator("visible=true").first();
+    await eventually(() => tasks.count(), { timeoutMs: 30_000, label: "the hub's task row" });
+    check((await tasks.locator("[data-hub-task]").count()) === 4, "four tasks to start with");
+    await t.tap(tasks.locator('[data-hub-task="encounter"]'));
+    const chooser = page.getByRole("dialog");
+    await eventually(() => chooser.locator('[data-testid="create-steps"]').count(), { label: "Create opens on the fight" });
+    check(/Encounter/.test(await chooser.innerText()), "the chooser is on Encounter");
+    await t.shot("hub-task");
+    await page.keyboard.press("Escape");
+
+    // The home's menu stays inside the title screen's frame on a short
+    // laptop window: the ways in and your places stand side by side.
+    if (viewport === "desktop" && !t.app) {
+      await page.setViewportSize({ width: 1366, height: 768 });
+      await t.open("/");
+      const rulebook = page.locator('[data-tour="tile-rulebook"]').first();
+      await eventually(() => rulebook.count(), { label: "the home's menu" });
+      await sleep(1_500);
+      const frame = await page.locator(".ts-first").boundingBox();
+      for (const tour of ["tile-rulebook", "tile-join", "tile-workshop"]) {
+        const box = await page.locator(`[data-tour="${tour}"]`).first().boundingBox();
+        check(box && frame && box.y + box.height <= frame.y + frame.height - 40, `${tour} sits inside the frame (${Math.round(box?.y ?? 0)})`);
+      }
+      await t.shot("home-laptop");
+      await page.setViewportSize({ width: 1920, height: 1080 });
+    }
   },
 };
