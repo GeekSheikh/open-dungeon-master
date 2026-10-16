@@ -19,6 +19,7 @@
 //     contest (SRD 5.1, Monsters: Grapple Rules for Monsters). A restraint
 //     that lasts "until this grapple ends" ends with it.
 
+import { characterTrapEscape, trapHoldOn } from "@/lib/dm/trap-escape";
 import type { Campaign } from "@/lib/db/campaigns";
 import { getBattleMapForEncounter, getTokenByRef } from "@/lib/db/battle-maps";
 import { tilesApart } from "@/lib/dm/board-reach";
@@ -90,10 +91,13 @@ export function characterEscape(
     ? grappleOf(sheet.conditionMeta as ConditionMetaMap)
     : null;
   if (!held) {
-    // A spell's hold (Entangle, Web): src/lib/dm/spell-escape.ts.
+    // A spell's hold (Entangle, Web): src/lib/dm/spell-escape.ts. A trap's
+    // (a falling net): src/lib/dm/trap-escape.ts.
     return characterSpellHold(campaign, sheet)
       ? characterSpellEscape(campaign, turn, sheet, spend)
-      : { error: `${sheet.name} is not grappled; there is nothing to escape.` };
+      : trapHoldOn(campaign, sheet)
+        ? characterTrapEscape(campaign, turn, sheet, spend)
+        : { error: `${sheet.name} is not grappled; there is nothing to escape.` };
   }
   const encounter = getActiveEncounter(campaign.id);
   const enemyHolder = held.source && encounter ? resolveEnemyRef(encounter.id, held.source) : null;
