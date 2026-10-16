@@ -141,7 +141,8 @@ function pressedByName(props) {
     }),
   );
   const pressed = {};
-  for (const match of markup.matchAll(/<button[^>]*aria-pressed="(true|false)"[^>]*title="([^"]*)"/g)) {
+  // The spell tiles only: the level row's pills are toggles of their own.
+  for (const match of markup.matchAll(/<li class="spell-tile"[^>]*><button[^>]*aria-pressed="(true|false)"[^>]*title="([^"]*)"/g)) {
     pressed[match[2]] = match[1];
   }
   return pressed;
