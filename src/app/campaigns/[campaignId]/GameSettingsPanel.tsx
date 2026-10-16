@@ -104,10 +104,14 @@ export function GameSettingsPanel({
   campaignId,
   settings,
   steersStory,
+  heading = true,
 }: {
   campaignId: string;
   settings: GameSettings;
   steersStory: boolean;
+  // The lobby names the section itself, so the panel's own title would say
+  // "Table settings" twice.
+  heading?: boolean;
 }) {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const voices = useTtsVoices();
@@ -218,7 +222,7 @@ export function GameSettingsPanel({
   if (!steersStory) {
     return (
       <section className="panel mb-6 rounded-xl p-4" data-table-settings="read">
-        <SectionHead title="Table settings" glyph="tab-settings" level="h2" />
+        {heading ? <SectionHead title="Table settings" glyph="tab-settings" level="h2" /> : null}
         <p className="mb-2 text-xs text-stone-500">
           {settings.dmMode === "ai" ? "The party lead" : "The DM"} sets these for everyone at this table.
         </p>
@@ -354,7 +358,7 @@ export function GameSettingsPanel({
 
   return (
     <section className="panel mb-6 rounded-xl p-4" data-table-settings="edit">
-      <SectionHead title="Table settings" glyph="tab-settings" level="h2" />
+      {heading ? <SectionHead title="Table settings" glyph="tab-settings" level="h2" /> : null}
       <p className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-stone-500" aria-live="polite">
         <span>Applies to everyone at this table. Each change saves as you make it.</span>
         {saveState === "saving" ? (

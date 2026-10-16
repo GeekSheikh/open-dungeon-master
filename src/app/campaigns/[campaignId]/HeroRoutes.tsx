@@ -51,7 +51,9 @@ export function HeroRoutes({ campaignId, className }: { campaignId: string; clas
 
   return (
     <div className={cn("space-y-2", className)} data-hero-routes aria-busy={loading}>
-      <div className={cn("grid gap-2 sm:grid-cols-3", loading && "invisible")}>
+      {/* One full-width row per route at every width: three narrow columns
+          wrapped their titles under the badge. */}
+      <div className={cn("stagger-up grid gap-2", loading && "invisible")}>
         {advice.ready ? (
           <RouteCard
             glyph="ui-quickstart"

@@ -639,6 +639,7 @@ export function Lobby({ state, refresh }: { state: CampaignState; refresh: () =>
               campaignId={campaign.id}
               settings={campaign.gameSettings}
               steersStory={steersStory}
+              heading={false}
             />
           </div>
         </div>
