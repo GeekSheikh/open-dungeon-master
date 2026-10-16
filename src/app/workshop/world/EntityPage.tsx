@@ -14,6 +14,7 @@ import type { WorldEntity } from "@/lib/db/world-forge";
 import type { WorldApi, WorldState } from "./useWorld";
 import { EntityEditor } from "./EntityEditor";
 import { BoundRecords } from "./BoundRecords";
+import { PlayFields } from "./PlayFields";
 import type { OpenSystem } from "./WorldForgePanel";
 import { LinkEditor } from "./LinkEditor";
 import { EntityAvatar, SHELF_SYSTEMS, TypeChip, typeOf } from "./world-ui";
@@ -307,6 +308,7 @@ export function EntityPage({
           <div className="mt-1 flex flex-col gap-1.5 border-t border-stone-800/80 pt-2">{grouped(incoming.filter((link) => !link.oneway), true)}</div>
         ) : null}
       </section>
+      <PlayFields campaignId={campaignId} entity={entity} onChanged={api.refresh} />
 
       {events.length ? (
         <section className="flex flex-col gap-1" aria-label="Events">

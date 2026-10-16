@@ -1,5 +1,5 @@
 import { getDatabase, nowIso, parseJson } from "@/lib/db/core";
-import { createNpcFromDraft, deleteNpc, getNpcById, listNpcs, renameNpc, setNpcPortrait, updateNpcFromDraft } from "@/lib/db/npcs";
+import { createNpcFromDraft, deleteNpc, getNpcById, listNpcs, renameNpc, setNpcPlace, setNpcPortrait, updateNpcFromDraft } from "@/lib/db/npcs";
 import { getLocation, getLocationByName, insertKnownLocation, listLocations, renameLocation, setLocationLayout } from "@/lib/db/locations";
 import { deleteFaction, getFaction, insertFaction, listFactions, updateFaction } from "@/lib/db/factions";
 import { deleteLoreEntry, getLoreEntry, insertLoreEntry, listLoreEntries, updateLoreEntry } from "@/lib/db/lore";
@@ -25,7 +25,8 @@ import {
   type WorldDoc,
   type WorldType,
 } from "@/lib/worldforge/model";
-import { byName } from "@/lib/language/text-logic";
+import { byName, foldName } from "@/lib/language/text-logic";
+import { playAdapters, playLink, type PlayAdapter, type PlayField } from "@/lib/worldforge/play-fields";
 import { editableOf, mergeAgainst, type Editable, type EntryConflict } from "@/lib/worldforge/entry-merge";
 import { entriesBoundTo, resolveBinding, type BoundRecord } from "@/lib/db/world-bindings";
 
@@ -54,6 +55,10 @@ export type WorldEntity = {
   // The playable records the entry links to, resolved for this table
   // (src/lib/db/world-bindings.ts). Empty for an entry with no links.
   bound: BoundRecord[];
+  // A Cast member's faction and home as play reads them, beside the World
+  // links that speak to them (src/lib/worldforge/play-fields.ts). Empty for
+  // every other shelf, and for a Cast member no such link starts at.
+  inPlay: PlayAdapter[];
 };
 
 // ---- the document ----
@@ -110,7 +115,10 @@ export function patchWorldDoc(campaignId: string, patch: Record<string, unknown>
 export function worldEntities(campaignId: string, doc: WorldDoc = getWorldDoc(campaignId)): WorldEntity[] {
   const entry = (ref: string) => doc.entries[ref] ?? readEntry({});
   const factionNames = new Map(listFactions(campaignId).map((faction) => [faction.id, faction.name]));
-  const out: Array<Omit<WorldEntity, "bound">> = [];
+  const places = listLocations(campaignId);
+  const out: Array<Omit<WorldEntity, "bound" | "inPlay">> = [];
+  // What play holds for each Cast member, as records where it can.
+  const held = new Map<string, Record<PlayField, { ref: string; name: string } | null>>();
   for (const npc of listNpcs(campaignId)) {
     const ref = refOf("npc", npc.id);
     const own = entry(ref);
@@ -118,8 +126,13 @@ export function worldEntities(campaignId: string, doc: WorldDoc = getWorldDoc(ca
       ref, shelf: "npc", id: npc.id, name: npc.name, tagline: npc.trait, text: "", aliases: npc.aliases, tags: own.tags, portrait: npc.portraitUrl, entry: own, createdAt: npc.createdAt,
       table: { attitude: npc.attitude, statBlock: npc.statBlock, role: npc.role, home: npc.location, faction: factionNames.get(npc.factionId) ?? "", archived: npc.archived },
     });
+    const home = npc.location ? places.find((place) => foldName(place.name) === foldName(npc.location)) : undefined;
+    held.set(ref, {
+      faction: npc.factionId && factionNames.has(npc.factionId) ? { ref: refOf("faction", npc.factionId), name: factionNames.get(npc.factionId)! } : null,
+      home: npc.location ? { ref: home ? refOf("location", home.id) : "", name: npc.location } : null,
+    });
   }
-  for (const place of listLocations(campaignId)) {
+  for (const place of places) {
     const ref = refOf("location", place.id);
     const own = entry(ref);
     out.push({
@@ -143,8 +156,13 @@ export function worldEntities(campaignId: string, doc: WorldDoc = getWorldDoc(ca
       table: { category: lore.category, visibility: lore.visibility, pinned: lore.pinned },
     });
   }
+  const names = new Map(out.map((entity) => [entity.ref, entity.name]));
   return out
-    .map((entity) => ({ ...entity, bound: entity.entry.bindings.map((binding) => resolveBinding(campaignId, binding)) }))
+    .map((entity) => ({
+      ...entity,
+      bound: entity.entry.bindings.map((binding) => resolveBinding(campaignId, binding)),
+      inPlay: entity.shelf === "npc" ? playAdapters(doc, entity.ref, held.get(entity.ref)!, names) : [],
+    }))
     .sort(byName);
 }
 
@@ -339,6 +357,31 @@ export function createWorldEntity(campaignId: string, sent: { typeId?: unknown; 
   });
   saveWorldDoc(campaignId, doc);
   return entityOf(campaignId, doc, made.ref);
+}
+
+// One World link set into play (audit finding WF-12): a Cast member's
+// "member of" link becomes their faction, a "lives in" or "located in"
+// link their home, by the place's name as the Cast keeps it. Only when the
+// author picks that link; a false belief never, a hidden truth only with
+// `truth`. The link and the rest of the record are left as they are.
+export function applyPlayLink(campaignId: string, ref: string, field: PlayField, linkId: string, truth: boolean): EntityResult {
+  const parsed = parseRef(ref);
+  const npc = parsed?.shelf === "npc" ? getNpcById(parsed.id) : null;
+  if (!npc || npc.campaignId !== campaignId) return { error: "Only a Cast member has a faction and a home in play.", status: 404 };
+  const doc = getWorldDoc(campaignId);
+  const chosen = playLink(doc, ref, field, linkId, truth);
+  if ("error" in chosen) return { error: chosen.error, status: 400 };
+  const target = parseRef(chosen.link.to)!;
+  if (field === "faction") {
+    const faction = getFaction(target.id);
+    if (!faction || faction.campaignId !== campaignId) return { error: "That faction is not in this world any more.", status: 404 };
+    setNpcPlace(npc.id, { factionId: faction.id });
+  } else {
+    const place = getLocation(target.id);
+    if (!place || place.campaignId !== campaignId) return { error: "That place is not in this world any more.", status: 404 };
+    setNpcPlace(npc.id, { location: place.name });
+  }
+  return entityOf(campaignId, doc, ref);
 }
 
 // "Give it a World entry", from a stat block or an item in its own tool
