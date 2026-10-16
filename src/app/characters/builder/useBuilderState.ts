@@ -477,7 +477,11 @@ export function useBuilderState({
   // skill the new race grants outright, a language it already speaks).
   // The race's own picks are cleared first, so they are not reported as
   // dropped: the new race asks for its own. The feat is the race's too.
+  // Choosing the race already chosen (a second tap on its card) is no change.
   function changeRace(id: string) {
+    if (id === raceId) {
+      return;
+    }
     setRaceId(id);
     applyChange(
       "race",
@@ -497,8 +501,12 @@ export function useBuilderState({
   }
 
   // Same for the class: skills, subclass, spells, loadout edits and the
-  // class option picks all belong to the old class.
+  // class option picks all belong to the old class. Choosing the class
+  // already chosen keeps them all.
   function changeClass(id: string) {
+    if (id === classId) {
+      return;
+    }
     setClassId(id);
     setRemovedAutoNames([]);
     setKitChoices({ options: [], picks: [] });

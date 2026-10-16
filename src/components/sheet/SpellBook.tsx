@@ -69,6 +69,12 @@ export function tileConcentrates(tile: Pick<SpellTile, "name" | "data" | "concen
   return bundledSpellFacts(tile.name)?.concentration === true;
 }
 
+// Whether a tile's button reads as pressed: whether the spell is chosen in
+// the sense a tap toggles (see writingBook).
+export function tilePressed(state: SpellTileState, writingBook = false): boolean {
+  return state === "inBook" ? writingBook : state !== "available";
+}
+
 export type SpellCounter = { label: string; value: number; max?: number | null; extra?: string };
 
 const STATE_TEXT: Record<SpellTileState, string> = {
@@ -105,6 +111,7 @@ export function SpellBook({
   footer,
   notice,
   emptyText = "No spells yet.",
+  writingBook = false,
 }: {
   tiles: SpellTile[];
   // Tabs run from cantrips to this level even when a level is still empty,
@@ -122,6 +129,10 @@ export function SpellBook({
   // is, instead of a line pushed in above the book.
   notice?: ReactNode;
   emptyText?: string;
+  // A wizard filling the spellbook in the builder: a tap writes a spell in
+  // or takes it out, so a spell in the book reads as pressed. Everywhere
+  // else a tap prepares, and only a prepared spell does.
+  writingBook?: boolean;
 }) {
   const [filter, setFilter] = useState("");
   const needle = filter.trim().toLowerCase();
@@ -301,7 +312,7 @@ export function SpellBook({
                 <button
                   type="button"
                   disabled={!clickable}
-                  aria-pressed={tile.state !== "available" && tile.state !== "inBook"}
+                  aria-pressed={tilePressed(tile.state, writingBook)}
                   onClick={(event) => {
                     if (tile.blocked) {
                       const shake = "shake-x var(--dur-beat) var(--ease-snap) both";

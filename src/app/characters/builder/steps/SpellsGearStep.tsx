@@ -419,6 +419,7 @@ function SpellsSection({
         maxLevel={maxSpellLevel}
         counters={counters}
         onTile={onTile}
+        writingBook={wizard && phase === "book"}
         notice={limitNote || undefined}
         emptyText={
           loading
