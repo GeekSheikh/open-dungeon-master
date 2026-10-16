@@ -21,7 +21,7 @@ const NAMES: Record<string, Names> = {
   elf: ELF,
   "half-elf": { given: [...HUMAN.given.slice(0, 7), ...ELF.given.slice(0, 5)], family: [...HUMAN.family.slice(0, 5), ...ELF.family.slice(0, 3)] },
   dwarf: {
-    given: ["Brann", "Dagna", "Torvik", "Runa", "Orsik", "Kildra", "Baern", "Hild", "Grima", "Durn"],
+    given: ["Brann", "Sigra", "Torvik", "Runa", "Ottmar", "Ketta", "Haldor", "Hild", "Grima", "Durn"],
     family: ["Stoutheart", "Ironfoot", "Gravelbeard", "Deepdelve", "Hammerfall", "Coppervein", "Stonemantle"],
   },
   halfling: {
@@ -37,7 +37,7 @@ const NAMES: Record<string, Names> = {
     family: ["Bonecutter", "Ashtusk", "Ironjaw", "Redhand", "Stonebrow", "Grimhollow"],
   },
   dragonborn: {
-    given: ["Vyrrath", "Kesh", "Torinn", "Sorrix", "Balaxa", "Rhazul", "Ixen", "Zaveth", "Quarrin", "Sulra"],
+    given: ["Vyrrath", "Kesh", "Thravik", "Sorrix", "Balaxa", "Rhazul", "Ixen", "Zaveth", "Quarrin", "Sulra"],
     family: ["Ashscale", "Embercrest", "Vorrathi", "Stormclaw", "Kaldrex", "Brightfang"],
   },
   tiefling: {
