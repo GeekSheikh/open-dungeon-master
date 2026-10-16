@@ -309,6 +309,8 @@ export function SetupWizard({ config: initialConfig, env, info }: { config: Mask
           : null;
 
   const address = draft.publicUrl.trim() || info.lanUrls[0] || "";
+  // The eyebrow names the topic; the wizard's own "Step 3 / 7" is the one
+  // count, so the two never disagree (Welcome is a step there).
   const title = (eyebrow: string, text: string, key: StepKey) => (
     <span className="block">
       <span className="eyebrow block text-[10px] text-stone-500">{eyebrow}</span>
@@ -330,8 +332,8 @@ export function SetupWizard({ config: initialConfig, env, info }: { config: Mask
     {
       key: "story",
       label: "Storyteller",
-      title: title("Step 1", "Who tells the story?", "story"),
-      blurb: "The Dungeon Master's voice. The server always rolls the dice and keeps the rules; this only chooses who narrates.",
+      title: title("The storyteller", "Who tells the story?", "story"),
+      blurb: "The Dungeon Master's words. The server always rolls the dice and keeps the rules; this only chooses who tells the story. Reading it aloud is a later step.",
       content: (
         <StorytellerStep
           draft={draft}
@@ -357,7 +359,7 @@ export function SetupWizard({ config: initialConfig, env, info }: { config: Mask
     {
       key: "pictures",
       label: "Pictures",
-      title: title("Step 2", "Should the table have pictures?", "pictures"),
+      title: title("Pictures", "Should the table have pictures?", "pictures"),
       blurb: "Character portraits, scene art and battle maps. Every table works without them.",
       content: (
         <PicturesStep
@@ -384,7 +386,7 @@ export function SetupWizard({ config: initialConfig, env, info }: { config: Mask
     {
       key: "voice",
       label: "Voice",
-      title: title("Step 3", "Should the storyteller speak?", "voice"),
+      title: title("Speech", "Should the storyteller speak?", "voice"),
       blurb: "Narration reads each passage aloud; dictation lets players talk instead of type. Both are optional.",
       content: (
         <VoiceStep
@@ -406,7 +408,7 @@ export function SetupWizard({ config: initialConfig, env, info }: { config: Mask
     {
       key: "players",
       label: "Players",
-      title: title("Step 4", "How do players get in?", "players"),
+      title: title("Players", "How do players get in?", "players"),
       blurb: "The address to send your friends, and who may make an account.",
       content: (
         <PlayersStep draft={draft} update={update} lanUrls={info.lanUrls} />
@@ -416,7 +418,7 @@ export function SetupWizard({ config: initialConfig, env, info }: { config: Mask
     {
       key: "agent",
       label: "Your agent",
-      title: title("Step 5", "Bring your own AI agent?", "agent"),
+      title: title("Your own agent", "Bring your own AI agent?", "agent"),
       blurb: "Optional. Connect Claude Code, Codex or opencode to this server over MCP, as you.",
       content: <YourAgentStep made={made} onMade={setMade} />,
       continueLabel: made ? "Continue" : "Skip for now",

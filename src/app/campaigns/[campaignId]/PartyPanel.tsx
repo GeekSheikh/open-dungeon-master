@@ -205,7 +205,7 @@ function HandToDmButton({
               }}
               className="font-medium text-amber-300 underline decoration-amber-500/40 underline-offset-2 transition-colors hover:text-amber-100"
             >
-              Open Game settings
+              Open Table settings
             </button>
           ) : null}
         </div>

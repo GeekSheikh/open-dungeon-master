@@ -329,8 +329,10 @@ export function HelpDialog({
 
       <Section icon={Volume2} title="Voice and narration">
         <p>
-          Four different things use sound, and each has its own switch. <span className="text-stone-300">Narration</span>{" "}
-          reads the DM&apos;s replies aloud, and the table decides whether it is on.{" "}
+          The story itself is written: the storyteller (the AI or the person in the DM&apos;s seat) writes each reply, and
+          nothing about sound changes that. Four different things then use sound, and each has its own switch.{" "}
+          <span className="text-stone-300">Narration</span> reads the DM&apos;s written replies aloud, and the table decides
+          whether it is on.{" "}
           <span className="text-stone-300">Your volume</span> is yours alone: the speaker button in
           the header unmutes (browsers require one click before audio can play) and its slider sets
           how loud it plays on this device. <span className="text-stone-300">Live voice chat</span> is
