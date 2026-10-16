@@ -1,12 +1,62 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { PregenPicker } from "@/app/campaigns/[campaignId]/PregenPicker";
 import { Check, Loader2, Pencil, Play, Trash2, UserRound } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { ui } from "@/lib/ui";
 import type { CampaignMember } from "@/lib/campaign-types";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
+
+// The way to a seat for a player with none yet. With heroes in their library
+// the first offer is to bring one ("Create your character" read as a rebuild
+// from scratch to someone with three already); building a new one stays one
+// tap away, straight into the builder. With an empty library it is the
+// builder, as before.
+function SeatOffer({ campaignId, wide = false }: { campaignId: string; wide?: boolean }) {
+  const [heroes, setHeroes] = useState<string[] | null>(null);
+  useEffect(() => {
+    fetch("/api/characters")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { characters?: Array<{ name: string; role?: string }> } | null) =>
+        // Allies the DM plays are brought in through the party panel, never
+        // as a player's own (the join page leaves them out too).
+        setHeroes((data?.characters ?? []).filter((character) => character.role !== "companion").map((character) => character.name)),
+      )
+      .catch(() => setHeroes([]));
+  }, []);
+  const page = `/campaigns/${campaignId}/character`;
+  if (heroes === null) {
+    // Held in place until the library answers, so the button under a thumb
+    // does not change its mind mid-tap.
+    return (
+      <span aria-hidden="true" className={cn(ui.btnPrimary, "invisible", wide ? "w-full" : "px-6")}>
+        Create your character
+      </span>
+    );
+  }
+  if (!heroes.length) {
+    return (
+      <Link href={page} className={cn(ui.btnPrimary, wide ? "w-full" : "px-6")}>
+        Create your character
+      </Link>
+    );
+  }
+  const named =
+    heroes.length <= 2 ? heroes.join(" and ") : `${heroes.slice(0, 2).join(", ")} and ${heroes.length - 2} more`;
+  return (
+    <div className={cn("flex flex-col items-center gap-1.5", wide && "w-full")}>
+      <Link href={page} className={cn(ui.btnPrimary, wide ? "w-full" : "px-6")}>
+        Bring a character
+      </Link>
+      <p className="text-center text-xs text-stone-400">{named} from your library, adapted to this table.</p>
+      <Link href={`${page}?start=new`} className="text-center text-xs text-amber-300/80 hover:text-amber-200">
+        Or build a new one
+      </Link>
+    </div>
+  );
+}
 
 // Edit, switch or remove your character. Shown under the ready button once
 // a character exists, in every flow that has one.
@@ -146,9 +196,7 @@ export function LobbyActions({
             <p className="max-w-sm text-balance font-display text-xl tracking-wide text-amber-50">
               Your adventure needs a hero.
             </p>
-            <Link href={`/campaigns/${campaign.id}/character`} className={cn(ui.btnPrimary, "px-6")}>
-              Create your character
-            </Link>
+            <SeatOffer campaignId={campaign.id} />
             <PregenPicker campaignId={campaign.id} />
           </div>
         ) : (
@@ -177,9 +225,7 @@ export function LobbyActions({
         )
       ) : !mySheet ? (
         <>
-          <Link href={`/campaigns/${campaign.id}/character`} className={cn(ui.btnPrimary, "w-full")}>
-            Create your character
-          </Link>
+          <SeatOffer campaignId={campaign.id} wide />
           <PregenPicker campaignId={campaign.id} />
         </>
       ) : (

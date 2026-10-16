@@ -43,7 +43,10 @@ function titleCase(value: string) {
 function CampaignCharacterPageInner({ campaignId }: { campaignId: string }) {
   // join = first character; edit = rebuild the current one in place;
   // replace = switch to another or a brand-new one.
-  const requested = useSearchParams().get("mode");
+  const search = useSearchParams();
+  const requested = search.get("mode");
+  // "Or build a new one" in the lobby comes straight to the builder.
+  const startNew = search.get("start") === "new";
   const flow: "join" | "edit" | "replace" =
     requested === "edit" || requested === "replace" ? requested : "join";
   const [level, setLevel] = useState<number | null>(null);
@@ -54,7 +57,7 @@ function CampaignCharacterPageInner({ campaignId }: { campaignId: string }) {
   // offered here, and the page says where they go instead.
   const [companionCount, setCompanionCount] = useState(0);
   const [mode, setMode] = useState<"choose" | "create">(
-    flow === "edit" ? "create" : "choose",
+    flow === "edit" || startNew ? "create" : "choose",
   );
   const [currentLibraryId, setCurrentLibraryId] = useState<string | null>(null);
   // The linked library character's level, from a host that keeps an edit at
