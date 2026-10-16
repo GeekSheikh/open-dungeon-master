@@ -7,6 +7,13 @@ import { check, eventually, sleep } from "../lib.mjs";
 const visible = (page, root, text) =>
   page.locator(`${root}button`).filter({ hasText: text }).locator("visible=true");
 
+// A reload in a browser; in the app, whose router keeps a screen mounted
+// when it is pushed again, leaving for the library and coming back.
+async function reopen(t) {
+  if (t.app) await t.open("/characters");
+  await t.open("/characters/new");
+}
+
 export default {
   name: "builder-draft",
   viewports: ["desktop", "phone"],
@@ -31,7 +38,7 @@ export default {
     await t.tap(card);
     await sleep(800);
 
-    await t.open("/characters/new");
+    await reopen(t);
     const resume = visible(page, root, /^Resume$/);
     await eventually(() => resume.count(), { timeoutMs: 15_000, label: "the Resume offer after a reload" });
     const offer = (await page.locator(`${root}[role="status"]`).filter({ hasText: "unfinished character" }).first().innerText()).replace(/\s+/g, " ");
@@ -46,11 +53,11 @@ export default {
     await t.shot("resumed");
 
     // Start fresh forgets it.
-    await t.open("/characters/new");
+    await reopen(t);
     await eventually(() => visible(page, root, /^Start fresh$/).count(), { timeoutMs: 15_000, label: "the offer again" });
     await t.tap(visible(page, root, /^Start fresh$/).first());
     await sleep(300);
-    await t.open("/characters/new");
+    await reopen(t);
     await name.waitFor({ state: "visible", timeout: 30_000 });
     await sleep(800);
     check((await visible(page, root, /^Resume$/).count()) === 0, "Start fresh leaves no draft to resume");
