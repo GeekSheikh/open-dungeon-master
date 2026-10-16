@@ -128,10 +128,7 @@ export function adaptSheetToLevel(
   // whenever the level changes, because the table's check reads a sheet with
   // no count as having taken what the table's level gives.
   const held = readAsiLedger(sheet.features ?? []);
-  const taken = Math.min(
-    keptChoiceCount,
-    held ?? Math.max(sheet.asiChoices?.length ?? 0, legacyAsiTaken(fromLevel)),
-  );
+  const taken = takenWhereBuilt(sheet, fromLevel, keptChoiceCount);
   if (held !== null ? held !== taken : level !== fromLevel && (level >= 4 || taken > 0)) {
     sheet.features = withAsiLedger(sheet.features ?? [], taken);
   }
@@ -210,6 +207,46 @@ export function adaptSheetToLevel(
   }
 
   return sheet;
+}
+
+// The improvements a sheet built at fromLevel took, never more than the
+// level it now plays has earned: its own count, or the old table's at the
+// level it was built.
+function takenWhereBuilt(built: CreateSheetInput, fromLevel: number, earned: number): number {
+  return Math.min(
+    earned,
+    readAsiLedger(built.features ?? []) ?? Math.max(built.asiChoices?.length ?? 0, legacyAsiTaken(fromLevel)),
+  );
+}
+
+// A sheet built at one level and admitted at a higher one by the table door,
+// which judges it as made there: a ready-made hero (src/lib/starter/pregens.ts)
+// is a level 1 build seated at the table's starting level. That door counts a
+// made character as having taken every improvement its level earned, but
+// nobody offered this one any (backlog B6). Its count goes back to what it
+// took where it was built, the rule above for a library hero joining above
+// its level (issue 293), so the sheet lists the rest as owed and the next
+// level-up offers them. Its blank subclass is owed the same way already
+// (subclassOwed, src/lib/srd/owed-choices.ts).
+export function oweSkippedImprovements(
+  admitted: CreateSheetInput,
+  built: CreateSheetInput,
+  fromLevel: number,
+  toLevel: number,
+): CreateSheetInput {
+  const level = Math.max(1, Math.min(20, toLevel));
+  if (level <= fromLevel) {
+    return admitted;
+  }
+  const classList =
+    (admitted.classes ?? []).length > 1
+      ? (admitted.classes ?? [])
+      : [{ id: admitted.class, subclass: admitted.subclass ?? "", level }];
+  const taken = takenWhereBuilt(built, fromLevel, earnedAsiCountFor(classList));
+  if (level < 4 && taken === 0 && readAsiLedger(admitted.features ?? []) === null) {
+    return admitted;
+  }
+  return { ...admitted, features: withAsiLedger(admitted.features ?? [], taken) };
 }
 
 function trimToLevel(view: CasterView, abilities: CreateSheetInput["abilities"]): CasterView {
