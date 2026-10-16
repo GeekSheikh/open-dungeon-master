@@ -186,12 +186,16 @@ export function SystemView({
           <DmEncounterPrepPanel
             campaignId={workshop.id}
             layout="rows"
+            openOnArrival={openId}
             targetParty={workshop.gameSettings.targetParty}
           />
         ) : null}
-        {system === "bestiary" ? <DmBestiaryPanel campaignId={workshop.id} layout="rows" /> : null}
+        {system === "bestiary" ? <DmBestiaryPanel campaignId={workshop.id} layout="rows" openOnArrival={openId} onWorldEntry={onWorldEntry} /> : null}
         {system === "homebrew" ? (
           <HomebrewPanel
+            campaignId={workshop.id}
+            openOnArrival={openId}
+            onWorldEntry={onWorldEntry}
             variantRules={workshop.gameSettings.variantRules}
             onChanged={onHomebrewChanged}
           />

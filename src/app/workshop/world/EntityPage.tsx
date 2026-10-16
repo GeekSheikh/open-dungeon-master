@@ -13,6 +13,7 @@ import { folderPath } from "@/lib/worldforge/tree";
 import type { WorldEntity } from "@/lib/db/world-forge";
 import type { WorldApi, WorldState } from "./useWorld";
 import { EntityEditor } from "./EntityEditor";
+import { BoundRecords } from "./BoundRecords";
 import type { OpenSystem } from "./WorldForgePanel";
 import { LinkEditor } from "./LinkEditor";
 import { EntityAvatar, SHELF_SYSTEMS, TypeChip, typeOf } from "./world-ui";
@@ -53,7 +54,9 @@ export function EntityPage({
   onOpenSystem,
   canWrite,
   canPaint,
+  campaignId,
 }: {
+  campaignId: string;
   api: WorldApi;
   world: WorldState;
   entity: WorldEntity;
@@ -260,6 +263,13 @@ export function EntityPage({
           An older text from an import is kept beside this entry, because the two say different things. Players never see it. Open Edit to choose between them.
         </p>
       ) : null}
+      <BoundRecords
+        campaignId={campaignId}
+        entity={entity}
+        api={api}
+        loreOnly={entity.shelf === "lore" && type.loreCategory === "magic" && !entity.bound.some((record) => record.kind === "item" && record.found)}
+        onOpenSystem={onOpenSystem}
+      />
 
       {fieldLines(type, entity.entry, doc.calendars, true).length ? (
         <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">

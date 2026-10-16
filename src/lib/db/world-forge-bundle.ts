@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { getWorldDoc, hasWorldDoc, saveWorldDoc } from "@/lib/db/world-forge";
 import { decodeBundleImage } from "@/lib/workshop/bundle";
-import { parseRef, readDoc, refOf, remapDoc, type Shelf } from "@/lib/worldforge/model";
+import { parseRef, readDoc, refOf, remapDoc, type Binding, type Shelf } from "@/lib/worldforge/model";
 import { recordMediaFile } from "@/lib/media-access";
 
 // A workshop's WorldForge inside a workshop bundle. A bundle carries its
@@ -16,7 +16,14 @@ import { recordMediaFile } from "@/lib/media-access";
 
 export type BundleWorld = { doc: Record<string, unknown>; images: Record<string, string>; entryImages: Record<string, string> };
 
-export function worldForBundle(workshopId: string, order: Record<Shelf, string[]>, inline: (path: string) => string): BundleWorld | null {
+// `portable` turns a link to the author's own record into one that travels
+// by name ("homebrew:@monster:Tidewyrm"), or null when it cannot.
+export function worldForBundle(
+  workshopId: string,
+  order: Record<Shelf, string[]>,
+  inline: (path: string) => string,
+  portable: (binding: Binding) => Binding | null = (binding) => binding,
+): BundleWorld | null {
   if (!hasWorldDoc(workshopId)) {
     return null;
   }
@@ -41,14 +48,22 @@ export function worldForBundle(workshopId: string, order: Record<Shelf, string[]
     Object.entries(doc.entries).map(([ref, entry]) => {
       const image = entry.image ? inline(entry.image) : "";
       if (image) entryImages[ref] = image;
-      return [ref, { ...entry, image: "" }];
+      const bindings = entry.bindings.map(portable).filter((binding): binding is Binding => binding !== null);
+      return [ref, { ...entry, image: "", bindings }];
     }),
   );
   return { doc: { ...doc, entries, maps: doc.maps.map((atlas) => ({ ...atlas, image: "" })) }, images, entryImages };
 }
 
 // Returns how many entries, links and events it brought, for the count.
-export function worldFromBundle(workshopId: string, world: BundleWorld, ids: Record<Shelf, string[]>): number {
+// `arrived` names the id a monster or item of the bundle's shelf landed as
+// here (src/lib/db/workshop-bundle-shelf.ts), for an entry's links.
+export function worldFromBundle(
+  workshopId: string,
+  world: BundleWorld,
+  ids: Record<Shelf, string[]>,
+  arrived: (kind: string, name: string) => string | null = () => null,
+): number {
   const land = (ref: string) => {
     const parsed = parseRef(ref);
     const index = parsed && /^#\d+$/.test(parsed.id) ? Number(parsed.id.slice(1)) : -1;
@@ -69,7 +84,19 @@ export function worldFromBundle(workshopId: string, world: BundleWorld, ids: Rec
   doc.maps = doc.maps.map((atlas) => ({ ...atlas, image: write(world.images[atlas.id]) }));
   // A path from the other server names nothing here: an entry keeps a
   // picture only if the bundle carried its bytes.
-  for (const [ref, entry] of Object.entries(doc.entries)) doc.entries[ref] = { ...entry, image: "" };
+  // A link travels by name and lands on the arrived copy; a link to a record
+  // that did not travel is dropped, and a rulebook link stays as it is.
+  const landBinding = (binding: Binding): Binding | null => {
+    const portable = /^homebrew:@(monster|item):(.+)$/.exec(binding.ref);
+    if (portable) {
+      const id = arrived(portable[1], portable[2]);
+      return id ? { kind: binding.kind, ref: `homebrew:${id}` } : null;
+    }
+    return binding.ref.startsWith("homebrew:") ? null : binding;
+  };
+  for (const [ref, entry] of Object.entries(doc.entries)) {
+    doc.entries[ref] = { ...entry, image: "", bindings: entry.bindings.map(landBinding).filter((binding): binding is Binding => binding !== null) };
+  }
   for (const [bundleRef, url] of Object.entries(world.entryImages ?? {})) {
     const ref = land(bundleRef);
     if (ref && doc.entries[ref]) doc.entries[ref] = { ...doc.entries[ref], image: write(url) };

@@ -26,6 +26,7 @@ export function WikiView({
   onOpenSystem,
   canWrite,
   canPaint,
+  campaignId,
 }: {
   api: WorldApi;
   world: WorldState;
@@ -36,6 +37,7 @@ export function WikiView({
   // paint with (src/lib/use-capabilities.ts).
   canWrite: boolean;
   canPaint: boolean;
+  campaignId: string;
 }) {
   const { doc, entities } = world;
   const [query, setQuery] = useState("");
@@ -199,7 +201,7 @@ export function WikiView({
 
       <div className={cn("min-w-0", !open && "hidden md:block")}>
         {open ? (
-          <EntityPage key={open.ref} api={api} world={world} entity={open} onFocus={onFocus} onBack={() => onFocus(null)} onOpenSystem={onOpenSystem} canWrite={canWrite} canPaint={canPaint} />
+          <EntityPage key={open.ref} campaignId={campaignId} api={api} world={world} entity={open} onFocus={onFocus} onBack={() => onFocus(null)} onOpenSystem={onOpenSystem} canWrite={canWrite} canPaint={canPaint} />
         ) : (
           <div className="panel flex min-h-48 flex-col items-center justify-center gap-2 rounded-xl p-6 text-center animate-fade-up">
             <p className="font-display text-lg text-amber-100">The world, entry by entry</p>

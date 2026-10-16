@@ -242,7 +242,7 @@ export function WorldForgePanel({
         {world ? (
           // Keyed by view so the incoming one rises in instead of cutting.
           <div key={view} className="motion-tab">
-            {view === "wiki" ? <WikiView api={api} world={world} focus={focus} onFocus={setFocus} onOpenSystem={onOpenSystem} canWrite={canWrite} canPaint={canPaint} /> : null}
+            {view === "wiki" ? <WikiView campaignId={campaignId} api={api} world={world} focus={focus} onFocus={setFocus} onOpenSystem={onOpenSystem} canWrite={canWrite} canPaint={canPaint} /> : null}
             {view === "forge" ? <ForgeView api={api} world={world} onOpen={open} /> : null}
             {view === "ask" ? <AskView api={api} world={world} onOpen={open} /> : null}
             {view === "web" ? <WebView world={world} focus={focus} onOpen={open} /> : null}
