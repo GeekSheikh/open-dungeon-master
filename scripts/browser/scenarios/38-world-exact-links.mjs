@@ -12,6 +12,10 @@ export default {
     const made = await api.post(`${base}/api/workshops`, { data: { title: "Exact links", description: "" } });
     check(made.ok(), "a workshop for the check");
     const id = (await made.json()).workshop.id;
+    // The tools' first-visit tours open a moment after a tool does, over
+    // whatever is about to be pressed; this check is about links, so they
+    // count as seen on the account before any page loads.
+    await api.post(`${base}/api/profile/tours`, { data: { finished: ["world", "cast", "lore", "factions"].map((tool) => ({ id: `workshop-${tool}`, version: 1, how: "ended" })) } });
     const entities = `${base}/api/campaigns/${id}/world/entities`;
     try {
       // Another member first, so the one asked for is not simply the first row.
