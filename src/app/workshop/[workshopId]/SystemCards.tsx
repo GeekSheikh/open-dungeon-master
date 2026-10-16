@@ -47,12 +47,19 @@ export function SystemCards({
   const total = totalPieces(workshop, bestiary, homebrew, pregens, plugin, world);
   return (
     <section className="mt-5">
-      <div className="mb-3 flex items-center gap-3">
+      <div className="mb-1.5 flex items-center gap-3">
         <Ribbon className="flex-1">Systems</Ribbon>
         <span className="shrink-0 text-xs text-stone-500">
           {total} {total === 1 ? "piece" : "pieces"} of prep
         </span>
       </div>
+      {/* The counts are what is here, not what is missing: a workshop with
+          one good fight in it is finished if one fight is what the game
+          needs. */}
+      <p className="mb-3 text-xs leading-relaxed text-stone-500">
+        Use only the tools your game needs; nothing here has to be filled in before you play. WorldForge, Cast,
+        Region, Factions and Lore are views of the same records, so a change in one shows in all of them.
+      </p>
       <ul className="stagger-up grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5" data-tour="hub-systems">
         {WORKSHOP_SYSTEMS.map((system) => {
           const count = systemCount(system.id, workshop, bestiary, homebrew, pregens, plugin, world);

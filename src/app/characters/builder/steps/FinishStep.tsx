@@ -16,8 +16,10 @@ import type { BuilderState } from "../useBuilderState";
 import { hpExplainerInput } from "./AbilitiesStep";
 import { Chip, Field, StepPanel, inputClass } from "./shared";
 
-// Step 6: the portrait, how they look, their story, extra feats, and the
-// numbers the sheet will open with. The save button is the wizard footer.
+// Step 6: the hero at a glance with a way back to each choice, the numbers
+// the sheet will open with, then the portrait, how they look, their story
+// and extra feats. The save button is the wizard footer.
+export type FinishEditStep = "identity" | "ancestry" | "calling" | "abilities" | "spells-gear";
 export function FinishStep({
   state,
   derived,
@@ -29,6 +31,7 @@ export function FinishStep({
   paintsPortraits,
   onUploadPortrait,
   error,
+  onEdit,
 }: {
   state: BuilderState;
   derived: BuilderDerived;
@@ -43,6 +46,8 @@ export function FinishStep({
   paintsPortraits: boolean;
   onUploadPortrait: () => void;
   error: string;
+  // Back to the step that holds a choice ("identity", "calling"...).
+  onEdit?: (step: FinishEditStep) => void;
 }) {
   const { portrait, setPortrait } = state;
   const { preview, acInfo, ac, effectiveLevel } = derived;
@@ -77,8 +82,80 @@ export function FinishStep({
   // step, issue #124). What is left here is what the character already
   // holds from play, shown so an edit does not lose it unseen.
   const racialFeat = race ? racialFeatCount(race.id) > 0 : false;
+  // The playable character leads: who they are with a way back to each
+  // choice, then the numbers the sheet opens with. Portrait, looks and
+  // story are the finishing touches beneath.
+  const edits: Array<{ step: FinishEditStep; label: string; value: string }> = [
+    { step: "identity", label: "Name and background", value: [state.name.trim() || "Unnamed", background?.name].filter(Boolean).join(" · ") },
+    { step: "ancestry", label: "Ancestry", value: race?.name ?? "Not chosen" },
+    { step: "calling", label: "Class", value: klass ? `${klass.name}${state.subclass ? ` (${state.subclass})` : ""}, level ${effectiveLevel}` : "Not chosen" },
+    { step: "abilities", label: "Ability scores", value: preview ? "Set" : "Not set" },
+    { step: "spells-gear", label: derived.casts ? "Spells and gear" : "Gear", value: derived.casts ? "Chosen" : "Packed" },
+  ];
   return (
     <div className="space-y-4">
+      <StepPanel title="Your hero" ornate className="border-amber-500/30">
+        <ul className="divide-y divide-stone-800/70 text-sm" data-finish-summary>
+          {edits.map((entry) => (
+            <li key={entry.step} className="flex items-center gap-3 py-1.5">
+              <span className="w-32 shrink-0 text-xs text-stone-500">{entry.label}</span>
+              <span className="min-w-0 flex-1 truncate text-stone-200">{entry.value}</span>
+              {onEdit ? (
+                <button type="button" onClick={() => onEdit(entry.step)} className={cn(ui.btnSmall, "shrink-0 px-2 py-0.5 text-xs")}>
+                  Edit
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </StepPanel>
+
+      {preview && race ? (
+        <StepPanel title="Derived stats" ornate className="border-amber-500/30">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm text-stone-300 sm:grid-cols-4">
+            <Field
+              label={
+                <span className="flex items-center gap-0.5">
+                  Max HP
+                  {hp ? <HpExplainerButton hp={hp} compact /> : null}
+                </span>
+              }
+            >
+              <span key={hpLine?.value} className="reveal font-mono text-base text-amber-100">
+                {hpLine?.value}
+              </span>
+              <span className="mt-1 block text-[11px] text-stone-500">{hpLine?.reason}</span>
+            </Field>
+            <Field label="AC">
+              <span key={acLine.value} className="reveal font-mono text-base text-amber-100">
+                {acLine.value}
+              </span>
+              <span className="mt-1 block text-[11px] text-stone-500">{acLine.reason}</span>
+            </Field>
+            <Field label="Gold" className="col-span-2">
+              <span key={`${purse.gold}-${purse.copper}`} className="reveal font-mono text-base text-amber-100">
+                {purse.gold} gp{purse.copper ? ` ${purse.copper} cp` : ""}
+              </span>
+              <span className="mt-1 block text-[11px] text-stone-500">
+                {purse.wealth?.rolled
+                  ? `Rolled by the server: ${purse.wealth.rolled.gold} gp on ${purse.wealth.dice}. `
+                  : ""}
+                {purse.source}
+              </span>
+            </Field>
+            <span className="self-end">Speed {race.speed} ft</span>
+            <span className="self-end">Prof {formatModifier(proficiencyBonus(effectiveLevel))}</span>
+            <span>Initiative {formatModifier(preview.derived.initiative)}</span>
+            <span>Passive Perception {preview.derived.passivePerception}</span>
+            {preview.derived.spellSaveDc ? <span>Spell DC {preview.derived.spellSaveDc}</span> : null}
+            {preview.derived.spellAttack !== null ? (
+              <span>Spell attack {formatModifier(preview.derived.spellAttack)}</span>
+            ) : null}
+          </div>
+        </StepPanel>
+      ) : null}
+
+
       <StepPanel title="Portrait (optional)" ornate>
         <div className="flex items-center gap-3">
           {portrait?.url ? (
@@ -179,51 +256,6 @@ export function FinishStep({
           </button>
         </p>
       ) : null}
-      {preview && race ? (
-        <StepPanel title="Derived stats" ornate className="border-amber-500/30">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm text-stone-300 sm:grid-cols-4">
-            <Field
-              label={
-                <span className="flex items-center gap-0.5">
-                  Max HP
-                  {hp ? <HpExplainerButton hp={hp} compact /> : null}
-                </span>
-              }
-            >
-              <span key={hpLine?.value} className="reveal font-mono text-base text-amber-100">
-                {hpLine?.value}
-              </span>
-              <span className="mt-1 block text-[11px] text-stone-500">{hpLine?.reason}</span>
-            </Field>
-            <Field label="AC">
-              <span key={acLine.value} className="reveal font-mono text-base text-amber-100">
-                {acLine.value}
-              </span>
-              <span className="mt-1 block text-[11px] text-stone-500">{acLine.reason}</span>
-            </Field>
-            <Field label="Gold" className="col-span-2">
-              <span key={`${purse.gold}-${purse.copper}`} className="reveal font-mono text-base text-amber-100">
-                {purse.gold} gp{purse.copper ? ` ${purse.copper} cp` : ""}
-              </span>
-              <span className="mt-1 block text-[11px] text-stone-500">
-                {purse.wealth?.rolled
-                  ? `Rolled by the server: ${purse.wealth.rolled.gold} gp on ${purse.wealth.dice}. `
-                  : ""}
-                {purse.source}
-              </span>
-            </Field>
-            <span className="self-end">Speed {race.speed} ft</span>
-            <span className="self-end">Prof {formatModifier(proficiencyBonus(effectiveLevel))}</span>
-            <span>Initiative {formatModifier(preview.derived.initiative)}</span>
-            <span>Passive Perception {preview.derived.passivePerception}</span>
-            {preview.derived.spellSaveDc ? <span>Spell DC {preview.derived.spellSaveDc}</span> : null}
-            {preview.derived.spellAttack !== null ? (
-              <span>Spell attack {formatModifier(preview.derived.spellAttack)}</span>
-            ) : null}
-          </div>
-        </StepPanel>
-      ) : null}
-
       {error ? (
         // Every reason the server gave, not just the first (U:UB8).
         error.includes("\n") ? (

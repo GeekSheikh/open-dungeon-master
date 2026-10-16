@@ -389,6 +389,8 @@ function CharacterBuilderForm({
   };
   const casts = derived.casts;
 
+  // The steps' keys in order, for the finishing step's Edit links.
+  const STEP_ORDER = ["identity", "ancestry", "calling", "abilities", "spells-gear", "finish"];
   const steps: WizardStep[] = [
     {
       key: "identity",
@@ -507,6 +509,7 @@ function CharacterBuilderForm({
           paintsPortraits={paintsPortraits}
           onUploadPortrait={() => setCropping(true)}
           error={state.localError || error}
+          onEdit={(key) => setStep(STEP_ORDER.indexOf(key))}
         />
       ),
     },

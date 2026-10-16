@@ -19,6 +19,7 @@ import type { ArchetypeOption, BackgroundOption, ClassOption, RaceOption } from 
 import type { BuilderActions, BuilderDerived } from "../useBuilderDerived";
 import type { BuilderState } from "../useBuilderState";
 import { ClassChoices } from "./ClassChoices";
+import { PlaystylePicker } from "../PlaystylePicker";
 import FeatChoicesFields, { knownTraining } from "../FeatChoicesFields";
 import { Field, PickPill, StepPanel, inputClass } from "./shared";
 
@@ -183,7 +184,20 @@ export function CallingStep({
   return (
     <div className="space-y-4">
       <StepPanel title="Choose a class" ornate anchor="class">
-        <Field label="Class">
+        {/* A plain-language way in, above the full catalog it points into.
+            "Easy to learn" there and the setting's star in the grid mean
+            different things: one is about play, the other about the world. */}
+        <PlaystylePicker
+          offered={classGroups.flatMap((group) =>
+            group.options.map((option) => {
+              const reading = readings.get(option.id);
+              return { id: option.id, name: option.name, roles: reading?.roles ?? [], playsLike: reading?.playsLike ?? "" };
+            }),
+          )}
+          chosen={klass?.id ?? ""}
+          onChoose={state.changeClass}
+        />
+        <Field label="Class" className="mt-4">
           {klass ? (
             <span className="mb-3 flex flex-wrap items-center gap-x-1 text-xs text-stone-500">
               <span className="text-amber-200">{klass.name}:</span>{" "}
