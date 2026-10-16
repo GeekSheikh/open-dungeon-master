@@ -40,6 +40,53 @@ export type EquipmentItem = { name: string; qty: number; slug?: string; priceCp?
 // the player has seen it, or when nothing was dropped.
 export type DroppedNotice = { because: string; drops: DroppedPick[] };
 
+// Every pick a new character's draft keeps on this device (builderDraft.ts):
+// the builder's own fields, without the notices and one-shot acknowledgements.
+export type BuilderDraftFields = {
+  name: string;
+  alignment: string;
+  level: number;
+  raceId: string;
+  classId: string;
+  subclass: string;
+  backgroundId: string;
+  method: AbilityMethod;
+  scores: AbilityState;
+  rollPool: PoolEntry[] | null;
+  rollSlots: PoolSlots<Ability>;
+  chosenSkills: string[];
+  expertisePicks: string[];
+  stylePicks: FightingStyleId[];
+  spells: string[];
+  bookPrepared: string[];
+  cantrips: string[];
+  equipment: EquipmentItem[];
+  removedAutoNames: string[];
+  kitChoices: KitChoices;
+  feats: string[];
+  featChoices: FeatChoices;
+  asiChoices: Array<AsiChoice | null>;
+  bonusLanguages: string[];
+  racialAsi: Array<Ability | "">;
+  racialSkills: string[];
+  racialCantrip: string;
+  racialTool: string;
+  racialAncestry: string;
+  racialFeatAbility: Ability | "";
+  toolPicks: string[];
+  repeatSkills: string[];
+  backgroundSkills: string[];
+  backgroundGearPicks: string[];
+  optionPicks: string[];
+  backstory: string;
+  gender: Gender;
+  appearance: string;
+  portrait: SheetAttachment | null;
+  gold: number;
+  hpOverride: number | null;
+  acOverride: number | null;
+};
+
 // Every field the character builder edits, in one hook so the wizard steps
 // can share it without the orchestrator re-declaring forty useStates. The
 // shape of each value is exactly what the old single-file builder held; the
@@ -498,7 +545,102 @@ export function useBuilderState({
   const keepsStoredGear =
     Boolean(initial) && classId === initial?.class && backgroundId === initial?.background;
 
+  // Put back an unfinished character saved on this device. Every pick is
+  // set as it was, without the reconcile a change runs: they were
+  // checked against each other when they were made. The table's level
+  // wins over the draft's.
+  function restoreDraft(draft: BuilderDraftFields) {
+    setName(draft.name);
+    setAlignment(draft.alignment);
+    setLevel(fixedLevel ?? draft.level);
+    setRaceId(draft.raceId);
+    setClassId(draft.classId);
+    setSubclass(draft.subclass);
+    setBackgroundId(draft.backgroundId);
+    setMethod(draft.method);
+    setScores(draft.scores);
+    setRollPool(draft.rollPool);
+    setRollSlots(draft.rollSlots);
+    setChosenSkills(draft.chosenSkills);
+    setExpertisePicks(draft.expertisePicks);
+    setStylePicks(draft.stylePicks);
+    setSpells(draft.spells);
+    setBookPrepared(draft.bookPrepared);
+    setCantrips(draft.cantrips);
+    setEquipment(draft.equipment);
+    setRemovedAutoNames(draft.removedAutoNames);
+    setKitChoices(draft.kitChoices);
+    setFeats(draft.feats);
+    setFeatChoices(draft.featChoices);
+    setAsiChoices(draft.asiChoices);
+    setBonusLanguages(draft.bonusLanguages);
+    setRacialAsi(draft.racialAsi);
+    setRacialSkills(draft.racialSkills);
+    setRacialCantrip(draft.racialCantrip);
+    setRacialTool(draft.racialTool);
+    setRacialAncestry(draft.racialAncestry);
+    setRacialFeatAbility(draft.racialFeatAbility);
+    setToolPicks(draft.toolPicks);
+    setRepeatSkills(draft.repeatSkills);
+    setBackgroundSkills(draft.backgroundSkills);
+    setBackgroundGearPicks(draft.backgroundGearPicks);
+    setOptionPicks(draft.optionPicks);
+    setBackstory(draft.backstory);
+    setGender(draft.gender);
+    setAppearance(draft.appearance);
+    setPortrait(draft.portrait);
+    setGold(draft.gold);
+    setHpOverride(draft.hpOverride);
+    setAcOverride(draft.acOverride);
+  }
+  const draftFields: BuilderDraftFields = {
+    name,
+    alignment,
+    level,
+    raceId,
+    classId,
+    subclass,
+    backgroundId,
+    method,
+    scores,
+    rollPool,
+    rollSlots,
+    chosenSkills,
+    expertisePicks,
+    stylePicks,
+    spells,
+    bookPrepared,
+    cantrips,
+    equipment,
+    removedAutoNames,
+    kitChoices,
+    feats,
+    featChoices,
+    asiChoices,
+    bonusLanguages,
+    racialAsi,
+    racialSkills,
+    racialCantrip,
+    racialTool,
+    racialAncestry,
+    racialFeatAbility,
+    toolPicks,
+    repeatSkills,
+    backgroundSkills,
+    backgroundGearPicks,
+    optionPicks,
+    backstory,
+    gender,
+    appearance,
+    portrait,
+    gold,
+    hpOverride,
+    acOverride,
+  };
+
   return {
+    draftFields,
+    restoreDraft,
     keepsStoredGear,
     levelFloor,
     levelLocked,
