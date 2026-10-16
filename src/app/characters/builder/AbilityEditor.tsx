@@ -1,7 +1,7 @@
 "use client";
 
 import { Dices } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
 import { GameTerm } from "@/components/ui/GameTerm";
 import { CountPop } from "@/components/ui/Reveal";
 import { cn } from "@/lib/cn";
@@ -150,6 +150,7 @@ export default function AbilityEditor({
   // the server has answered.
   const [rerollBelow, setRerollBelow] = useState(REROLL_BELOW);
   const words = rerollWords(rerollBelow, Boolean(campaignId));
+  const poolNoteId = useId();
   function learnRule(answer: { rerollBelow: number }) {
     setRerollBelow(answer.rerollBelow);
   }
@@ -371,10 +372,17 @@ export default function AbilityEditor({
               <button
                 type="button"
                 onClick={throwPool}
-                disabled={anyRolling || asking || !rerollOpen}
+                // A closed reroll stays in the tab order (aria-disabled) and
+                // points at the note under the tray that says why it is shut.
+                disabled={anyRolling || asking}
+                aria-disabled={!rerollOpen || undefined}
+                aria-describedby={poolNoteId}
                 aria-busy={asking}
                 title={rerollOpen ? words.openTitle : words.closedTitle}
-                className={cn(ui.btnSmall, "ml-auto px-2.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40")}
+                className={cn(
+                  ui.btnSmall,
+                  "ml-auto px-2.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-40 aria-disabled:cursor-not-allowed aria-disabled:opacity-40",
+                )}
               >
                 <Dices className="size-3.5" /> Reroll
               </button>
@@ -462,7 +470,7 @@ export default function AbilityEditor({
                   );
                 })}
               </div>
-              <p className="pool-note" aria-live="polite">
+              <p id={poolNoteId} className="pool-note" aria-live="polite">
                 {anyRolling ? (
                   "The dice are in the air…"
                 ) : (
@@ -592,7 +600,11 @@ export default function AbilityEditor({
                   className="pool-socket"
                   data-filled={slot !== null || undefined}
                   data-held={slot !== null && held === slot ? true : undefined}
-                  disabled={!pool || anyRolling || (slot === null && held === null)}
+                  // An empty socket with nothing in hand stays reachable
+                  // (aria-disabled) and its name says what to do first.
+                  disabled={!pool || anyRolling}
+                  aria-disabled={(slot === null && held === null) || undefined}
+                  aria-describedby={pool ? poolNoteId : undefined}
                   draggable={slot !== null && !anyRolling}
                   onClick={() => tapSocket(ability)}
                   onDragStart={slot !== null ? (event) => startDrag(event, slot) : undefined}
@@ -605,7 +617,7 @@ export default function AbilityEditor({
                       ? `${label} holds ${assigned}. ${held === slot ? "Tap again to send it back to the tray" : held !== null ? "Tap to swap" : "Tap to pick it up"}`
                       : held !== null
                         ? `Place the held throw on ${label}`
-                        : `${label} is empty`
+                        : `${label} is empty. Pick up a throw from the tray first, then place it here`
                   }
                 >
                   {slot !== null && assigned !== null ? (
