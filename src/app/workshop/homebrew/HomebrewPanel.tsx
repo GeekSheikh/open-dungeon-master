@@ -21,6 +21,7 @@ import { blankDraft, copyName, draftFromCatalog, type HomebrewDraft } from "@/ap
 import { CONTENT_KIND } from "@/app/workshop/homebrew/CatalogStart";
 import type { PickerEntry } from "@/app/characters/builder/useContentSearch";
 import { useSearchParams } from "next/navigation";
+import { LinkedEntries, useOpenOnArrival } from "@/app/workshop/world/WorldEntryLink";
 import {
   HOMEBREW_EDITOR_KINDS,
   KIND_BLURB,
@@ -38,9 +39,18 @@ import {
 export function HomebrewPanel({
   variantRules,
   onChanged,
+  campaignId,
+  openOnArrival,
+  onWorldEntry,
 }: {
   variantRules: Partial<VariantRules>;
   onChanged?: () => void;
+  // In the workshop only: the workshop, the entry to open on arrival by id,
+  // and the way to a World entry that links to it
+  // (src/app/workshop/world/WorldEntryLink.tsx).
+  campaignId?: string;
+  openOnArrival?: string | null;
+  onWorldEntry?: (ref: string) => void;
 }) {
   const [entries, setEntries] = useState<HomebrewEntryView[]>([]);
   const [kind, setKind] = useState<EditorKind>("item");
@@ -158,6 +168,11 @@ export function HomebrewPanel({
     sort,
     (entry) => entry.name,
   );
+
+  useOpenOnArrival(openOnArrival, loaded ? entries : null, (entry) => {
+    setKind(entry.kind as EditorKind);
+    open(entry);
+  });
 
   function open(entry: HomebrewEntryView) {
     setError("");
@@ -402,6 +417,9 @@ export function HomebrewPanel({
         title={editing?.id ? editing.draft.name || KIND_SINGULAR[kind] : `New ${KIND_SINGULAR[editing?.draft.kind ?? kind]}`}
         className="top-0 h-dvh max-h-none rounded-none pt-[max(0.5rem,env(safe-area-inset-top))] lg:top-1/2 lg:h-auto lg:max-h-[92vh] lg:w-[min(96vw,56rem)] lg:rounded-xl"
       >
+        {editing?.id && editing.draft.kind === "item" && campaignId && onWorldEntry ? (
+          <LinkedEntries campaignId={campaignId} kind="item" record={`homebrew:${editing.id}`} onWorldEntry={onWorldEntry} />
+        ) : null}
         {editing ? (
           <div className="reveal overflow-y-auto pb-2">
             <HomebrewEditor
