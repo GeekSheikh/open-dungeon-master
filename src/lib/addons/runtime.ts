@@ -312,7 +312,7 @@ export async function stopAddon(id: string): Promise<void> {
   const entry = await existing.catch(() => null);
   if (entry) {
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
-    entry.client.kill();
+    await entry.client.stop();
     addonLog(id, "stopped by the server");
   }
 }

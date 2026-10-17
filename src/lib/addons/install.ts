@@ -122,6 +122,23 @@ function preflight(manifest: AddonManifest, source: InstallSource, expected: Exp
 
 type Staged = { ok: true; contentSha256: string } | { ok: false; status: number; error: string };
 
+// Windows refuses to move a folder while anything still holds a file in it
+// (EBUSY/EPERM): a program that has just been told to stop, an indexer, a
+// virus scanner. The move is tried again for a few seconds before it fails.
+async function renameWhenFree(from: string, to: string): Promise<void> {
+  const codes = new Set(["EBUSY", "EPERM", "ENOTEMPTY", "EACCES"]);
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      if (!codes.has(code) || attempt >= 20) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 50 + attempt * 50));
+    }
+  }
+}
+
 // Puts the files beside the live copy with `stage`, checks them, and only
 // then swaps them in. All or nothing.
 async function stageAndSwap(
@@ -144,8 +161,8 @@ async function stageAndSwap(
     // The running copy is stopped before its folder moves.
     await stopAddon(manifest.id);
     const updated = existsSync(plan.target);
-    if (updated) await rename(plan.target, retired);
-    await rename(staging, plan.target);
+    if (updated) await renameWhenFree(plan.target, retired);
+    await renameWhenFree(staging, plan.target);
     await mkdir(plan.dataDir, { recursive: true });
     // A replacement from somewhere else is new code: it starts switched off
     // and asks for its permissions again. Its settings and data folder stay,

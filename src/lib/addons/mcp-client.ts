@@ -37,6 +37,13 @@ export class McpClient {
   private readonly byToken = new Map<string, number>();
   private nextId = 1;
   private exited = false;
+  private settleExit: () => void = () => undefined;
+  // Settles once the program has exited; stop() waits on it so the addon's
+  // folder can be moved or deleted right after (Windows holds a running
+  // program's folder, EBUSY).
+  readonly exit: Promise<void> = new Promise((resolve) => {
+    this.settleExit = resolve;
+  });
   readonly program: SpawnedProgram;
   serverInfo: { name: string; version: string } = { name: "", version: "" };
   protocolVersion = "";
@@ -65,6 +72,7 @@ export class McpClient {
         this.pending.clear();
         this.byToken.clear();
         this.handlers.onExit(code, tail);
+        this.settleExit();
       },
     });
     // stderr is the addon's own log; the client relays it a line at a time.
@@ -225,5 +233,21 @@ export class McpClient {
 
   kill() {
     this.program.kill();
+  }
+
+  // Kills the program and waits for it to be gone, up to `timeoutMs` (the
+  // program gets SIGTERM, then SIGKILL after three seconds).
+  async stop(timeoutMs = 5_000): Promise<void> {
+    this.kill();
+    if (this.exited) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    await Promise.race([
+      this.exit,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, timeoutMs);
+        timer.unref?.();
+      }),
+    ]);
+    if (timer) clearTimeout(timer);
   }
 }

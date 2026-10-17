@@ -26,7 +26,8 @@ const schema = {
 const text = `${JSON.stringify(schema, null, 2)}\n`;
 
 if (process.argv.includes("--check")) {
-  const current = fs.existsSync(out) ? fs.readFileSync(out, "utf8") : "";
+  // A Windows checkout may hand the file back with CRLF line ends.
+  const current = fs.existsSync(out) ? fs.readFileSync(out, "utf8").replace(/\r\n/g, "\n") : "";
   if (current !== text) {
     console.error("docs/addons/addon.schema.json is stale: run node scripts/build-addon-schema.mjs");
     process.exit(1);
