@@ -162,6 +162,12 @@ export default {
     check(/\*\*_Draconic Ancestry\._\*\*/.test(written) && /\*\*_Breath Weapon/.test(written), `the traits were written in the book's words: ${JSON.stringify(written.slice(0, 120))}`);
     const note = page.locator(`${root}[data-draconic-note]`).locator("visible=true").first();
     await eventually(async () => /breath weapon's damage and save/.test(await note.innerText().catch(() => "")), { label: "the editor saying the player picks a dragon" });
+    // A resistance is picked too, written as the trait name the damage
+    // engine reads, and the editor says what the table will resist.
+    await page.getByRole("combobox", { name: "Add a resistance" }).locator("visible=true").first().selectOption("fire");
+    const resists = page.locator(`${root}[data-species-resists]`).locator("visible=true").first();
+    await eventually(async () => /Resists at the table: fire\./.test(await resists.innerText().catch(() => "")), { label: "the editor naming the resistance" });
+    check(/\*\*_Fire Resistance\._\*\*/.test(await traitsBox.inputValue()), "the picked resistance is a trait named as the table reads it");
     await t.shot("species-draconic");
     await page.keyboard.press("Escape");
 

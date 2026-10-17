@@ -20,7 +20,8 @@ const { packRaceOptions } = await import("../src/lib/content/race-options.ts");
 const { sizeForRace, speedFor } = await import("../src/lib/srd/index.ts");
 const { innateCantripsFor, takesDraconicAncestry } = await import("../src/lib/srd/racial-grants.ts");
 const { populateResources } = await import("../src/lib/srd/class-resources.ts");
-const { publishedTraits, withTrait } = await import("../src/lib/workshop/species-traits.ts");
+const { publishedTraits, resistanceTrait, withTrait } = await import("../src/lib/workshop/species-traits.ts");
+const { pcResistances } = await import("../src/lib/dm/pc-defenses.ts");
 const { traitSaveAdvantages } = await import("../src/lib/srd/trait-rules.ts");
 
 // The SRD's rows, so the suite runs the same with or without the pack.
@@ -68,6 +69,15 @@ let halfDragonTraits = "**_Scaled Hide._** Your scales turn the first blow of a 
 for (const name of ["Draconic Ancestry", "Breath Weapon", "Draconic Ancestry"]) {
   halfDragonTraits = withTrait(halfDragonTraits, published.find((trait) => trait.name === name));
 }
+// A species whose fire resistance was picked in the editor rather than
+// named from memory.
+const emberkin = await brew("Emberkin", {
+  asi: [{ attributes: ["Charisma"], value: 2 }, { attributes: ["Dexterity"], value: 1 }],
+  speed: { walk: 30 },
+  size: "Medium",
+  languages: ["Common"],
+  traits: withTrait("**_Ember Blood._** Your veins run hot.", resistanceTrait("fire")),
+});
 const halfDragon = await brew("Half-Dragon", {
   asi: [{ attributes: ["Strength"], value: 2 }, { attributes: ["Constitution"], value: 1 }],
   speed: { walk: 30 },
@@ -163,6 +173,11 @@ await test("A species of the DM's own that picks Draconic Ancestry and Breath We
   assert.equal(takesDraconicAncestry(dragon.race), true, "the Half-Dragon asks for no ancestry");
   const counters = Object.keys(populateResources(halfDragon.features, 5, { con: 1 }));
   assert.ok(counters.includes("breath_weapon"), `no breath weapon among ${counters}`);
+});
+
+await test("A resistance picked in the species editor is resisted at the table.", async () => {
+  assert.match(pcResistances(become(emberkin)), /\bfire\b/, "the Emberkin does not resist fire");
+  assert.doesNotMatch(pcResistances(become(plainsfolk)), /\bfire\b/);
 });
 
 await test("A content-pack species is the size its text says (Tome of Heroes' Derro: \"Your size is Small.\").", async () => {

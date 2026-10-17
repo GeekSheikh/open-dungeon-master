@@ -1,4 +1,6 @@
 import { raceMechanics } from "@/lib/content/mechanics";
+import { DAMAGE_TYPES } from "@/lib/dm/damage-logic";
+import { pcResistances } from "@/lib/dm/pc-defenses";
 import { byName } from "@/lib/language/text-logic";
 
 // The traits a workshop species can borrow from the published ones: the
@@ -51,6 +53,36 @@ export function publishedTraits(rows: Array<{ name: string; traits: string }>): 
 // the server read them (raceMechanics).
 export function heldTraitNames(traits: string): string[] {
   return raceMechanics({ traits }).traitNames;
+}
+
+// The damage a species resists at the table, read off its trait names the
+// way the damage engine reads them (src/lib/dm/pc-defenses.ts): "Fire
+// Resistance", "Celestial Resistance (necrotic and radiant)", Hellish
+// Resistance. A trait's words alone resist nothing there.
+export function resistedByTraits(traits: string): string[] {
+  const held = pcResistances({ race: "", features: heldTraitNames(traits).map((name) => ({ name })) });
+  return held ? held.split(", ") : [];
+}
+
+// A resistance as a trait named the way the damage engine reads it.
+export function resistanceTrait(type: string): Pick<PublishedTrait, "name" | "text"> {
+  return { name: `${type.charAt(0).toUpperCase()}${type.slice(1)} Resistance`, text: `You have resistance to ${type} damage.` };
+}
+
+// Traits whose words resist a damage type their names do not carry
+// ("**_Ember Blood._** You have resistance to fire damage."), which the
+// table would never apply.
+export function unreadResistances(traits: string): Array<{ trait: string; types: string[] }> {
+  const read = new Set(resistedByTraits(traits));
+  const out: Array<{ trait: string; types: string[] }> = [];
+  for (const [trait, text] of traitParagraphs(traits)) {
+    const said = [...text.toLowerCase().matchAll(/\bresistan(?:ce|t) (?:to|against) ([^.;]*?) damage\b/g)].flatMap((clause) =>
+      DAMAGE_TYPES.filter((type) => new RegExp(`\\b${type}\\b`).test(clause[1])),
+    );
+    const types = [...new Set(said)].filter((type) => !read.has(type));
+    if (types.length) out.push({ trait, types });
+  }
+  return out;
 }
 
 // The text with one trait more, in the book's words, unless the species

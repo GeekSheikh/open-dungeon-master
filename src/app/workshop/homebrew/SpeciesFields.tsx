@@ -16,7 +16,9 @@ import { addChip, rowIcon } from "@/app/workshop/kit";
 import { SpeciesTraitPicker } from "@/app/workshop/homebrew/SpeciesTraitPicker";
 import type { Data } from "@/app/workshop/homebrew/draft";
 import { speciesHoldsTrait } from "@/lib/srd/race-id";
-import { heldTraitNames } from "@/lib/workshop/species-traits";
+import { heldTraitNames, resistanceTrait, resistedByTraits, withTrait } from "@/lib/workshop/species-traits";
+import { DAMAGE_TYPES } from "@/lib/dm/damage-logic";
+import { AddFromList } from "@/components/ui/AddFromList";
 
 // A species: the numbers the builder reads (scores, speed, size, languages),
 // the structured grants the SRD's races carry (skills, tools, weapon and
@@ -241,22 +243,45 @@ export function SpeciesFields({ data, set }: Props) {
           maxLength={6000}
           hint="One trait per paragraph, its name in bold. A trait picked above, or named like a published one (Draconic Ancestry, Dwarven Toughness, Lucky, Infernal Legacy), is run by the engine at the table."
         />
+        <Resistances traits={String(data.traits ?? "")} onChange={(traits) => set({ traits })} />
         <DraconicNote traits={String(data.traits ?? "")} />
       </div>
     </div>
   );
 }
 
+// The damage the species resists at the table, and a pick for another. The
+// damage engine reads a resistance from a trait's name ("Fire Resistance"),
+// so a pick writes the trait that way, where it stays editable.
+function Resistances({ traits, onChange }: { traits: string; onChange: (traits: string) => void }) {
+  const resisted = resistedByTraits(traits);
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-[11px] text-stone-400" data-species-resists>
+      <span>{resisted.length ? `Resists at the table: ${resisted.join(", ")}.` : "Resists no damage at the table."}</span>
+      <AddFromList
+        prompt="Add a resistance"
+        options={DAMAGE_TYPES.filter((type) => !resisted.includes(type))}
+        onPick={(type) => onChange(withTrait(traits, resistanceTrait(type)))}
+      />
+    </div>
+  );
+}
+
 // A species with the Dragonborn's ancestry (a Half-Dragon, say): what the
-// player will be asked, and the breath that goes with it.
+// player will be asked, and the breath that goes with it. A breath with no
+// ancestry has no damage type of its own.
 function DraconicNote({ traits }: { traits: string }) {
   const rules = { traitNames: heldTraitNames(traits) };
-  if (!speciesHoldsTrait(rules, "draconic ancestry")) return null;
+  const ancestry = speciesHoldsTrait(rules, "draconic ancestry");
+  const breath = speciesHoldsTrait(rules, "breath weapon");
+  if (!ancestry && !breath) return null;
   return (
     <p className="live-in text-[11px] text-stone-400" data-draconic-note>
-      {speciesHoldsTrait(rules, "breath weapon")
+      {ancestry && breath
         ? "A player building this species picks a dragon: it sets their breath weapon's damage and save, and the damage they resist."
-        : "A player building this species picks a dragon: it sets the damage they resist. Add Breath Weapon above to give them the breath too."}
+        : ancestry
+          ? "A player building this species picks a dragon: it sets the damage they resist. Add Breath Weapon above to give them the breath too."
+          : "Breath Weapon takes its damage and save from a dragon: add Draconic Ancestry above so the player picks one."}
     </p>
   );
 }
