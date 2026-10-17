@@ -229,3 +229,38 @@ export function pickKitSlot(current: KitChoices, index: number, name: string): K
   picks[index] = name;
   return { options: current.options.slice(), picks };
 }
+
+// The item names one line of the kit gives for the choices taken: the
+// option's own items and the weapons named for its open slots.
+export function kitLineNames(kit: ClassKit, current: Partial<KitChoices> | null | undefined, line: number): string[] {
+  const { options, picks } = resolveKit(kit, current, { armor: [], weapons: [] }).choices;
+  const option = kit.lines[line]?.options[options[line]];
+  if (!option) {
+    return [];
+  }
+  const { start, slots } = kitSlotsByLine(kit, options)[line];
+  return [...option.items.map((item) => item.name), ...picks.slice(start, start + slots.length)];
+}
+
+// The line an open slot belongs to, by its place in `picks`; -1 if none.
+export function kitLineOfSlot(kit: ClassKit, current: Partial<KitChoices> | null | undefined, index: number): number {
+  const { options } = resolveKit(kit, current, { armor: [], weapons: [] }).choices;
+  return kitSlotsByLine(kit, options).findIndex(({ start, slots }) => index >= start && index < start + slots.length);
+}
+
+// The kit items a player removed, after one line's choice changes: that
+// line's items come back, from before the change and after it, since the
+// choice is about them. Every other removal stands.
+export function removedAfterKitChange(
+  kit: ClassKit,
+  before: Partial<KitChoices> | null | undefined,
+  after: Partial<KitChoices> | null | undefined,
+  line: number,
+  removed: string[],
+): string[] {
+  if (line < 0) {
+    return removed;
+  }
+  const restored = new Set([...kitLineNames(kit, before, line), ...kitLineNames(kit, after, line)].map(lower));
+  return removed.filter((name) => !restored.has(lower(name)));
+}

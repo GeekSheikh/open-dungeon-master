@@ -80,3 +80,22 @@ export function visiblePanelTabs({
   }
   return tabs;
 }
+
+// The phone's bottom bar has room for the Table cell, five tabs and More.
+// The tabs a seat uses most stay on the bar (the DM's console and the lead's
+// desk because work waits in them, the board while a fight is on, then the
+// party, the story and chat); the rest are one tap away under More, which
+// lists every one of them, so nothing has to be found by scrolling sideways.
+export const PHONE_BAR_SLOTS = 5;
+const PHONE_PRIORITY: TableTabId[] = ["dm", "lead", "battle", "party", "story", "chat", "map", "notes", "context", "settings"];
+
+export function phoneBarSplit(tabs: TableTabId[]): { bar: TableTabId[]; more: TableTabId[] } {
+  // Six fit as they are; More would only hide one tab behind a second tap.
+  if (tabs.length <= PHONE_BAR_SLOTS + 1) {
+    return { bar: [...tabs], more: [] };
+  }
+  const keep = new Set(
+    [...tabs].sort((a, b) => PHONE_PRIORITY.indexOf(a) - PHONE_PRIORITY.indexOf(b)).slice(0, PHONE_BAR_SLOTS),
+  );
+  return { bar: tabs.filter((tab) => keep.has(tab)), more: tabs.filter((tab) => !keep.has(tab)) };
+}

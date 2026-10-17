@@ -75,7 +75,37 @@ export type Entry = {
   // The entity's id in a WorldForge export, so a second import of the same
   // world updates rather than duplicates.
   wfId: string;
+  // The playable records this entry stands for (audit finding WF-17): a
+  // creature's stat block in the Bestiary, an artifact's item in Homebrew.
+  // A reference, never a copy: the record keeps its own store and rules.
+  bindings: Binding[];
 };
+
+// A World entry's link to a playable record. The ref is the one the rest of
+// the app already uses for that record: "homebrew:<id>" for the author's
+// own, a content-pack slug for the rulebook's. Inside a workshop bundle
+// only, a homebrew ref travels by name as "homebrew:@<kind>:<name>" and
+// lands as the arrived copy's id (src/lib/db/world-forge-bundle.ts).
+export const BINDING_KINDS = ["monster", "item"] as const;
+export type BindingKind = (typeof BINDING_KINDS)[number];
+export type Binding = { kind: BindingKind; ref: string };
+export const BINDINGS_MAX = 8;
+const BINDING_REF = /^(?:homebrew:[\w-]{1,80}|homebrew:@(?:monster|item):[^:\r\n]{1,80}|[a-z0-9][a-z0-9-]{0,79})$/;
+
+export function readBindings(value: unknown): Binding[] {
+  const seen = new Set<string>();
+  const out: Binding[] = [];
+  for (const item of list(value, BINDINGS_MAX * 2)) {
+    const raw = rec(item);
+    const kind = oneOf(raw.kind, BINDING_KINDS, "monster");
+    const ref = typeof raw.ref === "string" ? raw.ref.trim() : "";
+    if (raw.kind !== kind || !BINDING_REF.test(ref) || seen.has(`${kind}|${ref}`)) continue;
+    seen.add(`${kind}|${ref}`);
+    out.push({ kind, ref });
+    if (out.length >= BINDINGS_MAX) break;
+  }
+  return out;
+}
 
 export const VERACITIES = ["known", "hidden", "believed"] as const;
 export type Veracity = (typeof VERACITIES)[number];
@@ -313,6 +343,7 @@ export function readEntry(value: unknown): Entry {
     tags: strings(raw.tags, 8, 40),
     image: uploadedPath(raw.image),
     wfId: str(raw.wfId, 80),
+    bindings: readBindings(raw.bindings),
   };
 }
 
@@ -449,13 +480,15 @@ export function readDoc(value: unknown): WorldDoc {
   return doc;
 }
 
-// The type an entry reads as: its own, else the first type on its shelf.
+// The type an entry reads as: its own, else its shelf's plainest. The lore
+// shelf keeps several types, and an untyped lore entry (one made in the Lore
+// tool and never typed in WorldForge) used to read as the first of them,
+// Artifact, which says an item exists where none does (audit WF-08). It
+// reads as the shelf's "other" type, when the world still has one.
 export function typeFor(doc: Pick<WorldDoc, "types">, shelf: Shelf, typeId: string): WorldType {
-  return (
-    doc.types.find((type) => type.id === typeId && type.shelf === shelf) ??
-    doc.types.find((type) => type.shelf === shelf) ??
-    defaultTypes().find((type) => type.shelf === shelf)!
-  );
+  const plainest = (types: WorldType[]) =>
+    types.find((type) => type.shelf === shelf && (shelf !== "lore" || type.loreCategory === "other")) ?? types.find((type) => type.shelf === shelf);
+  return doc.types.find((type) => type.id === typeId && type.shelf === shelf) ?? plainest(doc.types) ?? plainest(defaultTypes())!;
 }
 
 // Every ref in the document rewritten through `map`; a ref that maps to

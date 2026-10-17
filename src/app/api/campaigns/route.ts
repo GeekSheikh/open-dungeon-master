@@ -5,7 +5,7 @@ import { createCampaign, listCampaignsForUser, publicCampaign, type Campaign } f
 import { playingAsByCampaign } from "@/lib/db/sheets";
 import { homeGlanceFor, partyFacesByCampaign } from "@/lib/db/home-glance";
 import { gameSettingsSchema } from "@/lib/schemas/game-settings";
-import { narrationAvailable } from "@/lib/capabilities";
+import { capabilitiesSnapshot, narrationAvailable } from "@/lib/capabilities";
 import { CAMPAIGN_DIFFICULTIES } from "@/lib/campaign-types";
 
 export const runtime = "nodejs";
@@ -24,11 +24,24 @@ const createCampaignSchema = z.object({
   gameSettings: gameSettingsSchema.partial().extend({ ttsEnabled: z.boolean().optional() }).default({}),
 });
 
+// Whether this server has an AI storyteller, for the shells' Quick start
+// (an AI-run one-evening adventure, offered on the website only where one
+// exists). The capability probes are cached; a cold one gets a short budget
+// and, past it, the field is left out and the shells keep offering the door.
+async function offersStory(): Promise<boolean | undefined> {
+  const budget = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 800));
+  const answer = capabilitiesSnapshot()
+    .then((snapshot) => snapshot.story.configured)
+    .catch(() => undefined);
+  return Promise.race([answer, budget]);
+}
+
 export async function GET() {
   const user = await currentUser();
   if (!user) {
     return unauthorized();
   }
+  const story = offersStory();
   // The desktop and Android shells draw a home screen from this list alone:
   // each tile wants the cover (on the summary) and the name of the character
   // the caller plays there, so both ride here rather than costing a snapshot
@@ -50,6 +63,8 @@ export async function GET() {
     // The shells' home menus offer New campaign and Quick start only where
     // this account may start one (src/lib/shared-host.ts).
     canCreateCampaigns: canCreateCampaigns(user),
+    // And Quick start only where an AI storyteller can run it.
+    offersStory: await story,
   });
 }
 

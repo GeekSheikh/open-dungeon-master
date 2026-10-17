@@ -211,6 +211,23 @@ export function pageHarness({ page, base, ids, app, viewport, outDir, tag, api }
     api,
     tap: (locator) => (touch && app ? locator.tap() : locator.click()),
     shot: (name) => page.screenshot({ path: path.join(outDir, `${tag}-${name}.png`), fullPage: false }).catch(() => {}),
+    // Where the page is: the address bar on the server; in the app, whose
+    // window stays on index.html, the shell's own navigation.
+    url: async () => {
+      if (!app) return new URL(page.url());
+      const where = await page.evaluate(() => window.odmShell?.navigation?.location?.() ?? null);
+      return new URL(`${where?.pathname ?? "/"}${where?.search ?? ""}`, base);
+    },
+    // A refresh: the browser's on the server; in the app, the shell's own
+    // (reloading index.html would restart the app at its home).
+    reload: async () => {
+      if (!app) {
+        await page.reload();
+        return;
+      }
+      await page.evaluate(() => window.odmShell?.navigation?.reload?.());
+      await sleep(1_500);
+    },
     // On the server, a URL; in the app, the shell's own navigation (the
     // runner has already signed in and entered the host).
     open: async (route) => {
@@ -243,7 +260,9 @@ export async function enterApp(page, shellBase, host, ids, touch) {
   await page.locator('input[type="password"]').first().fill(ids.password);
   await tap(page.getByRole("button", { name: /^sign in$/i }).last());
   await sleep(4_000);
-  await tap(page.getByRole("button", { name: /^enter$/i }).first());
+  // A fresh sign-in reads the host's tables at once, so the home's hero is
+  // the latest table ("Enter the world") rather than the host ("Enter").
+  await tap(page.getByRole("button", { name: /^enter(?: the world)?$/i }).first());
   await page.waitForSelector(".game-root", { timeout: 60_000 });
   await sleep(2_000);
   await settle(page);
@@ -264,7 +283,20 @@ async function appNavigate(page, route, ids, touch) {
   // on the shell's router (client src/renderer/game/index.tsx ROUTES).
   const campaign = route.match(/^\/campaigns\/([^/?]+)/)?.[1];
   if (campaign) {
-    const title = ids.titles?.[campaign] ?? (campaign === ids.campaignId ? ids.title : ids.lobbyTitle);
+    // A campaign a scenario made itself is not in the seed's list: its title
+    // comes from the host, so the app opens that table and not the lobby.
+    const made = async () =>
+      page.evaluate(
+        (id) =>
+          fetch(`/api/campaigns/${id}`)
+            .then((response) => (response.ok ? response.json() : null))
+            .then((data) => data?.campaign?.title ?? null)
+            .catch(() => null),
+        campaign,
+      );
+    const title =
+      ids.titles?.[campaign] ??
+      (campaign === ids.campaignId ? ids.title : campaign === ids.lobbyId ? ids.lobbyTitle : ((await made()) ?? ids.lobbyTitle));
     // A title is matched as written: "Closing Table (desktop)" has
     // parentheses a pattern would read as a group.
     const tile = page
@@ -304,4 +336,43 @@ export async function eventually(fn, { timeoutMs = 15_000, every = 250, label = 
     await sleep(every);
   }
   throw new Error(`${label} did not hold within ${timeoutMs / 1000}s${last instanceof Error ? `: ${last.message}` : ""}`);
+}
+
+// Opens a side-panel tab the way a person would on this viewport: its rail
+// or bottom-bar cell when it has one, otherwise More and the tab's row in
+// the sheet More opens (the phone bar keeps five tabs, src/lib/dm/
+// table-tabs.ts phoneBarSplit). The sheet is portalled, so its row is
+// looked for on the whole page.
+export async function openPanelTab(t, tab, { timeoutMs = 30_000 } = {}) {
+  const { page, root } = t;
+  const direct = page.locator(`${root}[data-tour="tab-${tab}"]`).locator("visible=true").first();
+  const more = page.locator(`${root}[data-tour="tab-more"]`).locator("visible=true").first();
+  await eventually(async () => (await direct.count()) > 0 || (await more.count()) > 0, {
+    timeoutMs,
+    label: `the ${tab} tab or More`,
+  });
+  if (await direct.count()) {
+    await t.tap(direct);
+    return "direct";
+  }
+  await t.tap(more);
+  const row = page.locator(`[data-more-tab="${tab}"]`).locator("visible=true").first();
+  await eventually(() => row.count(), { label: `${tab} under More` });
+  await t.tap(row);
+  return "more";
+}
+
+// Opens one of the table settings' named groups (src/app/campaigns/
+// [campaignId]/table-settings-groups.ts) if it is closed. A closed group's
+// rows are mounted but hidden, so a check that reads or presses them opens
+// the group first, as a person would.
+export async function openSettingsGroup(t, id, { timeoutMs = 30_000 } = {}) {
+  const { page, root } = t;
+  const group = page.locator(`${root}[data-table-settings] [data-group="${id}"]`).locator("visible=true").first();
+  await eventually(() => group.count(), { timeoutMs, label: `the ${id} settings group` });
+  if ((await group.getAttribute("data-open")) === null) {
+    await t.tap(group.locator(".cc-group-toggle").first());
+  }
+  await eventually(async () => (await group.getAttribute("data-open")) !== null, { label: `the ${id} group open` });
+  return group;
 }

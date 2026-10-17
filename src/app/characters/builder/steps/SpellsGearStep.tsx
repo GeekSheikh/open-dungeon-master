@@ -372,7 +372,9 @@ function SpellsSection({
       }
     >
       {wizard ? (
-        <div role="tablist" aria-label="Spellbook step" className="mb-3 grid grid-cols-2 gap-1.5">
+        // Two toggle buttons that switch what the list below does (write or
+        // prepare), the same pattern as the spell level row in SpellBook.
+        <div role="group" aria-label="Spellbook step" data-pill-group className="mb-3 grid grid-cols-2 gap-1.5">
           {(
             [
               ["book", "1. Write your spellbook", `${chosenSpells.length}/${spellbookAdvice ?? "?"}`],
@@ -382,8 +384,8 @@ function SpellsSection({
             <button
               key={key}
               type="button"
-              role="tab"
-              aria-selected={mounted && phase === key}
+              aria-pressed={mounted && phase === key}
+              data-on={mounted && phase === key ? "" : undefined}
               onClick={() => {
                 setPhase(key);
                 setLimitNote("");
@@ -419,6 +421,7 @@ function SpellsSection({
         maxLevel={maxSpellLevel}
         counters={counters}
         onTile={onTile}
+        writingBook={wizard && phase === "book"}
         notice={limitNote || undefined}
         emptyText={
           loading

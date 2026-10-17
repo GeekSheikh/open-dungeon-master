@@ -13,6 +13,9 @@ import { folderPath } from "@/lib/worldforge/tree";
 import type { WorldEntity } from "@/lib/db/world-forge";
 import type { WorldApi, WorldState } from "./useWorld";
 import { EntityEditor } from "./EntityEditor";
+import { BoundRecords } from "./BoundRecords";
+import { PlayFields } from "./PlayFields";
+import type { OpenSystem } from "./WorldForgePanel";
 import { LinkEditor } from "./LinkEditor";
 import { EntityAvatar, SHELF_SYSTEMS, TypeChip, typeOf } from "./world-ui";
 
@@ -52,13 +55,15 @@ export function EntityPage({
   onOpenSystem,
   canWrite,
   canPaint,
+  campaignId,
 }: {
+  campaignId: string;
   api: WorldApi;
   world: WorldState;
   entity: WorldEntity;
   onFocus: (ref: string) => void;
   onBack: () => void;
-  onOpenSystem: (system: string) => void;
+  onOpenSystem: OpenSystem;
   canWrite: boolean;
   canPaint: boolean;
 }) {
@@ -213,7 +218,7 @@ export function EntityPage({
               {isPainting ? null : <Brush className="size-3.5" />} {isPainting ? "Painting" : "Paint"}
             </KitButton>
           ) : null}
-          <KitButton tone="small" onClick={() => onOpenSystem(home.system)} title={`Open ${entity.name}'s own tool`}>
+          <KitButton tone="small" onClick={() => onOpenSystem(home.system, { id: entity.id, from: entity.ref })} title={`Open ${entity.name}'s own tool`}>
             <ExternalLink className="size-3.5" /> {home.label}
           </KitButton>
           <KitButton tone="iconDanger" always aria-label={`Delete ${entity.name}`} onClick={remove}>
@@ -259,6 +264,13 @@ export function EntityPage({
           An older text from an import is kept beside this entry, because the two say different things. Players never see it. Open Edit to choose between them.
         </p>
       ) : null}
+      <BoundRecords
+        campaignId={campaignId}
+        entity={entity}
+        api={api}
+        loreOnly={entity.shelf === "lore" && type.loreCategory === "magic" && !entity.bound.some((record) => record.kind === "item" && record.found)}
+        onOpenSystem={onOpenSystem}
+      />
 
       {fieldLines(type, entity.entry, doc.calendars, true).length ? (
         <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
@@ -296,6 +308,7 @@ export function EntityPage({
           <div className="mt-1 flex flex-col gap-1.5 border-t border-stone-800/80 pt-2">{grouped(incoming.filter((link) => !link.oneway), true)}</div>
         ) : null}
       </section>
+      <PlayFields campaignId={campaignId} entity={entity} onChanged={api.refresh} />
 
       {events.length ? (
         <section className="flex flex-col gap-1" aria-label="Events">

@@ -6,7 +6,7 @@ import { Ribbon } from "@/components/ui/Ribbon";
 import { cn } from "@/lib/cn";
 import { formatModifier } from "@/lib/srd";
 import { ui } from "@/lib/ui";
-import { hpBreakdown } from "./abilityDice";
+import type { BuilderHp } from "./builderHp";
 
 const stagger = (index: number, ms: number) => ({ "--i": index, "--stagger": `${ms}ms` }) as CSSProperties;
 
@@ -89,16 +89,14 @@ export function MethodInfoDialog({
   );
 }
 
-// What the health explainer needs to show its working. The builder suggests
-// Max HP from these (suggestedStartingHp); `override` is the number typed on
-// the last step, which wins when present.
+// What the health explainer needs to show its working: the builder's own
+// hit points (builderHp.ts), the same figure the last step shows and the
+// server saves.
 export type HpExplainerInput = {
   className: string;
-  hitDie: number;
   con: number;
   level: number;
-  bonusPerLevel?: number;
-  override?: number | null;
+  hp: BuilderHp;
 };
 
 function FormulaChip({
@@ -153,22 +151,29 @@ export function HpExplainerDialog({
   onOpenChange: (open: boolean) => void;
   hp: HpExplainerInput;
 }) {
-  const parts = hpBreakdown(hp);
+  const { parts, method, kept, maxHp } = hp.hp;
   const klass = hp.className.toLowerCase();
   const later = hp.level > 1;
   const signed = (value: number) => `${value >= 0 ? "+" : "-"} ${Math.abs(value)}`;
+  const extra = parts.featureHp ? ` + ${parts.featureHp}` : "";
   const sum = later
-    ? `${parts.firstLevel} + ${hp.level - 1} x ${parts.perLevel} = ${parts.total}`
-    : `${parts.hitDie} ${signed(parts.conMod)}${parts.bonusPerLevel ? ` + ${parts.bonusPerLevel}` : ""} = ${parts.total}`;
+    ? `${parts.firstLevel} + ${hp.level - 1} x ${parts.perLevel}${extra} = ${parts.total}`
+    : `${parts.hitDie} ${signed(parts.conMod)}${parts.bonusPerLevel ? ` + ${parts.bonusPerLevel}` : ""}${extra} = ${parts.total}`;
+  const laterDie =
+    method === "max"
+      ? `the die's highest face (${parts.face})`
+      : method === "rolled"
+        ? `a roll of the die when you save; until then it counts the average (${parts.face})`
+        : `the die's average (${parts.face})`;
   const steps = [
     `A ${klass} rolls a d${parts.hitDie} for health. At first level you do not roll it: you take the best it can give.`,
     `Your Constitution of ${hp.con} is worth ${formatModifier(parts.conMod)}, and that applies to every level you gain.`,
     later
-      ? `Each level after the first adds the die's average (${Math.floor(parts.hitDie / 2) + 1}) plus that modifier, so ${hp.level - 1} more ${hp.level === 2 ? "level adds" : "levels add"} ${parts.laterLevels}. You begin on ${parts.total}.`
+      ? `Each level after the first adds ${laterDie} plus that modifier, so ${hp.level - 1} more ${hp.level === 2 ? "level adds" : "levels add"} ${parts.laterLevels}. You begin on ${parts.total}.`
       : `So you begin on ${parts.total}. Rest fully and you are back to it.`,
-    hp.override
-      ? `Your table set a different number: the last step has ${hp.override} typed into Max HP, so that is what the sheet will use.`
-      : "Your table can set a different number instead. The last step takes a Max HP override, and the builder stops suggesting once you type one.",
+    ...(kept
+      ? [`This character was saved with ${maxHp}, and keeps that number while its level and Constitution stay as they were.`]
+      : []),
   ];
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title="How your health is worked out" width="w-[min(94vw,26rem)]">
@@ -196,14 +201,19 @@ export function HpExplainerDialog({
           index={later ? 3 : 2}
           tone="result"
           label={later ? "Max hp" : "Starting hp"}
-          value={String(parts.total)}
-          note="full health"
+          value={String(maxHp)}
+          note={kept ? "as saved" : "full health"}
         />
       </div>
       <p className="mb-3.5 text-center font-mono text-[13px] text-amber-300">{sum}</p>
       {parts.bonusPerLevel ? (
         <p className="mb-3 text-center font-mono text-[0.6875rem] text-stone-500">
-          Includes +{parts.bonusPerLevel} per level from your lineage.
+          Includes +{parts.bonusPerLevel} per level from your lineage and feats.
+        </p>
+      ) : null}
+      {parts.featureHp ? (
+        <p className="mb-3 text-center font-mono text-[0.6875rem] text-stone-500">
+          Includes +{parts.featureHp} from Draconic Resilience.
         </p>
       ) : null}
       <ol className="flex flex-col gap-[7px]">
@@ -230,7 +240,7 @@ export function HpExplainerDialog({
 }
 
 // The labelled button under the abilities summary, and the bare "?" beside
-// the Max HP field on the last step: two doors to the same explainer.
+// the Max HP line on the last step: two doors to the same explainer.
 export function HpExplainerButton({ hp, compact = false }: { hp: HpExplainerInput; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   return (

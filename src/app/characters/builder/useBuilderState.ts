@@ -277,6 +277,9 @@ export function useBuilderState({
   // (useBuilderDerived), not a number typed here.
   const [gold, setGold] = useState(initial?.gold ?? 0);
   const [hpOverride, setHpOverride] = useState<number | null>(initial?.maxHp ?? null);
+  // The level and Constitution the stored hit points (hpOverride) stand on.
+  // The server keeps them only while both stand (builderHp.ts).
+  const [storedHp] = useState(() => (initial ? { level: storedLevel, con: initial.abilities.con } : null));
   // Only a pinned AC comes back pinned. A derived one re-derives from the
   // gear, or saving an edit would pin it and armour changed in play would
   // stop moving it.
@@ -477,7 +480,11 @@ export function useBuilderState({
   // skill the new race grants outright, a language it already speaks).
   // The race's own picks are cleared first, so they are not reported as
   // dropped: the new race asks for its own. The feat is the race's too.
+  // Choosing the race already chosen (a second tap on its card) is no change.
   function changeRace(id: string) {
+    if (id === raceId) {
+      return;
+    }
     setRaceId(id);
     applyChange(
       "race",
@@ -497,8 +504,12 @@ export function useBuilderState({
   }
 
   // Same for the class: skills, subclass, spells, loadout edits and the
-  // class option picks all belong to the old class.
+  // class option picks all belong to the old class. Choosing the class
+  // already chosen keeps them all.
   function changeClass(id: string) {
+    if (id === classId) {
+      return;
+    }
     setClassId(id);
     setRemovedAutoNames([]);
     setKitChoices({ options: [], picks: [] });
@@ -654,6 +665,7 @@ export function useBuilderState({
     asiRecorded,
     asiReachedLevel,
     primalChampionHeld: initialHoldsPrimalChampion(initial, initialLevel),
+    storedHp,
     name, setName,
     alignment, setAlignment,
     level, changeLevel,

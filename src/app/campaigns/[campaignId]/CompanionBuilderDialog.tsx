@@ -134,8 +134,8 @@ export function CompanionBuilderDialog({
               )}{" "}
               Build a companion
             </Dialog.Title>
-            <Dialog.Close className="text-stone-500 hover:text-stone-300">
-              <X className="size-4" />
+            <Dialog.Close aria-label="Close" className="text-stone-500 hover:text-stone-300">
+              <X className="size-4" aria-hidden="true" />
             </Dialog.Close>
           </div>
           <p className="mb-3 text-xs text-stone-500">

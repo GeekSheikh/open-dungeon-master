@@ -13,6 +13,7 @@ import type { Ability, CreateSheetInput } from "@/lib/schemas/sheet";
 import { SRD_SKILLS } from "@/lib/srd";
 import { FIGHTING_STYLES } from "@/lib/srd/feature-effects";
 import { offersImages, useCapabilities } from "@/lib/use-capabilities";
+import { classRoles } from "@/lib/srd/class-roles";
 import { applyClassReskins, applyIdReskins } from "@/lib/worlds/reskin-logic";
 import { ABILITY_LABELS } from "./AbilityEditor";
 import type { DroppedPick } from "./reconcile";
@@ -22,14 +23,17 @@ import { CallingStep } from "./steps/CallingStep";
 import { FinishStep } from "./steps/FinishStep";
 import { IdentityStep, type BuilderRole } from "./steps/IdentityStep";
 import { SpellsGearStep } from "./steps/SpellsGearStep";
+import { OwedLine } from "./steps/shared";
+import { owedPicks } from "./owed";
+import { playstyleBackgrounds, type PlaystyleId } from "./playstyles";
 import {
-  abilitiesBlocker,
-  ancestryBlocker,
+  abilitiesBlocks,
+  ancestryBlocks,
   buildBuilderResult,
-  callingBlocker,
+  callingBlocks,
   gearBlocker,
-  identityBlocker,
-  spellsBlocker,
+  identityBlocks,
+  spellsBlocks,
   validateBuilder,
   type BlockerTarget,
   type BuilderResult,
@@ -253,6 +257,9 @@ function CharacterBuilderForm({
   const rootId = useId();
   // What the last save found missing, until the player goes to it.
   const [saveProblem, setSaveProblem] = useState<{ message: string; target: BlockerTarget } | null>(null);
+  // "How do you want to play?", asked on the first step of a new character
+  // and carried to the class step.
+  const [playstyle, setPlaystyle] = useState<PlaystyleId | null>(null);
 
   // An unfinished new character is kept on this device as it is built
   // (builderDraft.ts), and offered back the next time this door opens. The
@@ -379,16 +386,35 @@ function CharacterBuilderForm({
   }
 
   // Each gate mirrors a rule the final check enforces, so a player learns
-  // about a missing pick on the step where they can fix it.
-  const blockers = {
-    identity: identityBlocker(state, background),
-    ancestry: ancestryBlocker(state, race, background, derived),
-    calling: callingBlocker(klass, state, derived),
-    abilities: abilitiesBlocker(derived, state),
-    spells: spellsBlocker(state, derived, klass) ?? gearBlocker(derived),
+  // about a missing pick on the step where they can fix it. The gate is the
+  // first pick owed; the step's "choices left" line names them all.
+  const gear = gearBlocker(derived);
+  const owed = {
+    identity: identityBlocks(state, background),
+    ancestry: ancestryBlocks(state, race, background, derived),
+    calling: callingBlocks(klass, state, derived),
+    abilities: abilitiesBlocks(derived, state),
+    spells: [...spellsBlocks(state, derived, klass), ...(gear ? [gear] : [])],
   };
+  const blockers = {
+    identity: owed.identity[0] ?? null,
+    ancestry: owed.ancestry[0] ?? null,
+    calling: owed.calling[0] ?? null,
+    abilities: owed.abilities[0] ?? null,
+    spells: owed.spells[0] ?? null,
+  };
+  const owedLine = (blocks: typeof owed.identity) => <OwedLine picks={owedPicks(blocks)} onShow={locate} />;
   const casts = derived.casts;
+  // The classes this table offers, as the playstyle answer reads them.
+  const playstyleOffered = pickers.classGroups.flatMap((group) =>
+    group.options.map((option) => {
+      const reading = classRoles(classes.find((candidate) => candidate.id === option.id) ?? { id: option.id });
+      return { id: option.id, name: option.name, roles: reading.roles, playsLike: reading.playsLike };
+    }),
+  );
 
+  // The steps' keys in order, for the finishing step's Edit links.
+  const STEP_ORDER = ["identity", "ancestry", "calling", "abilities", "spells-gear", "finish"];
   const steps: WizardStep[] = [
     {
       key: "identity",
@@ -397,14 +423,25 @@ function CharacterBuilderForm({
       ...gate(blockers.identity),
       content: (
         <>
+          {owedLine(owed.identity)}
           <IdentityStep
             state={state}
             pack={pack}
             packInstalled={packInstalled}
             fixedLevel={fixedLevel}
             role={role}
-            alignmentGroups={pickers.alignmentGroups}
-            alignmentInfo={pickers.alignmentInfo}
+            playstyle={
+              initial
+                ? undefined
+                : {
+                    value: playstyle,
+                    onChange: setPlaystyle,
+                    offered: playstyleOffered,
+                    chosenClass: klass?.id ?? "",
+                    onChooseClass: state.changeClass,
+                    backgrounds: playstyle ? playstyleBackgrounds(playstyle, backgrounds) : [],
+                  }
+            }
             backgroundGroups={pickers.backgroundGroups}
             background={background}
           />
@@ -420,6 +457,7 @@ function CharacterBuilderForm({
       continueLabel: race ? `Continue as ${race.name}` : undefined,
       content: (
         <>
+          {owedLine(owed.ancestry)}
           <AncestryStep
             state={state}
             derived={derived}
@@ -439,6 +477,7 @@ function CharacterBuilderForm({
       ...gate(blockers.calling),
       content: (
         <>
+          {owedLine(owed.calling)}
           <CallingStep
             state={state}
             derived={derived}
@@ -453,6 +492,7 @@ function CharacterBuilderForm({
             offersSubclass={pickers.offersSubclass}
             subclassLockedAt={pickers.subclassLockedAt}
             chosenArchetype={pickers.chosenArchetype}
+            playstyle={initial ? undefined : { value: playstyle, onChange: setPlaystyle }}
           />
         </>
       ),
@@ -465,6 +505,7 @@ function CharacterBuilderForm({
       ...gate(blockers.abilities),
       content: (
         <>
+          {owedLine(owed.abilities)}
           <AbilitiesStep state={state} derived={derived} race={race} klass={klass} />
         </>
       ),
@@ -477,6 +518,7 @@ function CharacterBuilderForm({
       ...gate(blockers.spells),
       content: (
         <>
+          {owedLine(owed.spells)}
           <SpellsGearStep
             state={state}
             derived={derived}
@@ -507,6 +549,9 @@ function CharacterBuilderForm({
           paintsPortraits={paintsPortraits}
           onUploadPortrait={() => setCropping(true)}
           error={state.localError || error}
+          onEdit={(key) => setStep(STEP_ORDER.indexOf(key))}
+          alignmentGroups={pickers.alignmentGroups}
+          alignmentInfo={pickers.alignmentInfo}
         />
       ),
     },

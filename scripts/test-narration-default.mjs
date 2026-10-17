@@ -63,7 +63,8 @@ assert.equal(createStarterCampaign(world.owner.id, { solo: true, narration: fals
 console.log("ok: where the server can read aloud, new tables start with narration on");
 
 // The lobby's row and the table's header follow the server's speech.
-const panel = read("src/app/campaigns/[campaignId]/GameSettingsPanel.tsx");
+// The panel decides; its Narration group (GameSettingsGroups.tsx) draws the row.
+const panel = read("src/app/campaigns/[campaignId]/GameSettingsPanel.tsx") + read("src/app/campaigns/[campaignId]/GameSettingsGroups.tsx");
 assert.match(panel, /const narrationOff = capabilities\?\.tts\?\.provider === "off";/);
 assert.match(panel, /const narrating = settings\.ttsEnabled && !narrationOff;/);
 assert.match(panel, /<SettingToggle label="Narration" on=\{narrating\} disabled=\{narrationOff\}/, "the switch is held while speech is off");
