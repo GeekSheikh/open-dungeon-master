@@ -260,7 +260,9 @@ export async function enterApp(page, shellBase, host, ids, touch) {
   await page.locator('input[type="password"]').first().fill(ids.password);
   await tap(page.getByRole("button", { name: /^sign in$/i }).last());
   await sleep(4_000);
-  await tap(page.getByRole("button", { name: /^enter$/i }).first());
+  // A fresh sign-in reads the host's tables at once, so the home's hero is
+  // the latest table ("Enter the world") rather than the host ("Enter").
+  await tap(page.getByRole("button", { name: /^enter(?: the world)?$/i }).first());
   await page.waitForSelector(".game-root", { timeout: 60_000 });
   await sleep(2_000);
   await settle(page);
@@ -281,7 +283,20 @@ async function appNavigate(page, route, ids, touch) {
   // on the shell's router (client src/renderer/game/index.tsx ROUTES).
   const campaign = route.match(/^\/campaigns\/([^/?]+)/)?.[1];
   if (campaign) {
-    const title = ids.titles?.[campaign] ?? (campaign === ids.campaignId ? ids.title : ids.lobbyTitle);
+    // A campaign a scenario made itself is not in the seed's list: its title
+    // comes from the host, so the app opens that table and not the lobby.
+    const made = async () =>
+      page.evaluate(
+        (id) =>
+          fetch(`/api/campaigns/${id}`)
+            .then((response) => (response.ok ? response.json() : null))
+            .then((data) => data?.campaign?.title ?? null)
+            .catch(() => null),
+        campaign,
+      );
+    const title =
+      ids.titles?.[campaign] ??
+      (campaign === ids.campaignId ? ids.title : campaign === ids.lobbyId ? ids.lobbyTitle : ((await made()) ?? ids.lobbyTitle));
     // A title is matched as written: "Closing Table (desktop)" has
     // parentheses a pattern would read as a group.
     const tile = page
