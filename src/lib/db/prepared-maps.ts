@@ -20,6 +20,8 @@ import {
 import { isEmptyMapSkin, normalizeMapSkin, type MapSkin } from "@/lib/battlemap/skins";
 import { isUploadedImagePath } from "@/lib/uploads";
 import { dedupeName } from "@/lib/workshop/import";
+import { parseMapAddonView, type MapAddonView } from "@/lib/addons/map-view";
+import { writeMapAddonView } from "@/lib/db/map-addon-view";
 
 // The map library: maps a DM built before anybody needed them.
 //
@@ -68,6 +70,8 @@ export type PreparedMap = {
   // What it is painted with (src/lib/battlemap/skins.ts). Empty means the
   // default for the campaign's setting and this map's theme.
   skin: MapSkin;
+  // What a map addon left for its board view (src/lib/addons/map-view.ts).
+  addonView: MapAddonView | null;
   updatedAt: string;
 };
 
@@ -95,6 +99,7 @@ type Row = {
   outdoors: number | null;
   drawings_json: string | null;
   skin_json: string | null;
+  addon_view_json: string | null;
   updated_at: string;
 };
 
@@ -126,6 +131,7 @@ function mapRow(row: Row): PreparedMap {
     ambience: normalizeAmbience(parseJson<unknown>(row.ambience_json ?? "{}", {})),
     drawings: normalizeDrawings(parseJson<unknown>(row.drawings_json ?? "[]", []), row.width, row.height),
     skin: normalizeMapSkin(parseJson<unknown>(row.skin_json ?? "{}", {})),
+    addonView: parseMapAddonView(row.addon_view_json),
     updatedAt: row.updated_at,
   };
 }
@@ -170,6 +176,7 @@ export type PreparedMapInput = {
   scene?: PreparedScene;
   outdoors?: boolean | null;
   skin?: MapSkin | null;
+  addonView?: MapAddonView | null;
 };
 
 // Every scene column written through one normalizer, so a prepared map can
@@ -252,6 +259,9 @@ export function createPreparedMap(input: PreparedMapInput): PreparedMap {
   }
   if (!isEmptyMapSkin(input.skin)) {
     setPreparedMapSkin(id, input.skin);
+  }
+  if (input.addonView) {
+    writeMapAddonView("prepared_maps", id, input.addonView);
   }
   return getPreparedMap(input.campaignId, id) as PreparedMap;
 }
@@ -457,6 +467,9 @@ export function copyPreparedMaps(fromCampaignId: string, toCampaignId: string): 
       }
       if (!isEmptyMapSkin(map.skin)) {
         setPreparedMapSkin(copyId, map.skin);
+      }
+      if (map.addonView) {
+        writeMapAddonView("prepared_maps", copyId, map.addonView);
       }
       copied += 1;
     }

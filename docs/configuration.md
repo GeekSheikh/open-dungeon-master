@@ -66,6 +66,11 @@ falls through to the env var.
 | `APP_PUBLIC_URL` | forwarded headers / request origin | Public URL players use (e.g. `https://dungeon.example.org`); needed for OAuth redirect URIs when the reverse proxy doesn't send `X-Forwarded-Host`/`X-Forwarded-Proto` |
 | `WORLD_REGISTRY_URL` | the built-in registry | https JSON index of downloadable campaign plugins, browsable under Admin, Campaign plugins (or set there). Set it to `off` to browse none. The packs any registry lists are third-party content this project neither ships nor vets, and nothing installs without an admin doing it. See [worlds.md](worlds.md) |
 | `WORLD_PACKS_DIR` | `data/worlds` | Where installed campaign plugins are written. Gitignored, and not covered by the app's MIT license |
+| `ADDON_REGISTRY_URL` | the Open Dungeon Master list | https address of the addon list browsed under Admin, Addons (or set there). `off` browses none. See [addons.md](addons.md) |
+| `ADDON_GITHUB_API_BASE`, `ADDON_GITHUB_RAW_BASE` | `https://api.github.com`, `https://raw.githubusercontent.com` | Where an addon's files are listed and fetched from, for trying a list without GitHub. Leave unset |
+| `ADDONS_DIR` | `data/addons` | Where addon packages, their data folders and their working files live |
+| `ODM_ADDONS` | on | `off` switches addons off on this server |
+| `ODM_ADDON_DEV_DIRS` | unset | Folders to load addons from while writing them, separated by `:` (`;` on Windows). See [addons/authoring.md](addons/authoring.md#trying-it-on-a-server) |
 | `UPLOAD_DAILY_BYTES` | `524288000` (500 MB) | Bytes one account may add to `public/uploads` in a rolling 24 hours, across uploads, character imports and workshop imports. Admins have no budget. `0` turns it off |
 | `UPLOAD_DAILY_FILES` | `200` | Files one account may add to `public/uploads` in the same window. `0` turns it off |
 | `UPLOAD_MIN_FREE_BYTES` | `1073741824` (1 GB) | Free space the volume holding `public/uploads` must keep; uploads and imports that would go below it are refused for everyone. The desktop and Android apps set 256 MB for the worlds they host. `0` turns it off |

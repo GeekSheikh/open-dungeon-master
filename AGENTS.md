@@ -23,3 +23,13 @@ Use a named SRD creature, an original design, or a separately licensed subject
 with recorded permission. Do not let a generic prompt such as "aberration"
 introduce a beholder or mind flayer. Inspect the rendered anatomy as well as the
 prompt, and preserve the source and edit history with each art change.
+
+## Addon framework
+
+Before changing anything under `src/lib/addons/`, the addon routes, or the
+board view bridge, read [docs/addons/framework.md](docs/addons/framework.md):
+the code map, the rules every change keeps (addons propose and the server
+disposes, no secrets in an addon's environment, sandboxed board views), and
+the steps for a new manifest field, bridge message or extension point.
+Regenerate `docs/addons/addon.schema.json` with
+`node scripts/build-addon-schema.mjs` whenever the manifest schema changes.

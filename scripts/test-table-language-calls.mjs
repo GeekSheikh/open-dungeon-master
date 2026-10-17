@@ -241,6 +241,10 @@ const CLASSIFIED = {
   "src/lib/image-english.ts": { prose: 0, machine: 1 },
   // The rules desk has no campaign, so no table language.
   "src/lib/reference/desk.ts": { prose: 0, machine: 1 },
+  // An addon's sampling request: the addon writes the whole prompt and reads
+  // the reply as data (a stat block's fields, say), often for a workshop
+  // import that has no table yet.
+  "src/lib/addons/sampling.ts": { prose: 0, machine: 1 },
   // The routers themselves.
   "src/lib/dm/model.ts": { prose: 0, machine: 0, router: true },
 };

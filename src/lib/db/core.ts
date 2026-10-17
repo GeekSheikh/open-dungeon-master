@@ -1716,6 +1716,11 @@ function ensureSchema(db: SqliteDatabase) {
   addColumns("battle_maps", [["skin_json", `TEXT NOT NULL DEFAULT '{}'`]]);
   // Spell areas laid on a live board (src/lib/battlemap/zones.ts).
   addColumns("battle_maps", [["spell_zones_json", `TEXT NOT NULL DEFAULT '[]'`]]);
+  // What a map addon left for its board view: data and files such as a .glb
+  // model (src/lib/addons/map-view.ts). '' is none. Cosmetic like the skin,
+  // and on both tables for the same reason.
+  addColumns("prepared_maps", [["addon_view_json", `TEXT NOT NULL DEFAULT ''`]]);
+  addColumns("battle_maps", [["addon_view_json", `TEXT NOT NULL DEFAULT ''`]]);
 
   addColumns("locations", [
     // The prepared map this place stands on, so arriving offers the DM a

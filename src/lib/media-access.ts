@@ -1,6 +1,6 @@
 import { getDatabase, nowIso } from "@/lib/db/core";
 import { databaseOpenCount, mediaWriteCount } from "@/lib/db/driver";
-import { isGeneratedImagePath, isUploadedImagePath, isUploadedPdfPath } from "@/lib/uploads";
+import { isGeneratedImagePath, isUploadedImagePath, isUploadedModelPath, isUploadedPdfPath } from "@/lib/uploads";
 import { currentUsageScope, type UsageScope } from "@/lib/usage/scope";
 
 // Who may open a picture or a document the server stores (audit S6).
@@ -32,7 +32,7 @@ type Reader = { id: string; isAdmin?: boolean };
 const PATH = /\/(?:uploads|generated)\/[A-Za-z0-9_.-]+/g;
 
 export function isStoredMediaPath(value: string): boolean {
-  return isUploadedImagePath(value) || isUploadedPdfPath(value) || isGeneratedImagePath(value);
+  return isUploadedImagePath(value) || isUploadedPdfPath(value) || isUploadedModelPath(value) || isGeneratedImagePath(value);
 }
 
 // Every stored-file path a piece of text names, inside JSON, prose or a full

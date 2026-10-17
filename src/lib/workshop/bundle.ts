@@ -380,16 +380,19 @@ export type BundleRead = { bundle: WorkshopBundle; worldForge?: WorldImport } | 
 // whole thing has a byte cap checked BEFORE it is parsed as JSON: a
 // four-gigabyte file must be refused by its size, not by running out of
 // memory proving it is malformed.
-export function readBundle(text: string): BundleRead {
+// `maxBytes` is raised only for a bundle an importer addon made on this
+// server (MAX_ADDON_BUNDLE_BYTES); everything else is held to the file cap.
+export function readBundle(text: string, options: { maxBytes?: number } = {}): BundleRead {
   if (typeof text !== "string" || !text.trim()) {
     return { error: "That file is empty." };
   }
+  const cap = options.maxBytes ?? MAX_BUNDLE_BYTES;
   // Byte length, not character count: a multi-byte string is bigger on the
   // wire than it looks in the editor.
   const bytes = new TextEncoder().encode(text).length;
-  if (bytes > MAX_BUNDLE_BYTES) {
+  if (bytes > cap) {
     return {
-      error: `That file is ${Math.round(bytes / 1024 / 1024)} MB. A workshop bundle caps at ${MAX_BUNDLE_BYTES / 1024 / 1024} MB.`,
+      error: `That file is ${Math.round(bytes / 1024 / 1024)} MB. A workshop bundle caps at ${cap / 1024 / 1024} MB.`,
     };
   }
   let parsed: unknown;
