@@ -24,10 +24,8 @@ players and the DM. **The narrator never owns the numbers**: dice, hit points, s
 clamped by the backend, and the model changes game state only through tools the
 server validates.
 
-It began as a fork of [Open Dungeon](https://github.com/newideas99/open-dungeon)
-to add multiplayer, and grew into a different app: the AI drives the session,
-requesting rolls, starting encounters, and playing NPCs and companions, following
-a secret story arc it regenerates as the campaign moves.
+The AI drives the session, requesting rolls, starting encounters, and playing NPCs
+and companions, following a secret story arc it regenerates as the campaign moves.
 
 <div align="center">
 
@@ -195,8 +193,8 @@ docker compose up -d        # http://localhost:3005
 
 ## Credits and licenses
 
-**The application is MIT licensed. Third-party and unofficial campaign content is
-not included with this repository and is not covered by the MIT license.**
+**The application is [MIT licensed](LICENSE). Third-party and unofficial campaign
+content is not included with this repository and is not covered by the MIT license.**
 Community world packs are installed at runtime into the gitignored `data/worlds/`
 directory. They are the work of their own authors, distributed by whoever
 publishes them, and are neither shipped nor vetted by this project. A pack that
@@ -204,13 +202,6 @@ references an existing setting is an unofficial fan work with no affiliation wit
 or endorsement from that setting's rights holders, and the app labels it as such
 wherever it appears. Only original works are bundled in this repository.
 
-- Forked from [Open Dungeon](https://github.com/newideas99/open-dungeon) by Jacob
-  Ferrari, MIT licensed. See [LICENSE](LICENSE).
-- Design ideas were borrowed from [Foundry VTT](https://github.com/foundryvtt)
-  (its MIT `dnd5e` and Simple Worldbuilding systems) and from
-  [NarrativeEngine-P](https://github.com/Sagesheep/NarrativeEngine-P). No code
-  from either is in this repository; what each one shaped is listed in
-  [docs/LICENSES.md](docs/LICENSES.md).
 - The workshop's WorldForge tool is ported from WorldForge, Smoebo's
   world-building app, with their permission. What came from it is listed in
   [docs/LICENSES.md](docs/LICENSES.md).
