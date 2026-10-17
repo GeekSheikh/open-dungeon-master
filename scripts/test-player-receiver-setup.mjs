@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 register("./lib/register-alias.mjs", import.meta.url);
 const { receiverConfig, receiverUrl, receiverCommands, receiverFileName, receiverSlug } = await import("../src/lib/agents/receiver-config.ts");
 const { tokenStore, saveToken, promptSecret, validToken } = await import("./lib/player-token-store.mjs");
+const { takeReceiverLock, LockRefused } = await import("./lib/player-webhook-receiver.mjs");
 
 let passed = 0;
 async function test(name, fn) {
@@ -122,6 +123,22 @@ await test("a piped token is read whole, without paste markers", async () => {
   assert.ok(!said.includes(TOKEN));
   assert.equal(validToken(TOKEN), true);
   assert.equal(validToken(`${TOKEN} extra`), false);
+});
+
+await test("a lock left by a receiver that was killed outright is taken over; a running one's is refused", () => {
+  const lockPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "odm-receiver-lock-")), "receiver.lock");
+  // A process that has already exited, as after its terminal window closed.
+  const gone = spawnSync(process.execPath, ["-e", ""]).pid;
+  fs.writeFileSync(lockPath, String(gone));
+  const release = takeReceiverLock(lockPath);
+  assert.equal(fs.readFileSync(lockPath, "utf8"), String(process.pid));
+  assert.throws(() => takeReceiverLock(lockPath), (error) => error instanceof LockRefused && error.message === `A receiver is already running for this config (pid ${process.pid}). Stop it first.`);
+  assert.equal(fs.readFileSync(lockPath, "utf8"), String(process.pid), "a running receiver's lock is kept");
+  release();
+  assert.ok(!fs.existsSync(lockPath));
+  fs.writeFileSync(lockPath, "");
+  takeReceiverLock(lockPath)();
+  assert.throws(() => takeReceiverLock(path.join(lockPath, "missing", "receiver.lock")), LockRefused, "other lock errors get a plain message too");
 });
 
 if (process.platform === "win32") {

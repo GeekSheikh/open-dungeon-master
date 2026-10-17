@@ -1,12 +1,12 @@
 // Run this on the player's computer, never on ODM's server account.
 import { execFile, spawn, spawnSync } from "node:child_process";
-import { readFileSync, mkdirSync, existsSync, openSync, closeSync, writeFileSync, unlinkSync, renameSync } from "node:fs";
+import { readFileSync, mkdirSync, existsSync, unlinkSync, renameSync } from "node:fs";
 import { register } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { PlayerInbox, atomicJson, playerPrompt, receiverServer } from "./lib/player-webhook-receiver.mjs";
+import { LockRefused, PlayerInbox, atomicJson, playerPrompt, receiverServer, takeReceiverLock } from "./lib/player-webhook-receiver.mjs";
 import { promptSecret, saveToken, tokenStore } from "./lib/player-token-store.mjs";
 
 import { runCodexPlayerTurn, playerCodexEnvironment, playerMcpOverride } from "./lib/player-webhook-codex.mjs";
@@ -218,11 +218,13 @@ try {
       console.log("Webhook removed. Stop the receiver with Ctrl+C.");
     } else {
       const subscription = savedSubscription();
-      const lockPath = path.join(directory, "receiver.lock");
-      const lock = openSync(lockPath, "wx", 0o600);
-      writeFileSync(lock, String(process.pid));
-      closeSync(lock);
-      process.once("exit", () => { try { unlinkSync(lockPath); } catch { /* Already removed. */ } });
+      let release;
+      try {
+        release = takeReceiverLock(path.join(directory, "receiver.lock"));
+      } catch (error) {
+        throw error instanceof LockRefused ? new Plain(error.message) : error;
+      }
+      process.once("exit", release);
       const inbox = new PlayerInbox(directory);
       const { startJsonRpc } = await import("../src/lib/harness/jsonrpc-stdio.ts");
       const { codexArgs } = await import("../src/lib/harness/adapters/codex.ts");
