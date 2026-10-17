@@ -17,7 +17,7 @@ import { grantSessionToken, grantUser, type AgentScope, type ConnectionGrant } f
 import type { McpToolDefinition } from "@/lib/harness/types";
 import { createHash } from "node:crypto";
 import { boundResultText, campaignForAgent, historyForAgent } from "@/lib/agents/agent-results";
-import { finishWebhookWrite, playerWebhooksEnabled, releaseWebhookWrite, reserveWebhookWrite } from "@/lib/agents/webhooks";
+import { finishWebhookWrite, playerSignalsEnabled, releaseWebhookWrite, reserveWebhookWrite } from "@/lib/agents/webhooks";
 import { isWebhookTool, WEBHOOK_GUARD_PROPS, webhookToolCall, webhookTools } from "@/lib/agents/webhook-tools";
 import { ASK_SCOPES, ASK_VISIBILITIES, QUESTION_MAX_CHARS } from "@/lib/dm/ask-logic";
 
@@ -422,7 +422,7 @@ const WHOAMI: McpToolDefinition = {
 
 export function workbenchTools(grant: ConnectionGrant): McpToolDefinition[] {
   // The webhook guard fields only mean something where webhooks can exist.
-  const guards = playerWebhooksEnabled();
+  const guards = playerSignalsEnabled();
   return [
     WHOAMI,
     ...webhookTools(grant),
