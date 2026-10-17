@@ -77,7 +77,7 @@ export default {
       const asked = await (await api.post(`${base}/api/profile/agents/receiver-check`, { data: { url: ADDRESS } })).json();
       check(asked.allowed === true && asked.url === `${ADDRESS}/odm-player`, "the receiver check now says yes, at the receiver's path");
       await t.tap(section.locator("button").filter({ hasText: /Remove/ }).first());
-      await eventually(async () => /None yet, so player agents are not woken/.test(await section.innerText()), { label: "removed again" });
+      await eventually(async () => /No receiver addresses yet, so no player agent is sent a webhook/.test(await section.innerText()), { label: "removed again" });
     } finally {
       await api.put(`${base}/api/admin/player-webhooks`, { data: { origins: [] } }).catch(() => undefined);
       const listed = await (await api.get(`${base}/api/profile/agents`)).json().catch(() => ({}));
