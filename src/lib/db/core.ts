@@ -2420,6 +2420,11 @@ function ensureSchema(db: SqliteDatabase) {
   // Databases that created player_webhooks before receivers could carry
   // their own Authorization value or extra headers (docs/player-webhooks.md).
   addColumns("player_webhooks", [["authorization_header", `TEXT`], ["extra_headers", `TEXT`]]);
+  // A poll link instead of a receiver (docs/player-webhooks.md): the SHA-256
+  // of the link's secret, for an agent that cannot take incoming requests
+  // and checks the link instead. Such a row has no url and gets no deliveries.
+  addColumns("player_webhooks", [["poll_token_hash", `TEXT`]]);
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_player_webhooks_poll ON player_webhooks(poll_token_hash) WHERE poll_token_hash IS NOT NULL`);
   // How many calls a row stands for: one, until the retention pass merges
   // old rows into one per month (src/lib/ops/retention.ts).
   addColumns("usage_events", [["calls", `INTEGER NOT NULL DEFAULT 1`]]);
