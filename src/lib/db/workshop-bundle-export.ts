@@ -28,6 +28,7 @@ import {
 } from "@/lib/workshop/bundle";
 import { isWorkshop, normalizeTargetParty } from "@/lib/workshop/kind";
 import { portableSheet, portableStatBlock, shelfForBundle, type ShelfReport } from "@/lib/db/workshop-bundle-shelf";
+import { exportMapAddonView } from "@/lib/db/map-addon-view-bundle";
 
 // Reading a workshop out to a bundle. Split from src/lib/db/workshop-bundle.ts
 // (the import half, which re-exports this) to keep both under the project's
@@ -121,7 +122,7 @@ export const BUNDLE_COLUMNS: Record<string, { carried: string[]; left: Record<st
     left: { campaign_id: "the new workshop", updated_at: "now" },
   },
   prepared_maps: {
-    carried: ["name", "notes", "tags_json", "width", "height", "terrain", "ambient", "theme", "lights_json", "seed", "backdrop_path", "backdrop_transform_json", "outdoors", "drawings_json", "skin_json", "labels_json", "props_json", "doors_json", "zones_json", "overlay_path", "ambience_json"],
+    carried: ["name", "notes", "tags_json", "width", "height", "terrain", "ambient", "theme", "lights_json", "seed", "backdrop_path", "backdrop_transform_json", "outdoors", "drawings_json", "skin_json", "labels_json", "props_json", "doors_json", "zones_json", "overlay_path", "ambience_json", "addon_view_json"],
     left: { ...IDENTITY },
   },
   encounter_templates: {
@@ -416,6 +417,8 @@ export function exportWorkshopBundle(
         drawings: parseJson<unknown[]>(str(row.drawings_json, "[]"), []),
         ambience: parseJson<Record<string, unknown>>(str(row.ambience_json, "{}"), {}),
         overlay: loadImage(row.overlay_path, budget),
+        // An addon's view of the map, its model inline (map-addon-view-bundle.ts).
+        addonView: exportMapAddonView(row.addon_view_json, budget),
         ref: refFor(row.home, "maps", str(row.id)),
         shared: row.home !== workshopId,
       };

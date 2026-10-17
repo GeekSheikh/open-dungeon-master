@@ -13,6 +13,7 @@ import { DEFAULT_MAP_TOOLS, type MapTools } from "@/app/campaigns/[campaignId]/M
 import { useMapToasts } from "@/app/campaigns/[campaignId]/MapToasts";
 import { Listed } from "@/app/campaigns/[campaignId]/PanelKit";
 import { MapCreateControls } from "@/app/workshop/maps/MapCreateControls";
+import { AddonMapGenerator } from "@/app/workshop/maps/AddonMapGenerator";
 import { MapEditor } from "@/app/workshop/maps/MapEditor";
 import { MapGallery } from "@/app/workshop/maps/MapGallery";
 import type { LibraryState, PreparedMap } from "@/app/workshop/maps/types";
@@ -384,6 +385,8 @@ export function DmMapLibraryPanel({
                 onCreate={create}
                 onImport={(file) => void importUvtt(file)}
               />
+              {/* Only drawn when an admin has switched a map addon on. */}
+              <AddonMapGenerator campaignId={campaignId} onCreated={(id) => void load().then(() => select(id))} />
             </div>
           ) : null}
         </section>
@@ -418,6 +421,7 @@ export function DmMapLibraryPanel({
         onCreate={create}
         onImport={(file) => void importUvtt(file)}
       />
+      <AddonMapGenerator campaignId={campaignId} onCreated={(id) => void load().then(() => setSelectedId(id))} />
 
       <Listed loaded={loaded} error={loadError} onRetry={() => void load()} loading="Opening the drawer...">
       {state.maps.length ? (

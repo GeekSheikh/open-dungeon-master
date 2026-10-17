@@ -34,6 +34,9 @@ import { removeUnreferencedFiles } from "@/lib/image-files";
 import { worldFromBundle } from "@/lib/db/world-forge-bundle";
 import { admitUpload, type UploadRefusal } from "@/lib/upload-budget";
 import { recordMediaFile } from "@/lib/media-access";
+import { decodeBundleAddonView, landAddonView } from "@/lib/db/map-addon-view-bundle";
+import { writeMapAddonView } from "@/lib/db/map-addon-view";
+import type { MapAddonView } from "@/lib/addons/map-view";
 
 export { exportWorkshopBundle, type ExportResult } from "@/lib/db/workshop-bundle-export";
 
@@ -90,6 +93,8 @@ type BundleArtPaths = {
   loreImages: string[];
   factionPortraits: string[];
   regionBackdrop: string;
+  // What a map addon left on each map, its files already written.
+  mapAddonViews: Array<MapAddonView | null>;
 };
 
 export type BundleImportOptions = {
@@ -123,10 +128,13 @@ export function importWorkshopBundle(
   const images = Object.values(art)
     .flat()
     .filter((image): image is BundleImage => image !== null);
+  // A map addon's model and textures count against the same budget.
+  const addonViews = bundle.maps.map((map) => decodeBundleAddonView(map.addonView));
+  const addonFiles = addonViews.flatMap((view) => view?.files ?? []);
   const refusal = admitUpload(
     { id: userId, isAdmin: options.isAdmin },
-    images.reduce((sum, image) => sum + image.bytes.length, 0),
-    images.length,
+    images.reduce((sum, image) => sum + image.bytes.length, 0) + addonFiles.reduce((sum, file) => sum + file.bytes.length, 0),
+    images.length + addonFiles.length,
   );
   if (refusal) {
     return { error: refusal.error, refusal };
@@ -147,6 +155,7 @@ export function importWorkshopBundle(
       loreImages: art.lore.map((image) => saveBundleImage(image, uploadDir, written)),
       factionPortraits: art.factions.map((image) => saveBundleImage(image, uploadDir, written)),
       regionBackdrop: saveBundleImage(art.region[0], uploadDir, written),
+      mapAddonViews: addonViews.map((view) => landAddonView(view, uploadDir, written)),
     };
     return writeBundleRows(userId, bundle, paths, options.sharedWorkshopId ?? "");
   } catch (error) {
@@ -160,7 +169,7 @@ const AMBIENTS = ["bright", "dim", "dark"];
 function writeBundleRows(
   userId: string,
   bundle: WorkshopBundle,
-  { npcPortraits, mapBackdrops, mapOverlays, loreImages, factionPortraits, regionBackdrop }: BundleArtPaths,
+  { npcPortraits, mapBackdrops, mapOverlays, loreImages, factionPortraits, regionBackdrop, mapAddonViews }: BundleArtPaths,
   sharedWorkshopId: string,
 ): BundleImportResult {
   const workshop = createCampaign(userId, {
@@ -269,6 +278,7 @@ function writeBundleRows(
       usedMapNames.add(name.toLowerCase());
       const id = crypto.randomUUID();
       insertBundleMap(id, workshop.id, { ...map, name }, { backdrop: mapBackdrops[index], overlay: mapOverlays[index] }, now);
+      if (mapAddonViews[index]) writeMapAddonView("prepared_maps", id, mapAddonViews[index]);
       keyed("maps", id, map.ref);
       ids.maps.push(id);
       copied += 1;

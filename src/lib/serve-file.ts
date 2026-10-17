@@ -18,6 +18,9 @@ const CONTENT_TYPES: Record<string, string> = {
   // A lore entry's attachment (/api/upload stores PDFs beside the pictures).
   // It was accepted and saved, then answered 404 here for want of this line.
   ".pdf": "application/pdf",
+  // A map addon's 3D model (src/lib/addons/map-view.ts), fetched by the
+  // table page and handed to the addon's board view.
+  ".glb": "model/gltf-binary",
 };
 
 // Shown in the browser rather than saved, under its own name; nosniff on

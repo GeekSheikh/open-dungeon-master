@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ui } from "@/lib/ui";
 import { ImportBundleButton } from "@/app/workshop/ImportBundleButton";
+import { AddonImportButton } from "@/app/workshop/AddonImportButton";
 import type { WorkshopSummary } from "@/app/workshop/types";
 
 // The hub's masthead: the way back to the shelf, the workshop's name
@@ -154,8 +155,9 @@ export function WorkshopHeader({
           </button>
         </div>
       </div>
-      <div data-tour="hub-import" className="w-fit">
+      <div data-tour="hub-import" className="flex w-fit flex-wrap items-start gap-2">
         <ImportBundleButton label="Import a bundle" className={ui.btnSmall} />
+        <AddonImportButton className={ui.btnSmall} />
       </div>
     </header>
   );
