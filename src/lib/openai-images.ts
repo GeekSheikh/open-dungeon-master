@@ -171,7 +171,7 @@ export async function generateOpenAiImage(
   const timer = setTimeout(() => controller.abort(), GENERATE_TIMEOUT_MS);
   let payload: {
     data?: Array<{ b64_json?: string; url?: string }>;
-    error?: { message?: string; param?: string };
+    error?: { message?: string; param?: string; metadata?: { provider_name?: string } };
   };
   const post = async (request: Record<string, unknown>) => {
     const response = await fetch(`${baseUrl}/images/generations`, {
@@ -217,12 +217,30 @@ export async function generateOpenAiImage(
         result = await post({ ...result.request, size: picked.size });
       }
     }
+    // A refusal that names no field and lists no sizes (Google behind
+    // OpenRouter answers a size its model does not take with "Request
+    // contains an invalid argument.", recorded 2026-10-16) is asked once
+    // more at the square size, the one that model took. A square that
+    // paints is remembered as the one size the model takes, so later
+    // pictures skip the refused shape; a square refused too leaves the first
+    // answer to be reported.
+    if (!result.ok && result.status === 400 && !listed && !result.answer.error?.param && !learnedSizes.has(sizesKey) && chosen.width !== chosen.height) {
+      const square = FIRST_SIZES.square;
+      const retried = await post({ ...result.request, size: square.size });
+      if (retried.ok) {
+        learnedSizes.set(sizesKey, [square]);
+        chosen = square;
+        result = retried;
+      }
+    }
     payload = result.answer;
     if (!result.ok) {
       // The upstream message names the real problem (bad key, no billing,
-      // moderation refusal) far better than a status code would.
+      // moderation refusal) far better than a status code would. A router
+      // passing on another provider's refusal says whose it was.
       const detail = payload.error?.message || `the API answered ${result.status}`;
-      throw new Error(`OpenAI image generation failed: ${detail}`);
+      const provider = payload.error?.metadata?.provider_name;
+      throw new Error(`OpenAI image generation failed${provider ? ` (${provider} refused the request)` : ""}: ${detail}`);
     }
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {

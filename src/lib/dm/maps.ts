@@ -1,5 +1,5 @@
 import { generateStoryImage } from "@/lib/image-generate";
-import { clearLocationMapFailed, getLocation, setLocationMap, setLocationMapFailed } from "@/lib/db/locations";
+import { getLocation, setLocationMap, setLocationMapFailed, setLocationMapPending } from "@/lib/db/locations";
 import { presetFor } from "@/lib/worlds/preset";
 import { publishPersisted } from "@/lib/events";
 import { pictureFailureReason, publishMediaStatus } from "@/lib/dm/images";
@@ -21,10 +21,12 @@ function publishLocation(campaignId: string, locationId: string) {
 // A failure is recorded on the place as well as announced: the
 // "Charting the area..." placeholder under the narration reads the place,
 // so after a reload it would otherwise wait for a map that is not coming.
-// Queuing a new render clears it again.
+// So is the render being on its way, which is all that placeholder charts
+// for; a restart that drops the queue turns it into the failure
+// (src/lib/dm/restart-recovery.ts). Queuing a new render clears a failure.
 export function enqueueLocationMap(campaign: Campaign, locationId: string) {
   const preset = presetFor(campaign.gameSettings);
-  if (clearLocationMapFailed(locationId)) {
+  if (setLocationMapPending(locationId)) {
     publishLocation(campaign.id, locationId);
   }
   publishMediaStatus(campaign.id, "map", locationId, "queued");
