@@ -74,7 +74,7 @@ await test("A file that comes in whole names no loss, and says the party starts 
   assert.match(readWorldForge(fresh()).losses.join(" "), /Mira Fenn: its picture is not a PNG/, "the fixture's disguised script is named");
   const read = readWorldForge(whole());
   assert.deepEqual(read.losses, []);
-  assert.ok(read.notes.some((note) => /knowing none of them/.test(note)));
+  assert.ok(read.notes.some((note) => /knowing none of it/.test(note)));
   const result = importWorldForge(shop("Whole"), owner, whole());
   assert.deepEqual(result.losses, []);
   assert.ok(result.notes.length);

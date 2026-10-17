@@ -14,6 +14,7 @@ import { packFeatText } from "@/lib/srd/feat-text";
 import { mergedBackgroundOptions, srdBackgroundOptions, srdRaceOptions, type RaceOption } from "@/lib/characters/options";
 import { subclassNamesFor } from "@/lib/srd/features";
 import { bundledRaceTraitText, rulebookPageIdFor } from "@/lib/rulebook/catalog-rows";
+import { traitParagraphs } from "@/lib/workshop/species-traits";
 import type { RulebookPage } from "@/lib/rulebook/types";
 
 // What the engine runs for a published row, handed to the workshop's "start
@@ -144,25 +145,6 @@ export function archetypeMechanicsOf(row: Row, classId: string): Record<string, 
     }));
   }
   return { classSlug: classId, levels, ...(bundled.spells ? { spells: bundled.spells } : {}) };
-}
-
-// A trait paragraph per name, out of a race's markdown: "**_Keen Senses._**
-// You have proficiency..." and "***Brave.*** You have advantage..." both.
-const TRAIT_LINE = /^(?:\*\*\*|\*\*_)(.+?)(?:\*\*\*|_\*\*)\s*(.*)$/;
-
-function traitParagraphs(markdown: string): Map<string, string> {
-  const out = new Map<string, string>();
-  let current: string | null = null;
-  for (const line of String(markdown ?? "").split("\n")) {
-    const head = TRAIT_LINE.exec(line.trim());
-    if (head) {
-      current = head[1].replace(/\.$/, "").trim();
-      out.set(current, head[2].trim());
-    } else if (current && line.trim()) {
-      out.set(current, `${out.get(current)} ${line.trim()}`.trim());
-    }
-  }
-  return out;
 }
 
 const ABILITY_NAME: Record<string, string> = {

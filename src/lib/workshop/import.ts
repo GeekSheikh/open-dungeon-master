@@ -15,6 +15,8 @@ import {
   IMPORT_KINDS,
   IMPORT_KIND_LABELS,
   SINGULAR_KINDS,
+  WORLD_RECORD_KINDS,
+  withRequired,
   type AgainMode,
   type ArcMode,
   type BoardFacts,
@@ -26,6 +28,8 @@ import {
   type ImportWarning,
   type LinkKind,
   type TargetArc,
+  type WorldRecordFacts,
+  type WorldRecordKind,
 } from "./import-kinds.ts";
 import { planBoard } from "./import-board.ts";
 
@@ -81,10 +85,18 @@ export type PlanInput = {
   commonHere?: Partial<Record<LinkKind, string[]>>;
   // The board, when the source has one.
   board?: BoardFacts | null;
+  // Kinds WorldForge needs that the DM chose to leave behind (WF-07), and
+  // what the world says about each, so the exclusion names its losses.
+  exclude?: readonly ImportKind[];
+  worldFacts?: Partial<Record<WorldRecordKind, WorldRecordFacts>>;
+  // Hand-built monsters the copied NPCs and fights name that this table's
+  // authors do not have: copied into its bestiary on import (WF-07). Absent
+  // when the caller did not look, and the old warning stands.
+  foreignMonsters?: string[];
 };
 
 export function planImport(input: PlanInput): ImportPlan {
-  const selected = new Set(input.selection);
+  const selected = new Set(withRequired(input.selection, input.exclude));
   const items: ImportPlanItem[] = [];
   const warnings: ImportWarning[] = [];
   const notes: ImportWarning[] = [];
@@ -152,15 +164,21 @@ export function planImport(input: PlanInput): ImportPlan {
     }
 
     if (kind === "world") {
-      // WorldForge describes the records; a link, a secret or a pin whose
+      // WorldForge describes the records, and brings them unless the DM
+      // leaves one kind out on purpose. A link, a secret or a pin whose
       // record stays behind is dropped rather than left pointing at the
-      // workshop's row.
-      const records = (["npcs", "locations", "lore"] as const).filter((other) => !selected.has(other) && (input.source[other] ?? []).length);
-      if (records.length) {
+      // workshop's row, and the exclusion says exactly what goes.
+      const brought = WORLD_RECORD_KINDS.filter((other) => !input.selection.includes(other) && selected.has(other) && (input.source[other] ?? []).length);
+      if (brought.length) {
         notes.push({
           kind,
-          message: `WorldForge's links, secrets and pins for ${records.map((other) => IMPORT_KIND_LABELS[other].toLowerCase()).join(" and ")} stay behind with them.`,
+          message: `WorldForge brings what it describes: ${brought.map((other) => IMPORT_KIND_LABELS[other].toLowerCase()).join(", ")} come with it.`,
         });
+      }
+      for (const other of WORLD_RECORD_KINDS) {
+        if (selected.has(other) || !(input.source[other] ?? []).length) continue;
+        const facts = input.worldFacts?.[other];
+        warnings.push({ kind, message: facts ? leftOut(IMPORT_KIND_LABELS[other], facts) : `WorldForge's links, secrets and pins for ${IMPORT_KIND_LABELS[other].toLowerCase()} stay behind with them.` });
       }
       items.push({ kind, sourceId: rows[0].id, name: rows[0].name, finalName: rows[0].name, renamed: false });
       continue;
@@ -241,7 +259,7 @@ export function planImport(input: PlanInput): ImportPlan {
       planShops(rows, (row) => !(again === "skip" && here(kind, row.id)), arrives, warnings, notes);
     }
 
-    if (kind === "encounters") {
+    if (kind === "encounters" && !input.foreignMonsters) {
       const homebrewCount = rows.filter((row) =>
         row.monsters?.some((ref) => ref.trim().startsWith("homebrew:")),
       ).length;
@@ -267,6 +285,17 @@ export function planImport(input: PlanInput): ImportPlan {
       kind: "overworld",
       message:
         "Places are not included, so the region map arrives without its markers. It will place them again as the party travels.",
+    });
+  }
+
+  // Hand-built monsters this table's authors do not have travel with the
+  // NPCs and fights that name them (WF-07): said before, so nothing about
+  // the bestiary changes unannounced.
+  if (input.foreignMonsters?.length) {
+    const names = [...new Set(input.foreignMonsters)];
+    notes.push({
+      kind: selected.has("encounters") ? "encounters" : "npcs",
+      message: `${names.length} hand-built monster${names.length === 1 ? "" : "s"} (${names.join(", ")}) ${names.length === 1 ? "is" : "are"} copied into this table's bestiary, so the NPCs and fights that name ${names.length === 1 ? "it" : "them"} fight here as they did there.`,
     });
   }
 
@@ -331,4 +360,18 @@ export function planSummary(plan: ImportPlan): string {
       : `${plan.counts[kind]} ${IMPORT_KIND_LABELS[kind].toLowerCase()}`,
   );
   return parts.length ? parts.join(", ") : "nothing";
+}
+
+// What leaving one kind of record out of a world import loses, counted.
+function leftOut(label: string, facts: WorldRecordFacts): string {
+  const parts = [
+    [facts.entries, "World entry", "World entries"],
+    [facts.links, "link", "links"],
+    [facts.pins, "map pin", "map pins"],
+    [facts.secrets, "secret's subject or knower", "secrets' subjects or knowers"],
+    [facts.events, "mention in the timeline", "mentions in the timeline"],
+  ] as const;
+  const lost = parts.filter(([count]) => count > 0).map(([count, one, many]) => `${count} ${count === 1 ? one : many}`);
+  const list = lost.length > 1 ? `${lost.slice(0, -1).join(", ")} and ${lost[lost.length - 1]}` : lost[0] ?? "nothing more";
+  return `Leaving out ${label.toLowerCase()}: WorldForge drops ${list} with them.`;
 }

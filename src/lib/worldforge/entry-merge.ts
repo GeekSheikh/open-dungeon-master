@@ -1,4 +1,4 @@
-import { typeFor, type Canon, type FieldValue, type WorldDoc, type Shelf, type Entry } from "@/lib/worldforge/model";
+import { typeFor, type Binding, type Canon, type FieldValue, type WorldDoc, type Shelf, type Entry } from "@/lib/worldforge/model";
 
 // Two people editing one entry. The editor keeps the values it opened with
 // (its base) and sends only the fields it changed, each with its base. The
@@ -22,9 +22,10 @@ export type Editable = {
   hiddenTruth: string;
   notes: string;
   fields: Record<string, FieldValue>;
+  bindings: Binding[];
 };
 
-export const EDITABLE_KEYS = ["name", "tagline", "text", "article", "aliases", "tags", "portrait", "typeId", "folderId", "canon", "hiddenTruth", "notes", "fields"] as const;
+export const EDITABLE_KEYS = ["name", "tagline", "text", "article", "aliases", "tags", "portrait", "typeId", "folderId", "canon", "hiddenTruth", "notes", "fields", "bindings"] as const;
 export type EditableKey = (typeof EDITABLE_KEYS)[number];
 
 // One conflicting field: a top-level key, or "fields.<id>" for a type field.
@@ -48,6 +49,7 @@ export function editableOf(doc: Pick<WorldDoc, "types">, entity: EntityLike): Ed
     hiddenTruth: entity.entry.hiddenTruth,
     notes: entity.entry.notes,
     fields: { ...entity.entry.fields },
+    bindings: entity.entry.bindings.map((binding) => ({ ...binding })),
   };
 }
 
@@ -89,6 +91,7 @@ const LABELS: Record<EditableKey, string> = {
   hiddenTruth: "Hidden truth",
   notes: "Author's notes",
   fields: "Fields",
+  bindings: "Used at the table",
 };
 
 // Checks a patch against what the entry holds now. Returns the patch to

@@ -4,6 +4,7 @@ import { createNpcFromDraft, listNpcs } from "@/lib/db/npcs";
 import { publishCast } from "@/lib/dm/cast";
 import { describePersonality, normalizeNpcDraft, relationGraph } from "@/lib/npcs/forge";
 import { queueNpcPortrait } from "@/lib/portrait";
+import { recordsChanged } from "@/lib/workshop/record-events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -90,5 +91,6 @@ export async function POST(
       personality: describePersonality(outcome.draft.personality),
     });
   }
+  recordsChanged(campaignId, "npc", "world");
   return Response.json({ ok: true, npc }, { status: 201 });
 }

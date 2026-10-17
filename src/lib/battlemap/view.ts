@@ -456,6 +456,9 @@ export function buildPlayerMapView(
     terrain: terrainChars.join(""),
     backdrop: map.backdrop,
     skin: map.skin,
+    // Cosmetic like the backdrop, and fetched only by the addon's own board
+    // view (src/lib/addons/board-bridge.ts).
+    addonView: map.addonView,
     visible: [...visible],
     explored: [...explored],
     tokens: shownTokens,

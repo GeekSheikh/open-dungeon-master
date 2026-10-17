@@ -1716,6 +1716,11 @@ function ensureSchema(db: SqliteDatabase) {
   addColumns("battle_maps", [["skin_json", `TEXT NOT NULL DEFAULT '{}'`]]);
   // Spell areas laid on a live board (src/lib/battlemap/zones.ts).
   addColumns("battle_maps", [["spell_zones_json", `TEXT NOT NULL DEFAULT '[]'`]]);
+  // What a map addon left for its board view: data and files such as a .glb
+  // model (src/lib/addons/map-view.ts). '' is none. Cosmetic like the skin,
+  // and on both tables for the same reason.
+  addColumns("prepared_maps", [["addon_view_json", `TEXT NOT NULL DEFAULT ''`]]);
+  addColumns("battle_maps", [["addon_view_json", `TEXT NOT NULL DEFAULT ''`]]);
 
   addColumns("locations", [
     // The prepared map this place stands on, so arriving offers the DM a
@@ -2420,6 +2425,11 @@ function ensureSchema(db: SqliteDatabase) {
   // Databases that created player_webhooks before receivers could carry
   // their own Authorization value or extra headers (docs/player-webhooks.md).
   addColumns("player_webhooks", [["authorization_header", `TEXT`], ["extra_headers", `TEXT`]]);
+  // A poll link instead of a receiver (docs/player-webhooks.md): the SHA-256
+  // of the link's secret, for an agent that cannot take incoming requests
+  // and checks the link instead. Such a row has no url and gets no deliveries.
+  addColumns("player_webhooks", [["poll_token_hash", `TEXT`]]);
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_player_webhooks_poll ON player_webhooks(poll_token_hash) WHERE poll_token_hash IS NOT NULL`);
   // How many calls a row stands for: one, until the retention pass merges
   // old rows into one per month (src/lib/ops/retention.ts).
   addColumns("usage_events", [["calls", `INTEGER NOT NULL DEFAULT 1`]]);

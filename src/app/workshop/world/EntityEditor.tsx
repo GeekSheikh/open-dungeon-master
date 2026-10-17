@@ -12,6 +12,7 @@ import { folderTree } from "@/lib/worldforge/tree";
 import type { WorldEntity } from "@/lib/db/world-forge";
 import { changesSince, describeValue, editableOf, same, type Editable, type EntryConflict } from "@/lib/worldforge/entry-merge";
 import { ROW_TEXT, olderText } from "@/lib/worldforge/account";
+import { useUnsavedDraft } from "@/app/workshop/unsaved";
 import type { EntryInput, UpdateOutcome } from "./useWorld";
 import { typeOf } from "./world-ui";
 
@@ -128,6 +129,10 @@ export function EntityEditor({
 
   // A lore entry's older article, when it says something its body does not.
   const older = olderText({ shelf: entity.shelf, text: draft.text, entry: { article: draft.article } });
+
+  // Changes not saved yet, as save would send them.
+  const unsaved = Object.keys(changesSince(opened, entity.shelf === "lore" ? { ...valuesOf(draft), article: older } : valuesOf(draft)).patch).length > 0;
+  useUnsavedDraft(unsaved);
 
   async function save() {
     setRebased(false);

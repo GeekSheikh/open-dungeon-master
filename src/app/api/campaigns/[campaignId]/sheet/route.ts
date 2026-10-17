@@ -8,9 +8,9 @@ import {
   type MemberContext,
 } from "@/lib/campaign-api";
 import { seatAddedSheet } from "@/lib/character-seat";
-import { JOIN_NOTE_PREFIX } from "@/lib/campaign-types";
 import { admitSheet, refusal } from "@/lib/characters/admit";
-import { allocateSeq, listMembers, setMemberReady } from "@/lib/db/campaigns";
+import { announceMidGameJoin } from "@/lib/characters/mid-game-join";
+import { listMembers, setMemberReady } from "@/lib/db/campaigns";
 import {
   companionRoleRefusal,
   createCharacter,
@@ -19,7 +19,6 @@ import {
   updateCharacter,
   updateCharacterPortrait,
 } from "@/lib/db/characters";
-import { insertCampaignMessage } from "@/lib/db/messages";
 import {
   createSheet,
   deleteSheetById,
@@ -42,28 +41,7 @@ import { rollCard } from "@/lib/dm/roll-card";
 import { buildLevelUp } from "@/lib/srd/level-up";
 import { freeCantripCount } from "@/lib/srd/free-cantrips";
 import type { CharacterSheet } from "@/lib/schemas/sheet";
-import { publishPersisted, publishWithSeq } from "@/lib/events";
-
-// A character arriving after the adventure started gets a table note so the
-// DM writes them into the story on its next turn.
-function announceMidGameJoin(context: MemberContext, sheet: CharacterSheet) {
-  if (context.campaign.status !== "active") {
-    return;
-  }
-  const campaignId = context.campaign.id;
-  const seq = allocateSeq(campaignId);
-  const backstoryHint = sheet.backstory
-    ? ` Their backstory: ${sheet.backstory.slice(0, 200)}`
-    : "";
-  const message = insertCampaignMessage({
-    campaignId,
-    seq,
-    authorType: "system",
-    glyph: "system-party",
-    content: `${JOIN_NOTE_PREFIX}${context.user.username} has joined the party as ${sheet.name}, a ${sheet.race.replaceAll("_", " ")} ${sheet.class}.${backstoryHint} Introduce them into the scene at the next natural moment.`,
-  });
-  publishWithSeq(campaignId, seq, "message_added", { message });
-}
+import { publishPersisted } from "@/lib/events";
 
 const fromLibrarySchema = z.object({
   libraryCharacterId: z.string().min(1),

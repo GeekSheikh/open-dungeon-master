@@ -11,6 +11,8 @@ import { describeSkill } from "@/lib/help";
 import { SRD_SKILLS } from "@/lib/srd";
 import type { WorldPack } from "@/lib/worlds/types";
 import OptionPicker, { type PickerGroup } from "../OptionPicker";
+import { PlaystylePicker } from "../PlaystylePicker";
+import type { PlaystyleId } from "../playstyles";
 import { rollHeroName } from "../heroNames";
 import { backgroundInfoText } from "../usePickerGroups";
 import type { BackgroundOption } from "../useBuilderOptions";
@@ -24,17 +26,27 @@ const COUNT_WORDS: Record<number, string> = { 1: "one", 2: "two", 3: "three" };
 
 export type BuilderRole = "pc" | "companion";
 
-// Step 1: the name, who plays them, level, background and alignment. The
-// setting notices live here too, so the first thing a player sees under a
-// world pack is whose names they are about to choose from.
+// Step 1: for a new character, how they want to play (the class step opens
+// on the same answer), then the name, who plays them, gender (the cards'
+// art follows it), level and background. Alignment changes no number and
+// waits for the finishing touches. The setting notices live here too, so the first thing a player
+// sees under a world pack is whose names they are about to choose from.
+export type IdentityPlaystyle = {
+  value: PlaystyleId | null;
+  onChange: (style: PlaystyleId | null) => void;
+  offered: Array<{ id: string; name: string; roles: string[]; playsLike: string }>;
+  chosenClass: string;
+  onChooseClass: (classId: string) => void;
+  // The offered backgrounds that suit the answer (playstyleBackgrounds).
+  backgrounds: Array<{ id: string; name: string }>;
+};
 export function IdentityStep({
   state,
   pack,
   packInstalled,
   fixedLevel,
   role,
-  alignmentGroups,
-  alignmentInfo,
+  playstyle,
   backgroundGroups,
   background,
 }: {
@@ -45,8 +57,8 @@ export function IdentityStep({
   // Offered by the library page only: a campaign already knows which door
   // the character comes through.
   role?: { value: BuilderRole; onChange: (role: BuilderRole) => void };
-  alignmentGroups: PickerGroup[];
-  alignmentInfo: string;
+  // Offered to a new character only; an edit keeps its class.
+  playstyle?: IdentityPlaystyle;
   backgroundGroups: PickerGroup[];
   background: BackgroundOption | undefined;
 }) {
@@ -93,6 +105,19 @@ export function IdentityStep({
             className="mt-1"
           />
         </div>
+      ) : null}
+
+      {playstyle ? (
+        <StepPanel title="How do you want to play?">
+          <PlaystylePicker
+            offered={playstyle.offered}
+            chosen={playstyle.chosenClass}
+            onChoose={playstyle.onChooseClass}
+            style={playstyle.value}
+            onStyle={playstyle.onChange}
+            intro="New to this? Pick what sounds fun. It suggests a class and a background, and nothing is chosen until you choose it."
+          />
+        </StepPanel>
       ) : null}
 
       <StepPanel title="Name your hero" ornate anchor="name">
@@ -210,6 +235,24 @@ export function IdentityStep({
               className={inputClass}
               onChange={state.changeBackground}
             />
+            {playstyle?.value && playstyle.backgrounds.length ? (
+              // The playstyle's backgrounds, one tap each; the list above
+              // keeps every other.
+              <span key={playstyle.value} className="reveal mt-1.5 flex flex-wrap items-center gap-1 text-xs text-stone-500" data-background-hints>
+                Suits how you want to play:
+                {playstyle.backgrounds.map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => state.changeBackground(entry.id)}
+                    aria-pressed={background?.id === entry.id}
+                    className="rounded-md border border-stone-700/70 px-1.5 py-0.5 text-[11px] text-stone-300 transition-colors hover:border-amber-500/40 hover:text-amber-100 aria-pressed:border-amber-400/60 aria-pressed:text-amber-100"
+                  >
+                    {entry.name}
+                  </button>
+                ))}
+              </span>
+            ) : null}
             {background ? (
               <span className="mt-1 flex items-start gap-1 text-xs text-stone-500">
                 <span className="grow">
@@ -273,21 +316,6 @@ export function IdentityStep({
             {background?.skillChoice ? (
               <BackgroundSkillChoice state={state} background={background} choice={background.skillChoice} />
             ) : null}
-          </Field>
-          <Field
-            label={
-              <span className="flex items-center gap-1">
-                Alignment
-                <InfoButton label="Alignment" text={alignmentInfo} />
-              </span>
-            }
-          >
-            <OptionPicker
-              value={state.alignment}
-              groups={alignmentGroups}
-              className={inputClass}
-              onChange={state.setAlignment}
-            />
           </Field>
         </div>
       </StepPanel>

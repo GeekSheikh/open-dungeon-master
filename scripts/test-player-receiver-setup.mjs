@@ -3,15 +3,18 @@
 // store the receiver's --setup uses instead of a hand-written credential
 // helper (scripts/lib/player-token-store.mjs).
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { register } from "node:module";
+import { fileURLToPath } from "node:url";
 
 register("./lib/register-alias.mjs", import.meta.url);
 const { receiverConfig, receiverUrl, receiverCommands, receiverFileName, receiverSlug } = await import("../src/lib/agents/receiver-config.ts");
 const { tokenStore, saveToken, promptSecret, validToken } = await import("./lib/player-token-store.mjs");
+const { takeReceiverLock, LockRefused } = await import("./lib/player-webhook-receiver.mjs");
 
 let passed = 0;
 async function test(name, fn) {
@@ -122,7 +125,41 @@ await test("a piped token is read whole, without paste markers", async () => {
   assert.equal(validToken(`${TOKEN} extra`), false);
 });
 
+await test("a lock left by a receiver that was killed outright is taken over; a running one's is refused", () => {
+  const lockPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "odm-receiver-lock-")), "receiver.lock");
+  // A process that has already exited, as after its terminal window closed.
+  const gone = spawnSync(process.execPath, ["-e", ""]).pid;
+  fs.writeFileSync(lockPath, String(gone));
+  const release = takeReceiverLock(lockPath);
+  assert.equal(fs.readFileSync(lockPath, "utf8"), String(process.pid));
+  assert.throws(() => takeReceiverLock(lockPath), (error) => error instanceof LockRefused && error.message === `A receiver is already running for this config (pid ${process.pid}). Stop it first.`);
+  assert.equal(fs.readFileSync(lockPath, "utf8"), String(process.pid), "a running receiver's lock is kept");
+  release();
+  assert.ok(!fs.existsSync(lockPath));
+  fs.writeFileSync(lockPath, "");
+  takeReceiverLock(lockPath)();
+  assert.throws(() => takeReceiverLock(path.join(lockPath, "missing", "receiver.lock")), LockRefused, "other lock errors get a plain message too");
+});
+
 if (process.platform === "win32") {
+  await test("Windows: the receiver file's bare \"codex\" is found on PATH as npm's codex.cmd", () => {
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), "odm-codex-bin-"));
+    const called = path.join(bin, "called.json");
+    fs.writeFileSync(path.join(bin, "codex.js"), `require("node:fs").writeFileSync(${JSON.stringify(called)}, JSON.stringify(process.argv.slice(2)));\n`);
+    fs.writeFileSync(path.join(bin, "codex.cmd"), '@ECHO off\r\nnode "%~dp0\\codex.js" %*\r\n');
+    const config = receiverConfig({ ...base, receiverUrl: "https://my-pc.example.ts.net" });
+    assert.equal(config.codexBinary, "codex", "the generated file names Codex by its bare name");
+    const configFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "odm-receiver-codex-")), "receiver.json");
+    fs.writeFileSync(configFile, JSON.stringify(config));
+    // Only the fake folder on PATH, under Windows' own spelling of the name.
+    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== "PATH"));
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL("./player-webhook-receiver.mjs", import.meta.url)), "--login", configFile], {
+      env: { ...env, Path: bin }, encoding: "utf8", timeout: 60_000,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(fs.readFileSync(called, "utf8")), ["login", "--device-auth"]);
+  });
+
   await test("Windows DPAPI round trip on this machine", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "odm-token-dpapi-"));
     const store = tokenStore(directory);

@@ -25,6 +25,7 @@ import {
   type PreparedEncounter,
   type TemplateReadout,
 } from "@/app/workshop/encounters/types";
+import { useOpenOnArrival } from "@/app/workshop/world/WorldEntryLink";
 
 // Prepared encounters: the roster a DM writes down before the session and
 // deploys in one action.
@@ -63,8 +64,12 @@ export function DmEncounterPrepPanel({
   layout = "list",
   targetParty,
   cue = false,
+  openOnArrival,
 }: {
   campaignId: string;
+  // In the workshop only: the fight to open on arrival, by id (a World
+  // entry's "Add to a fight", src/app/workshop/world/BoundRecords.tsx).
+  openOnArrival?: string | null;
   layout?: "list" | "rows";
   // The lead's desk at an AI-narrated table (#154): Deploy becomes a cue the
   // storyteller runs when the scene reaches the fight, and can be taken back.
@@ -133,6 +138,8 @@ export function DmEncounterPrepPanel({
   useTourPrepare((name) => {
     if (name === "open-encounter-editor" && rows && !editorOpen) openEditor(null);
   });
+
+  useOpenOnArrival(openOnArrival, loaded ? templates : null, openEditor);
 
   function openEditor(template: PreparedEncounter | null) {
     setError("");

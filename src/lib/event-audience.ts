@@ -118,6 +118,10 @@ export const EVENT_AUDIENCE: Readonly<Record<string, Audience>> = {
   // The table's WorldForge changed (src/lib/worldforge/model.ts). The ping
   // carries nothing, but the document is the DM's, so only DM seats refetch.
   world_updated: { kind: "dm", right: "secretStory" },
+  // Which kinds of record changed (src/lib/workshop/record-events.ts), for
+  // the workshop's tools to refetch. Only the kinds travel, and only to DM
+  // seats, like world_updated.
+  records_changed: { kind: "dm", right: "secretStory" },
   pins_updated: TABLE,
   npc_updated: TABLE,
   location_updated: TABLE,

@@ -50,6 +50,9 @@ export type WizardStep = {
   // a tap on the held button (or on the message) goes to the missing pick.
   blocker?: string | null;
   onBlocked?: () => void;
+  // A quieter way on from this step, beside Back ("Skip for now", "Save and
+  // finish later"): the step decides what it saves, if anything.
+  secondary?: { label: ReactNode; onClick: () => void; title?: string };
 };
 
 // Something the wizard should say above the steps until the player has seen
@@ -340,6 +343,20 @@ export function Wizard({
               {blocker}
             </p>
           )
+        ) : null}
+        {current?.secondary ? (
+          <button
+            type="button"
+            onClick={current.secondary.onClick}
+            title={current.secondary.title}
+            data-wizard-secondary=""
+            className={cn(
+              "motion-press min-h-11 shrink-0 px-2 text-xs text-stone-400 underline-offset-2 transition-colors hover:text-amber-200 hover:underline",
+              !blocker && "mr-auto",
+            )}
+          >
+            {current.secondary.label}
+          </button>
         ) : null}
         {step > 0 ? (
           <button type="button" onClick={back} className={ui.btnSecondary}>

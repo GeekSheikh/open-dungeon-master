@@ -21,6 +21,12 @@ export const WORKSHOP_BUNDLE_VERSION = 1;
 // route enforces.
 export const MAX_BUNDLE_BYTES = 64 * 1024 * 1024;
 
+// A bundle an importer addon made on this server (src/lib/addons/run-importer.ts):
+// it never crosses a request, and its pictures are files the addon wrote
+// rather than uploads, so a whole adventure's art fits. Each picture is
+// still held to MAX_BUNDLE_IMAGE_BYTES.
+export const MAX_ADDON_BUNDLE_BYTES = 256 * 1024 * 1024;
+
 // Per-image binary cap, matching /api/upload's MAX_FILE_SIZE so nothing can
 // arrive by bundle that could not have been uploaded by hand.
 export const MAX_BUNDLE_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -214,6 +220,28 @@ const mapSchema = z.object({
   drawings: z.array(z.unknown()).max(400).default([]),
   ambience: z.record(z.string(), z.unknown()).default({}),
   overlay: bundleImageSchema,
+  // What a map addon left for its board view (src/lib/addons/map-view.ts):
+  // its data, and its files (a .glb model, textures) inline as data URLs so
+  // the map arrives whole. Null for a map no addon made, and in bundles from
+  // builds before addons. Checked again, file by file, on import
+  // (src/lib/db/map-addon-view-bundle.ts).
+  addonView: z
+    .object({
+      addonId: z.string().trim().max(60),
+      data: z.unknown().optional(),
+      files: z
+        .array(
+          z.object({
+            name: z.string().trim().min(1).max(120),
+            type: z.string().max(60).default(""),
+            data: z.string().max(Math.ceil((MAX_BUNDLE_BYTES * 4) / 3) + 100),
+          }),
+        )
+        .max(8)
+        .default([]),
+    })
+    .nullable()
+    .default(null),
   ref: refSchema,
   shared: sharedSchema,
 });
